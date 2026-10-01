@@ -1,0 +1,23 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Temporary scratch and extraction logs
+scratch/
+cad_*.txt
+dims_with_points.txt
+test_cad_out.txt
+inspect_culvert.txt
+
+# Revit backups
+*.00*.rfa
+*.00*.rvt

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>ĐV_TOOL_HTKT</Name>
+    <Assembly>DV_TOOL_HTKT\DV_TOOL_HTKT.dll</Assembly>
+    <FullClassName>InfraBIM.CulvertTool.App</FullClassName>
+    <ClientId>B84F7C11-1375-4422-9F4E-6651E4E7A1C2</ClientId>
+    <VendorId>DV_HTKT</VendorId>
+    <VendorDescription>ĐV TOOL Hạ Tầng Kỹ Thuật - Rải Cống Ngang Tự Động</VendorDescription>
+  </AddIn>
+</RevitAddIns>

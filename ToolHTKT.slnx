@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/InfraBIM.CulvertTool/InfraBIM.CulvertTool.csproj" />
+  </Folder>
+</Solution>

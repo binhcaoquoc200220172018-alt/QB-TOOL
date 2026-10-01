@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>InfraBIM.CulvertTool</RootNamespace>
+    <AssemblyName>DV_TOOL_HTKT</AssemblyName>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Revit 2025 API References -->
+    <Reference Include="RevitAPI">
+      <HintPath>C:\Program Files\Autodesk\Revit 2025\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>C:\Program Files\Autodesk\Revit 2025\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Excel Reader package (No Microsoft Office required) -->
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="DV_TOOL_HTKT.addin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Auto deploy to Revit 2025 Addins folder upon build -->
+  <Target Name="DeployToRevitAddins" AfterTargets="Build">
+    <PropertyGroup>
+      <RevitAddinDir>$(AppData)\Autodesk\Revit\Addins\2025</RevitAddinDir>
+      <TargetAddinDir>$(RevitAddinDir)\DV_TOOL_HTKT</TargetAddinDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(TargetAddinDir)" Condition="!Exists('$(TargetAddinDir)')" />
+    <ItemGroup>
+      <OutputFiles Include="$(TargetDir)**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(OutputFiles)" DestinationFiles="@(OutputFiles->'$(TargetAddinDir)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" ContinueOnError="true" />
+    <Copy SourceFiles="$(ProjectDir)DV_TOOL_HTKT.addin" DestinationFolder="$(RevitAddinDir)" SkipUnchangedFiles="true" ContinueOnError="true" />
+  </Target>
+
+</Project>
