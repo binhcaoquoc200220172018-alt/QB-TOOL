@@ -48,11 +48,13 @@ namespace InfraBIM.CulvertTool.Models
         public double DistanceFromP1M { get; set; }
         public double WidthM { get; set; } = 1.5;
         public double ElevationZ { get; set; }
+        public double BottomElevationZ { get; set; }
+        public double TopElevationZ { get; set; }
         public double HeightM { get; set; } = 2.0;
     }
 
     /// <summary>
-    /// Toàn bộ dữ liệu tính toán hình học phục vụ vẽ Preview
+    /// Toàn bộ dữ liệu tính toán hình học phục vụ vẽ Preview & Kiểm tra cao độ
     /// </summary>
     public class CulvertPreviewGeometry
     {
@@ -68,6 +70,23 @@ namespace InfraBIM.CulvertTool.Models
         public double Z1 { get; set; }
         public double Z2 { get; set; }
         public double DeltaH { get; set; }
+
+        // CAO ĐỘ THIẾT KẾ & KIỂM TRA THỦY LỰC
+        public double Z_Top1 { get; set; }           // Cao độ đỉnh cống thượng lưu
+        public double Z_Top2 { get; set; }           // Cao độ đỉnh cống hạ lưu
+        public double Z_Bot_BTL1 { get; set; }       // Cao độ đáy BTL thượng lưu
+        public double Z_Bot_BTL2 { get; set; }       // Cao độ đáy BTL hạ lưu
+        public double Z_Bot_Cat1 { get; set; }       // Cao độ đáy đá dăm thượng lưu
+        public double Z_Bot_Cat2 { get; set; }       // Cao độ đáy đá dăm hạ lưu
+
+        public double CalculatedSlopePercent { get; set; } // Độ dốc tính từ (Z1 - Z2) / L * 100%
+        public double SlopeDiffPercent { get; set; }       // Sai lệch |DoDocPercent - CalculatedSlopePercent|
+        public bool IsReverseSlope { get; set; }          // Z1 < Z2 (Dốc ngược)
+        public bool IsFlatSlope { get; set; }             // i < 0.1%
+        public bool IsSteepSlope { get; set; }            // i > 5.0%
+        public string ElevationStatus { get; set; } = "HỢP LỆ";
+        public string ElevationStatusColor { get; set; } = "#10B981"; // Mint / Red / Yellow
+        public string ElevationNote { get; set; } = string.Empty;
 
         public double L_Std { get; set; } = 1.0;
         public double L_Min { get; set; } = 0.5;

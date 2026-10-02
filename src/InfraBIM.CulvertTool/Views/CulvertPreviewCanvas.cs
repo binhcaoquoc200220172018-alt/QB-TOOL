@@ -520,13 +520,40 @@ namespace InfraBIM.CulvertTool.Views
                 DrawCadDimension(dc, new Point(pLast.X, dimMhY), new Point(pEnd.X, dimMhY), $"{totalL - curX:N2}m", 9.5, YellowTextBrush);
             }
 
-            // d) Ký hiệu cao độ mốc mực nước / đáy cống (Elevation Level Markers ∇)
-            DrawElevationMarker(dc, MapPoint(0, 0), $"Z1 = {geom.Z1:N3} m", true);
-            DrawElevationMarker(dc, MapPoint(totalL, 0), $"Z2 = {geom.Z2:N3} m", false);
+            // d) Ký hiệu cao độ mốc mực nước / đỉnh cống / đáy cống (Elevation Level Markers ∇)
+            // Thượng lưu (P1)
+            DrawElevationMarker(dc, MapPoint(0, 0), $"∇ Đỉnh Z={geom.Z_Top1:N3}m", true, isTop: true, customBrush: CyanTextBrush);
+            DrawElevationMarker(dc, MapPoint(0, -culvertH / scaleY), $"∇ Đáy Z1={geom.Z1:N3}m", true, isTop: false, customBrush: YellowTextBrush);
+            DrawElevationMarker(dc, MapPoint(0, -culvertH / scaleY + (geom.OffsetZ_BTL_Dot * scaleY)), $"∇ BTL={geom.Z_Bot_BTL1:N3}m", true, isTop: false, isSmall: true, customBrush: TextBrush);
+
+            // Hạ lưu (P2)
+            DrawElevationMarker(dc, MapPoint(totalL, 0), $"∇ Đỉnh Z={geom.Z_Top2:N3}m", false, isTop: true, customBrush: CyanTextBrush);
+            DrawElevationMarker(dc, MapPoint(totalL, -culvertH / scaleY), $"∇ Đáy Z2={geom.Z2:N3}m", false, isTop: false, customBrush: YellowTextBrush);
+            DrawElevationMarker(dc, MapPoint(totalL, -culvertH / scaleY + (geom.OffsetZ_BTL_Dot * scaleY)), $"∇ BTL={geom.Z_Bot_BTL2:N3}m", false, isTop: false, isSmall: true, customBrush: TextBrush);
+
+            // Cao độ tại các Hố ga (nếu có)
+            foreach (var mh in geom.Manholes)
+            {
+                DrawElevationMarker(dc, MapPoint(mh.DistanceFromP1M, -culvertH / scaleY - 0.20), $"∇ Đáy HG={mh.BottomElevationZ:N3}m", false, isTop: false, isSmall: true, customBrush: YellowTextBrush);
+            }
 
             // e) Mũi tên độ dốc cống i (%)
             Point pSlopeMid = MapPoint(totalL / 2.0, 0.35);
-            DrawSlopeIndicator(dc, pSlopeMid, geom.DoDocPercent);
+            DrawSlopeIndicator(dc, pSlopeMid, geom.CalculatedSlopePercent > 0 ? geom.CalculatedSlopePercent : geom.DoDocPercent, geom.IsReverseSlope);
+
+            // f) Đường dóng đối chiếu cao độ đáy (Datum Level Line)
+            Point pDatumZ1 = MapPoint(0, -culvertH / scaleY);
+            Point pDatumZ2_Proj = new Point(MapPoint(totalL).X + 25, pDatumZ1.Y);
+            dc.DrawLine(new Pen(new SolidColorBrush(Color.FromArgb(90, 148, 163, 184)), 1.0) { DashStyle = DashStyles.Dash }, pDatumZ1, pDatumZ2_Proj);
+
+            // g) Bảng tóm tắt thông số cao độ trên Canvas
+            DrawElevationSummaryTable(dc, viewW, viewH, geom);
+
+            // h) Cảnh báo nếu dốc ngược
+            if (geom.IsReverseSlope)
+            {
+                DrawReverseSlopeBanner(dc, viewW, geom);
+            }
         }
         #endregion
 
@@ -721,38 +748,144 @@ namespace InfraBIM.CulvertTool.Views
             dc.DrawText(text, mid);
         }
 
-        private void DrawElevationMarker(DrawingContext dc, Point pt, string label, bool isLeft)
+        private void DrawElevationMarker(DrawingContext dc, Point pt, string label, bool isLeft, bool isTop = false, bool isSmall = false, Brush? customBrush = null)
         {
-            double s = 8.0;
-            // Vẽ tam giác ngược (∇)
+            double s = isSmall ? 6.0 : 8.0;
+            Brush brush = customBrush ?? YellowTextBrush;
+            Pen pen = new Pen(brush, 1.0);
+
+            // Ký hiệu cao độ: Tam giác ngược ∇ có đỉnh tại pt
             var tri = new PathGeometry();
             var fig = new PathFigure { StartPoint = pt, IsClosed = true };
-            fig.Segments.Add(new LineSegment(new Point(pt.X - s, pt.Y - s * 1.5), true));
-            fig.Segments.Add(new LineSegment(new Point(pt.X + s, pt.Y - s * 1.5), true));
+            double topY = pt.Y - (s * 1.5);
+            fig.Segments.Add(new LineSegment(new Point(pt.X - s, topY), true));
+            fig.Segments.Add(new LineSegment(new Point(pt.X + s, topY), true));
             tri.Figures.Add(fig);
-            dc.DrawGeometry(YellowTextBrush, new Pen(new SolidColorBrush(Color.FromRgb(202, 138, 4)), 1.0), tri);
+            dc.DrawGeometry(brush, pen, tri);
 
             // Gạch ngang và text cao độ
-            double lineW = 60.0;
-            double lx = isLeft ? pt.X - lineW : pt.X + s;
-            dc.DrawLine(DimPen, new Point(pt.X - s, pt.Y - s * 1.5), new Point(pt.X + (isLeft ? -s : lineW), pt.Y - s * 1.5));
+            double lineW = isSmall ? 70.0 : 90.0;
+            Point pLineStart = isLeft ? new Point(pt.X + s, topY) : new Point(pt.X - s, topY);
+            Point pLineEnd = isLeft ? new Point(pt.X - lineW, topY) : new Point(pt.X + lineW, topY);
+            dc.DrawLine(pen, pLineStart, pLineEnd);
 
-            var text = new FormattedText(label, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 10.5, YellowTextBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            double fontSize = isSmall ? 9.5 : 10.5;
+            var text = new FormattedText(
+                label,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+                fontSize,
+                brush,
+                VisualTreeHelper.GetDpi(this).PixelsPerDip)
             {
                 TextAlignment = isLeft ? TextAlignment.Right : TextAlignment.Left
             };
-            dc.DrawText(text, new Point(isLeft ? pt.X - s - 3 : pt.X + s + 3, pt.Y - s * 1.5 - 14));
+            double tx = isLeft ? pt.X - s - 4 : pt.X + s + 4;
+            dc.DrawText(text, new Point(tx, topY - fontSize - 3));
         }
 
-        private void DrawSlopeIndicator(DrawingContext dc, Point pt, double slopePercent)
+        private void DrawSlopeIndicator(DrawingContext dc, Point pt, double slopePercent, bool isReverse)
         {
-            string sText = $"i = {slopePercent:N2}%  ➔";
-            var text = new FormattedText(sText, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal), 11.0, MintTextBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            string sText = isReverse ? $"⚠️ DỐC NGƯỢC! i = {slopePercent:N2}% ◀" : $"i = {slopePercent:N2}%  ➔";
+            Brush textBrush = isReverse ? RedTextBrush : MintTextBrush;
+            Brush bgBrush = isReverse ? new SolidColorBrush(Color.FromArgb(200, 153, 27, 27)) : new SolidColorBrush(Color.FromArgb(160, 6, 78, 59));
+            Pen borderPen = isReverse ? new Pen(new SolidColorBrush(Color.FromRgb(248, 113, 113)), 1.2) : new Pen(new SolidColorBrush(Color.FromRgb(52, 211, 153)), 1.0);
+
+            var text = new FormattedText(
+                sText,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+                11.0,
+                textBrush,
+                VisualTreeHelper.GetDpi(this).PixelsPerDip)
             {
                 TextAlignment = TextAlignment.Center
             };
-            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(160, 6, 78, 59)), null, new Rect(pt.X - text.Width / 2 - 4, pt.Y - 2, text.Width + 8, text.Height + 4));
+
+            Rect rect = new Rect(pt.X - (text.Width / 2.0) - 8, pt.Y - 2, text.Width + 16, text.Height + 4);
+            dc.DrawRoundedRectangle(bgBrush, borderPen, rect, 4, 4);
             dc.DrawText(text, pt);
+        }
+
+        private void DrawElevationSummaryTable(DrawingContext dc, double viewW, double viewH, CulvertPreviewGeometry geom)
+        {
+            double cardX = 12;
+            double cardY = 40;
+            double cardW = 340;
+            double cardH = 115;
+
+            // Semi-transparent background HUD
+            Rect bgRect = new Rect(cardX, cardY, cardW, cardH);
+            Brush cardBg = new SolidColorBrush(Color.FromArgb(210, 15, 23, 42)); // Slate-900
+            Pen cardBorder = new Pen(new SolidColorBrush(Color.FromArgb(120, 56, 189, 248)), 1.0); // Cyan border
+            dc.DrawRoundedRectangle(cardBg, cardBorder, bgRect, 6, 6);
+
+            // Title
+            var titleText = new FormattedText(
+                "📐 KIỂM TRA CAO ĐỘ & ĐỘ DỐC THỦY LỰC",
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+                11.0,
+                CyanTextBrush,
+                VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            dc.DrawText(titleText, new Point(cardX + 10, cardY + 8));
+
+            // Content lines
+            double deltaZ = geom.Z1 - geom.Z2;
+            string line1 = $"Đáy cống: Z1 = {geom.Z1:N3}m  ➔  Z2 = {geom.Z2:N3}m  (ΔZ = {deltaZ:N3}m)";
+            string line2 = $"Đỉnh cống: Zt1 = {geom.Z_Top1:N3}m  ➔  Zt2 = {geom.Z_Top2:N3}m";
+            string line3 = $"Độ dốc: i_tính = {geom.CalculatedSlopePercent:N2}%  |  i_TK = {geom.DoDocPercent:N2}% (Δi = {geom.SlopeDiffPercent:N2}%)";
+            string line4 = $"Kết luận: {geom.ElevationStatus} ({geom.ElevationNote})";
+
+            Brush statusBrush = geom.IsReverseSlope ? RedTextBrush : (geom.IsFlatSlope || geom.IsSteepSlope ? YellowTextBrush : MintTextBrush);
+
+            void DrawLine(string text, double yOffset, Brush brush, bool isBold = false)
+            {
+                var ft = new FormattedText(
+                    text,
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, isBold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal),
+                    10.0,
+                    brush,
+                    VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                dc.DrawText(ft, new Point(cardX + 10, cardY + yOffset));
+            }
+
+            DrawLine(line1, 28, TextBrush);
+            DrawLine(line2, 48, TextBrush);
+            DrawLine(line3, 68, TextBrush);
+            DrawLine(line4, 88, statusBrush, isBold: true);
+        }
+
+        private void DrawReverseSlopeBanner(DrawingContext dc, double viewW, CulvertPreviewGeometry geom)
+        {
+            string bannerText = $"⚠️ CẢNH BÁO: DỐC NGƯỢC THỦY LỰC! Z1 ({geom.Z1:N3}m) < Z2 ({geom.Z2:N3}m) - ĐỘ DỐC i = {geom.CalculatedSlopePercent:N2}%";
+            var ft = new FormattedText(
+                bannerText,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+                12.5,
+                new SolidColorBrush(Color.FromRgb(254, 242, 242)),
+                VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            {
+                TextAlignment = TextAlignment.Center
+            };
+
+            double bannerW = Math.Max(ft.Width + 30, 420);
+            double bannerH = 30;
+            double bannerX = (viewW - bannerW) / 2.0;
+            double bannerY = 10;
+
+            Rect r = new Rect(bannerX, bannerY, bannerW, bannerH);
+            Brush bg = new SolidColorBrush(Color.FromArgb(235, 185, 28, 28)); // Red banner
+            Pen border = new Pen(new SolidColorBrush(Color.FromRgb(252, 165, 165)), 1.5);
+            dc.DrawRoundedRectangle(bg, border, r, 6, 6);
+            dc.DrawText(ft, new Point(viewW / 2.0, bannerY + 6));
         }
 
         private void DrawCenteredText(DrawingContext dc, string text, Point center, double fontSize, Brush brush)

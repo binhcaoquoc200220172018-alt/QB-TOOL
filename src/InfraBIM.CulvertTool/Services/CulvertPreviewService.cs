@@ -133,6 +133,8 @@ namespace InfraBIM.CulvertTool.Services
                     DistanceFromP1M = distHN1,
                     WidthM = geom.B_Box,
                     ElevationZ = zHN1,
+                    BottomElevationZ = zHN1 - 0.20,
+                    TopElevationZ = zHN1 + geom.BarrelHeightM + 0.80,
                     HeightM = geom.BarrelHeightM + 0.8
                 });
 
@@ -158,13 +160,18 @@ namespace InfraBIM.CulvertTool.Services
                 double distHN2 = Math.Clamp(row.KC_HN2, geom.L_Ngam + 0.5, totalL / 2.0);
                 double posHN2 = totalL - distHN2;
 
+                double zHN1 = GetElevationAt(distHN1);
+                double zHN2 = GetElevationAt(posHN2);
+
                 geom.Manholes.Add(new PreviewManholeItem
                 {
                     Index = 1,
                     Title = "Hố thu 1",
                     DistanceFromP1M = distHN1,
                     WidthM = geom.B_Box,
-                    ElevationZ = GetElevationAt(distHN1),
+                    ElevationZ = zHN1,
+                    BottomElevationZ = zHN1 - 0.20,
+                    TopElevationZ = zHN1 + geom.BarrelHeightM + 0.80,
                     HeightM = geom.BarrelHeightM + 0.8
                 });
 
@@ -174,7 +181,9 @@ namespace InfraBIM.CulvertTool.Services
                     Title = "Hố thu 2",
                     DistanceFromP1M = posHN2,
                     WidthM = geom.B_Box,
-                    ElevationZ = GetElevationAt(posHN2),
+                    ElevationZ = zHN2,
+                    BottomElevationZ = zHN2 - 0.20,
+                    TopElevationZ = zHN2 + geom.BarrelHeightM + 0.80,
                     HeightM = geom.BarrelHeightM + 0.8
                 });
 
@@ -206,6 +215,56 @@ namespace InfraBIM.CulvertTool.Services
             geom.CompensatingCount = compCount;
             geom.CompensatingLengthM = compLenSum;
             geom.IsCompensatingValid = isCompValid;
+
+            // TÍNH TOÁN CAO ĐỘ VÀ KIỂM TRA ĐỘ DỐC THỦY LỰC
+            double deltaZ = geom.Z1 - geom.Z2;
+            geom.DeltaH = deltaZ;
+            double calcSlope = totalL > 0.01 ? (deltaZ / totalL) * 100.0 : 0.0;
+            geom.CalculatedSlopePercent = calcSlope;
+            geom.SlopeDiffPercent = Math.Abs(geom.DoDocPercent - calcSlope);
+
+            double totalH = geom.BarrelHeightM + (2.0 * geom.WallThicknessM);
+            geom.Z_Top1 = geom.Z1 + totalH;
+            geom.Z_Top2 = geom.Z2 + totalH;
+
+            geom.Z_Bot_BTL1 = geom.Z1 + geom.OffsetZ_BTL_Dot;
+            geom.Z_Bot_BTL2 = geom.Z2 + geom.OffsetZ_BTL_Dot;
+            geom.Z_Bot_Cat1 = geom.Z1 + geom.OffsetZ_Cat;
+            geom.Z_Bot_Cat2 = geom.Z2 + geom.OffsetZ_Cat;
+
+            // ĐÁNH GIÁ & KIỂM TRA CAO ĐỘ
+            if (geom.Z1 < geom.Z2 - 0.005)
+            {
+                geom.IsReverseSlope = true;
+                geom.ElevationStatus = "❌ LỖI: DỐC NGƯỢC (Z1 < Z2)";
+                geom.ElevationStatusColor = "#EF4444";
+                geom.ElevationNote = $"Đáy TL ({geom.Z1:N3}m) thấp hơn Đáy HL ({geom.Z2:N3}m) {geom.Z2 - geom.Z1:N3}m. Nước chảy ngược, cần kiểm tra hoặc đảo chiều cao độ!";
+            }
+            else if (calcSlope < 0.10)
+            {
+                geom.IsFlatSlope = true;
+                geom.ElevationStatus = "⚠️ CẢNH BÁO: ĐỘ DỐC QUÁ BẰNG PHẲNG";
+                geom.ElevationStatusColor = "#F59E0B";
+                geom.ElevationNote = $"Độ dốc tính toán i={calcSlope:N2}% quá nhỏ (<0.10%), dòng chảy chậm, có nguy cơ bồi lắng bùn cát trong cống.";
+            }
+            else if (calcSlope > 5.0)
+            {
+                geom.IsSteepSlope = true;
+                geom.ElevationStatus = "⚡ LƯU Ý: ĐỘ DỐC LỚN (i > 5%)";
+                geom.ElevationStatusColor = "#38BDF8";
+                geom.ElevationNote = $"Độ dốc tính toán i={calcSlope:N2}% cao (>5%). Dòng chảy có lưu tốc lớn, cần gia cố sân cống hạ lưu chống xói.";
+            }
+            else
+            {
+                geom.ElevationStatus = "✅ CAO ĐỘ & ĐỘ DỐC ĐẠT CHUẨN";
+                geom.ElevationStatusColor = "#10B981";
+                geom.ElevationNote = $"Hướng dốc thuận lợi TL ➔ HL. Chênh cao ΔH={deltaZ:N3}m, độ dốc thủy lực i={calcSlope:N2}% đảm bảo tự rửa trôi.";
+            }
+
+            if (geom.SlopeDiffPercent > 0.20 && !geom.IsReverseSlope)
+            {
+                geom.ElevationNote += $" (Lưu ý: Độ dốc thiết kế Excel i_TK={geom.DoDocPercent:N2}% lệch {geom.SlopeDiffPercent:N2}% so với tính theo cao độ).";
+            }
 
             if (geom.IsCastInPlace)
             {

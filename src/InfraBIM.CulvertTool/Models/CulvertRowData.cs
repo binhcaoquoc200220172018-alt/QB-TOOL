@@ -59,6 +59,9 @@ namespace InfraBIM.CulvertTool.Models
         public bool HasError { get; set; } = false;
         public string StatusNote { get; set; } = "Hợp lệ";
 
+        public double DeltaZ => Z1 - Z2;
+        public double DoDocTinhToan => TinhDoDocThucTe();
+
         // Tính toán kiểm tra sai số hình học
         public double TinhChieuDai2D()
         {
