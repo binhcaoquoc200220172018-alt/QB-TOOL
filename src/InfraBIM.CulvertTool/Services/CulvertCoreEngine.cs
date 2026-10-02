@@ -40,18 +40,24 @@ namespace InfraBIM.CulvertTool.Services
                 return (0, 0, logs);
             }
 
-            // Kích hoạt tất cả Family Symbol được dùng
-            foreach (var c in barrelComponents.Concat(outletComponents).Concat(manholeComponents))
-            {
-                if (c.IsActive && c.SelectedSymbol?.Symbol != null)
-                {
-                    ActivateSymbol(c.SelectedSymbol.Symbol);
-                }
-            }
-
             using (var tg = new TransactionGroup(doc, "INFRA BIM - Tự Động Rải Cống Ngang"))
             {
                 tg.Start();
+
+                // 1. Kích hoạt tất cả Family Symbol được dùng trước khi rải
+                using (var tAct = new Transaction(doc, "Kích hoạt Family Symbols"))
+                {
+                    tAct.Start();
+                    foreach (var c in barrelComponents.Concat(outletComponents).Concat(manholeComponents))
+                    {
+                        if (c.IsActive && c.SelectedSymbol?.Symbol != null)
+                        {
+                            ActivateSymbol(c.SelectedSymbol.Symbol);
+                        }
+                    }
+                    doc.Regenerate();
+                    tAct.Commit();
+                }
 
                 foreach (var row in culvertList)
                 {
