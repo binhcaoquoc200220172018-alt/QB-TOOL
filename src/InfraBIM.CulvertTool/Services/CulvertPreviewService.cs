@@ -13,25 +13,31 @@ namespace InfraBIM.CulvertTool.Services
         public static CulvertPreviewGeometry ComputePreview(
             CulvertRowData row,
             double lStd,
-            double lMin,
-            double lNgam,
+            double jointGapM,
             double bBox,
-            double offsetZ_BTL,
-            double offsetZ_Cat,
             CulvertArrayMode arrayMode,
+            bool isCastInPlace = false,
+            bool isRound = false,
+            bool isDouble = false,
+            double offsetZ_BTL = -0.10,
+            double offsetZ_Cat = -0.20,
             bool hasBtlDot = true,
             bool hasBtlSan = false,
             bool hasBtlHn = false,
             double offsetZ_BTL_San = -0.10,
             double offsetZ_BTL_HN = -0.30)
         {
+            string lc = (row.LoaiCong ?? "").ToUpperInvariant();
+            bool isTron = isRound || lc.Contains("TRON") || lc.Contains("TRÒN") || lc.Contains("CT");
+            bool isDoi = isDouble || (row.SoCua >= 2 && isTron);
+
             var geom = new CulvertPreviewGeometry
             {
                 STT = row.STT,
-                LyTrinh = row.LyTrinh,
-                LoaiCong = row.LoaiCong,
+                LyTrinh = row.LyTrinh ?? "",
+                LoaiCong = row.LoaiCong ?? "",
                 SoCua = row.SoCua,
-                KhauDo = row.KhauDo,
+                KhauDo = row.KhauDo ?? "",
                 KhoangCachTim = row.KhoangCachTim > 0.1 ? row.KhoangCachTim : 2.0,
                 TotalLengthM = row.ChieuDai > 0 ? row.ChieuDai : row.TinhChieuDai2D(),
                 DoDocPercent = row.DoDoc,
@@ -40,9 +46,16 @@ namespace InfraBIM.CulvertTool.Services
                 Z2 = row.Z2,
                 DeltaH = row.Z1 - row.Z2,
                 L_Std = lStd > 0.1 ? lStd : 1.0,
-                L_Min = lMin > 0.05 ? lMin : 0.5,
-                L_Ngam = lNgam >= 0 ? lNgam : 0.3,
+                L_Min = 0.0,
+                L_Ngam = 0.0,
                 B_Box = bBox > 0.2 ? bBox : 1.5,
+                JointGapM = jointGapM >= 0 ? jointGapM : (isCastInPlace ? 0.02 : 0.01),
+                IsCastInPlace = isCastInPlace,
+                IsRoundCulvert = isTron,
+                IsDoublePipe = isDoi,
+                HasGoiCong = isTron,
+                HasMongTren = isTron,
+                HasDaDamDem = true,
                 OffsetZ_BTL = offsetZ_BTL,
                 OffsetZ_Cat = offsetZ_Cat,
                 HasBTL_Dot = hasBtlDot,
@@ -54,7 +67,7 @@ namespace InfraBIM.CulvertTool.Services
             };
 
             // Phân tích khẩu độ
-            ParseDimensions(row.KhauDo, out double w, out double h);
+            ParseDimensions(row.KhauDo ?? "", out double w, out double h);
             geom.BarrelWidthM = w;
             geom.BarrelHeightM = h;
 
@@ -99,18 +112,18 @@ namespace InfraBIM.CulvertTool.Services
 
             if (row.SoHopNoi == 0)
             {
-                // Trường hợp 0 hộp nối: Rải giữa 2 sân cống
-                double startDist = geom.L_Ngam;
-                double segLen = totalL - (2 * geom.L_Ngam);
+                // Trường hợp 0 hộp nối: Rải suốt chiều dài cống
+                double startDist = 0.0;
+                double segLen = totalL;
                 if (segLen > 0)
                 {
-                    GenerateSpanSegments(geom, startDist, segLen, geom.L_Std, geom.L_Min, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
+                    GenerateSpanSegments(geom, startDist, segLen, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
             }
             else if (row.SoHopNoi == 1)
             {
                 // Trường hợp 1 hộp nối
-                double distHN1 = Math.Clamp(row.KC_HN1, geom.L_Ngam + 0.5, totalL - geom.L_Ngam - 0.5);
+                double distHN1 = Math.Clamp(row.KC_HN1, 1.0, totalL - 1.0);
                 double zHN1 = GetElevationAt(distHN1);
 
                 geom.Manholes.Add(new PreviewManholeItem
@@ -124,19 +137,19 @@ namespace InfraBIM.CulvertTool.Services
                 });
 
                 // Nhịp 1: Sân 1 -> Hộp 1
-                double start1 = geom.L_Ngam;
-                double len1 = distHN1 - geom.L_Ngam - (geom.B_Box / 2.0);
+                double start1 = 0.0;
+                double len1 = distHN1 - (geom.B_Box / 2.0);
                 if (len1 > 0)
                 {
-                    GenerateSpanSegments(geom, start1, len1, geom.L_Std, geom.L_Min, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
+                    GenerateSpanSegments(geom, start1, len1, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
 
                 // Nhịp 2: Hộp 1 -> Sân 2
                 double start2 = distHN1 + (geom.B_Box / 2.0);
-                double len2 = (totalL - distHN1) - geom.L_Ngam - (geom.B_Box / 2.0);
+                double len2 = totalL - start2;
                 if (len2 > 0)
                 {
-                    GenerateSpanSegments(geom, start2, len2, geom.L_Std, geom.L_Min, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
+                    GenerateSpanSegments(geom, start2, len2, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
             }
             else // SoHopNoi >= 2
@@ -165,27 +178,27 @@ namespace InfraBIM.CulvertTool.Services
                     HeightM = geom.BarrelHeightM + 0.8
                 });
 
-                // Nhịp 1
-                double len1 = distHN1 - geom.L_Ngam - (geom.B_Box / 2.0);
+                // Nhịp 1: Đầu cống -> Hộp 1
+                double len1 = distHN1 - (geom.B_Box / 2.0);
                 if (len1 > 0)
                 {
-                    GenerateSpanSegments(geom, geom.L_Ngam, len1, geom.L_Std, geom.L_Min, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
+                    GenerateSpanSegments(geom, 0.0, len1, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
 
-                // Nhịp 2
+                // Nhịp 2: Hộp 1 -> Hộp 2
                 double start2 = distHN1 + (geom.B_Box / 2.0);
                 double len2 = (posHN2 - (geom.B_Box / 2.0)) - start2;
                 if (len2 > 0)
                 {
-                    GenerateSpanSegments(geom, start2, len2, geom.L_Std, geom.L_Min, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
+                    GenerateSpanSegments(geom, start2, len2, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
 
-                // Nhịp 3
+                // Nhịp 3: Hộp 2 -> Cuối cống
                 double start3 = posHN2 + (geom.B_Box / 2.0);
-                double len3 = distHN2 - geom.L_Ngam - (geom.B_Box / 2.0);
+                double len3 = totalL - start3;
                 if (len3 > 0)
                 {
-                    GenerateSpanSegments(geom, start3, len3, geom.L_Std, geom.L_Min, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
+                    GenerateSpanSegments(geom, start3, len3, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
             }
 
@@ -194,17 +207,17 @@ namespace InfraBIM.CulvertTool.Services
             geom.CompensatingLengthM = compLenSum;
             geom.IsCompensatingValid = isCompValid;
 
-            if (!isCompValid)
+            if (geom.IsCastInPlace)
             {
-                geom.ValidationMessage = $"⚠️ Cảnh báo: Chiều dài đốt bù < L_min ({geom.L_Min}m). Cần hiệu chỉnh chiều dài đốt chuẩn hoặc chiều dài cống!";
+                geom.ValidationMessage = $"✅ Cống đổ tại chỗ: Chia {stdCount + compCount} phân đoạn (L={geom.L_Std:N2}m, khe co giãn {geom.JointGapM * 100:N0}cm).";
             }
             else if (compCount > 0)
             {
-                geom.ValidationMessage = $"✅ Hợp lệ: Rải {stdCount} đốt chuẩn ({geom.L_Std}m) + {compCount} đốt bù ({compLenSum:N2}m) đạt yêu cầu kỹ thuật.";
+                geom.ValidationMessage = $"✅ Cống đúc sẵn: Rải {stdCount} đốt chuẩn ({geom.L_Std:N2}m) + {compCount} đốt bù ({compLenSum:N2}m).";
             }
             else
             {
-                geom.ValidationMessage = $"✅ Hợp lệ: Toàn bộ cống khớp chẵn {stdCount} đốt chuẩn ({geom.L_Std}m).";
+                geom.ValidationMessage = $"✅ Cống đúc sẵn: Toàn bộ cống khớp chẵn {stdCount} đốt chuẩn ({geom.L_Std:N2}m).";
             }
 
             return geom;
@@ -215,7 +228,7 @@ namespace InfraBIM.CulvertTool.Services
             double startDist,
             double spanLen,
             double lStd,
-            double lMin,
+            double jointGapM,
             CulvertArrayMode arrayMode,
             ref int dotCounter,
             ref int stdCount,
@@ -231,18 +244,11 @@ namespace InfraBIM.CulvertTool.Services
                 int n = (int)Math.Floor(spanLen / lStd);
                 double lBien = (spanLen - (n * lStd)) / 2.0;
 
-                if (lBien < lMin && n > 0)
-                {
-                    n = (n >= 2) ? n - 2 : 0;
-                    lBien = (spanLen - (n * lStd)) / 2.0;
-                }
-
                 double cur = startDist;
 
                 // Đốt biên 1
                 if (lBien > 0.005)
                 {
-                    if (lBien < lMin) isCompValid = false;
                     compCount++;
                     compLenSum += lBien;
                     geom.Segments.Add(new PreviewSegmentItem
@@ -280,7 +286,6 @@ namespace InfraBIM.CulvertTool.Services
                 // Đốt biên 2
                 if (lBien > 0.005)
                 {
-                    if (lBien < lMin) isCompValid = false;
                     compCount++;
                     compLenSum += lBien;
                     geom.Segments.Add(new PreviewSegmentItem
@@ -300,12 +305,6 @@ namespace InfraBIM.CulvertTool.Services
             {
                 int n = (int)Math.Floor(spanLen / lStd);
                 double lDu = spanLen - (n * lStd);
-
-                if (lDu < lMin && n > 0)
-                {
-                    n = n - 1;
-                    lDu = spanLen - (n * lStd);
-                }
 
                 double cur = startDist;
 
@@ -328,7 +327,6 @@ namespace InfraBIM.CulvertTool.Services
 
                 if (lDu > 0.005)
                 {
-                    if (lDu < lMin) isCompValid = false;
                     compCount++;
                     compLenSum += lDu;
                     geom.Segments.Add(new PreviewSegmentItem

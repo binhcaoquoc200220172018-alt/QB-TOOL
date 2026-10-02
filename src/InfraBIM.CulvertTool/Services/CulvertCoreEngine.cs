@@ -10,33 +10,25 @@ namespace InfraBIM.CulvertTool.Services
     public static class CulvertCoreEngine
     {
         /// <summary>
-        /// Xây dựng toàn bộ các cống ngang theo danh sách cấu hình, bọc trong TransactionGroup
+        /// Xây dựng toàn bộ các cống ngang theo chuẩn 3 cụm cấu kiện (Thân cống, Cửa xả, Hố ga)
         /// </summary>
-        public static (int SuccessCount, int ErrorCount, List<string> Logs) BuildAllCulverts(
+        public static (int SuccessCount, int ErrorCount, List<string> Logs) BuildAllCulvertsV2(
             Document doc,
             IList<CulvertRowData> culvertList,
             BimInfoConfig bimConfig,
             IEnumerable<CustomBimParameterItem>? customBimParams,
             IEnumerable<ParameterMappingItem>? familyParameterMappings,
-            FamilySymbol? symDotChuan,
-            FamilySymbol? symDotBu,
-            FamilySymbol? symSanCongTL,
-            FamilySymbol? symSanCongHL,
-            FamilySymbol? symHopNoi,
-            FamilySymbol? symBeTongLot,
+            IList<CulvertComponentItem> barrelComponents,
+            IList<CulvertComponentItem> outletComponents,
+            IList<CulvertComponentItem> manholeComponents,
             double lStdM,
-            double lMinM,
+            double jointGapM,
             double bBoxM,
             double defaultKhoangCachTim,
             CulvertArrayMode arrayMode,
+            bool isCastInPlace,
             bool useSurveyPoint = true,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null,
-            IEnumerable<FamilySymbol>? allAvailableSymbols = null,
-            FamilySymbol? symBTL_San = null,
-            FamilySymbol? symBTL_HN = null,
-            double offsetZ_BTL_DotM = -0.10,
-            double offsetZ_BTL_SanM = -0.10,
-            double offsetZ_BTL_HNM = -0.30)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null)
         {
             var logs = new List<string>();
             int successCount = 0;
@@ -46,6 +38,15 @@ namespace InfraBIM.CulvertTool.Services
             {
                 logs.Add("Không có dữ liệu cống để tạo.");
                 return (0, 0, logs);
+            }
+
+            // Kích hoạt tất cả Family Symbol được dùng
+            foreach (var c in barrelComponents.Concat(outletComponents).Concat(manholeComponents))
+            {
+                if (c.IsActive && c.SelectedSymbol?.Symbol != null)
+                {
+                    ActivateSymbol(c.SelectedSymbol.Symbol);
+                }
             }
 
             using (var tg = new TransactionGroup(doc, "INFRA BIM - Tự Động Rải Cống Ngang"))
@@ -62,47 +63,23 @@ namespace InfraBIM.CulvertTool.Services
                         {
                             subT.Start();
 
-                            // Tự động nhận diện Family tương ứng theo Loại cống & Khẩu độ của từng hàng trong Excel (Smart Auto-Mapping)
-                            FamilySymbol? rowDotChuan = ResolveFamilyForCulvert(allAvailableSymbols, row.LoaiCong, row.KhauDo, "Đốt") ?? symDotChuan;
-                            FamilySymbol? rowDotBu = ResolveFamilyForCulvert(allAvailableSymbols, row.LoaiCong, row.KhauDo, "Đốt") ?? symDotBu ?? rowDotChuan;
-                            FamilySymbol? rowSanTL = ResolveFamilyForCulvert(allAvailableSymbols, row.LoaiCong, row.KhauDo, "Sân") ?? symSanCongTL;
-                            FamilySymbol? rowSanHL = ResolveFamilyForCulvert(allAvailableSymbols, row.LoaiCong, row.KhauDo, "Sân") ?? symSanCongHL ?? rowSanTL;
-                            FamilySymbol? rowHopNoi = ResolveFamilyForCulvert(allAvailableSymbols, row.LoaiCong, row.KhauDo, "Hộp nối") ?? symHopNoi;
-                            FamilySymbol? rowBeTongLot = ResolveFamilyForCulvert(allAvailableSymbols, row.LoaiCong, row.KhauDo, "BTL") ?? symBeTongLot;
-
-                            ActivateSymbol(rowDotChuan);
-                            ActivateSymbol(rowDotBu);
-                            ActivateSymbol(rowSanTL);
-                            ActivateSymbol(rowSanHL);
-                            ActivateSymbol(rowHopNoi);
-                            ActivateSymbol(rowBeTongLot);
-                            ActivateSymbol(symBTL_San);
-                            ActivateSymbol(symBTL_HN);
-
-                            BuildSingleCulvert(
+                            BuildSingleCulvertV2(
                                 doc,
                                 row,
                                 bimConfig,
                                 customBimParams,
                                 familyParameterMappings,
-                                rowDotChuan,
-                                rowDotBu,
-                                rowSanTL,
-                                rowSanHL,
-                                rowHopNoi,
-                                rowBeTongLot,
+                                barrelComponents,
+                                outletComponents,
+                                manholeComponents,
                                 lStdM,
-                                lMinM,
+                                jointGapM,
                                 bBoxM,
                                 defaultKhoangCachTim,
                                 arrayMode,
+                                isCastInPlace,
                                 useSurveyPoint,
-                                materialSettings,
-                                symBTL_San,
-                                symBTL_HN,
-                                offsetZ_BTL_DotM,
-                                offsetZ_BTL_SanM,
-                                offsetZ_BTL_HNM);
+                                materialSettings);
 
                             subT.Commit();
                             successCount++;
@@ -130,6 +107,7 @@ namespace InfraBIM.CulvertTool.Services
                 sym.Activate();
             }
         }
+
 
         private static FamilySymbol? ResolveFamilyForCulvert(
             IEnumerable<FamilySymbol>? symbols,
@@ -211,11 +189,6 @@ namespace InfraBIM.CulvertTool.Services
                         if (cleanFull.Contains(cleanKd)) matchKhauDo = true;
                     }
                 }
-                else
-                {
-                    matchKhauDo = true;
-                }
-
                 if (matchKhauDo)
                 {
                     return sym;
@@ -226,32 +199,25 @@ namespace InfraBIM.CulvertTool.Services
         }
 
         /// <summary>
-        /// Xây dựng 1 cụm cống ngang (hỗ trợ cống đơn, cống hộp đôi đúc liền, và cống tròn đôi 2 nhánh lệch tim)
+        /// Xây dựng 1 cụm cống ngang theo chuẩn 3 cụm cấu kiện (Thân cống, Cửa xả, Hố ga)
         /// </summary>
-        public static void BuildSingleCulvert(
+        public static void BuildSingleCulvertV2(
             Document doc,
             CulvertRowData data,
             BimInfoConfig bimConfig,
             IEnumerable<CustomBimParameterItem>? customBimParams,
             IEnumerable<ParameterMappingItem>? familyParameterMappings,
-            FamilySymbol? symDotChuan,
-            FamilySymbol? symDotBu,
-            FamilySymbol? symSanCongTL,
-            FamilySymbol? symSanCongHL,
-            FamilySymbol? symHopNoi,
-            FamilySymbol? symBeTongLot,
+            IList<CulvertComponentItem> barrelComponents,
+            IList<CulvertComponentItem> outletComponents,
+            IList<CulvertComponentItem> manholeComponents,
             double lStdM,
-            double lMinM,
+            double jointGapM,
             double bBoxM,
             double defaultKhoangCachTim,
             CulvertArrayMode arrayMode,
+            bool isCastInPlace,
             bool useSurveyPoint,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null,
-            FamilySymbol? symBTL_San = null,
-            FamilySymbol? symBTL_HN = null,
-            double offsetZ_BTL_DotM = -0.10,
-            double offsetZ_BTL_SanM = -0.10,
-            double offsetZ_BTL_HNM = -0.30)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null)
         {
             // 1. Chuyển đổi tọa độ VN2000 sang Revit Internal (Feet)
             XYZ p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, data.X1, data.Y1, data.Z1, useSurveyPoint);
@@ -266,123 +232,117 @@ namespace InfraBIM.CulvertTool.Services
             double rotAngle = Math.Atan2(u.Y, u.X);
 
             double lStdFeet = UnitUtils.ConvertToInternalUnits(lStdM, UnitTypeId.Meters);
-            double lMinFeet = UnitUtils.ConvertToInternalUnits(lMinM, UnitTypeId.Meters);
-            double lNgamFeet = UnitUtils.ConvertToInternalUnits(data.L_Ngam_San > 0 ? data.L_Ngam_San : 0.30, UnitTypeId.Meters);
+            double jointGapFeet = UnitUtils.ConvertToInternalUnits(jointGapM, UnitTypeId.Meters);
             double bBoxFeet = UnitUtils.ConvertToInternalUnits(bBoxM > 0 ? bBoxM : 1.50, UnitTypeId.Meters);
 
-            // 2. Đặt Sân cống Thượng lưu & Hạ lưu
-            if (symSanCongTL != null)
-            {
-                FamilyInstance instSan1 = doc.Create.NewFamilyInstance(p1, symSanCongTL, StructuralType.NonStructural);
-                ElementTransformUtils.RotateElement(doc, instSan1.Id, Line.CreateBound(p1, p1 + XYZ.BasisZ), rotAngle);
-                BimParameterService.SetElementBimProperties(instSan1, bimConfig, bimConfig.MauTenSanCongTL, "SÂN CỐNG THƯỢNG LƯU", null, null, data.X1, data.Y1, data.Z1);
-                BimParameterService.ApplyFamilyMappedParameters(instSan1, familyParameterMappings, data, "Sân cống");
-                BimParameterService.ApplyCustomBimParameters(instSan1, customBimParams, data, "Sân cống");
-                TryApplyMaterial(doc, instSan1, materialSettings, "Sân cống thượng lưu");
+            // 2. Đặt Cửa xả Thượng lưu (P1) & Hạ lưu (P2)
+            PlaceOutletAssembly(doc, p1, rotAngle, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, materialSettings);
+            PlaceOutletAssembly(doc, p2, rotAngle + Math.PI, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, materialSettings);
 
-                if (symBTL_San != null)
-                {
-                    double offFeet = UnitUtils.ConvertToInternalUnits(offsetZ_BTL_SanM, UnitTypeId.Meters);
-                    XYZ pBTL1 = p1 + new XYZ(0, 0, offFeet);
-                    FamilyInstance instBTL_San1 = doc.Create.NewFamilyInstance(pBTL1, symBTL_San, StructuralType.NonStructural);
-                    ElementTransformUtils.RotateElement(doc, instBTL_San1.Id, Line.CreateBound(pBTL1, pBTL1 + XYZ.BasisZ), rotAngle);
-                    BimParameterService.SetElementBimProperties(instBTL_San1, bimConfig, "BTL.SAN.TL", "BTL SÂN CỐNG THƯỢNG LƯU", null, null, data.X1, data.Y1, data.Z1 + offsetZ_BTL_SanM);
-                    TryApplyMaterial(doc, instBTL_San1, materialSettings, "BTL - Sân cống");
-                }
-            }
-
-            if (symSanCongHL != null || symSanCongTL != null)
-            {
-                var symHL = symSanCongHL ?? symSanCongTL!;
-                FamilyInstance instSan2 = doc.Create.NewFamilyInstance(p2, symHL, StructuralType.NonStructural);
-                ElementTransformUtils.RotateElement(doc, instSan2.Id, Line.CreateBound(p2, p2 + XYZ.BasisZ), rotAngle + Math.PI);
-                BimParameterService.SetElementBimProperties(instSan2, bimConfig, bimConfig.MauTenSanCongHL, "SÂN CỐNG HẠ LƯU", null, null, data.X2, data.Y2, data.Z2);
-                BimParameterService.ApplyFamilyMappedParameters(instSan2, familyParameterMappings, data, "Sân cống");
-                BimParameterService.ApplyCustomBimParameters(instSan2, customBimParams, data, "Sân cống");
-                TryApplyMaterial(doc, instSan2, materialSettings, "Sân cống hạ lưu");
-
-                if (symBTL_San != null)
-                {
-                    double offFeet = UnitUtils.ConvertToInternalUnits(offsetZ_BTL_SanM, UnitTypeId.Meters);
-                    XYZ pBTL2 = p2 + new XYZ(0, 0, offFeet);
-                    FamilyInstance instBTL_San2 = doc.Create.NewFamilyInstance(pBTL2, symBTL_San, StructuralType.NonStructural);
-                    ElementTransformUtils.RotateElement(doc, instBTL_San2.Id, Line.CreateBound(pBTL2, pBTL2 + XYZ.BasisZ), rotAngle + Math.PI);
-                    BimParameterService.SetElementBimProperties(instBTL_San2, bimConfig, "BTL.SAN.HL", "BTL SÂN CỐNG HẠ LƯU", null, null, data.X2, data.Y2, data.Z2 + offsetZ_BTL_SanM);
-                    TryApplyMaterial(doc, instBTL_San2, materialSettings, "BTL - Sân cống");
-                }
-            }
-
-            if (symDotChuan == null) return;
-
-            // 3. Phân biệt Cống tròn đôi (2 ống rời lệch tim) và Cống đơn/hộp đôi (1 tim)
+            // 3. Phân biệt Cống tròn đôi và Cống 1 tim
             string lcNorm = (data.LoaiCong ?? "").ToUpperInvariant();
             bool isTronNorm = lcNorm.Contains("TRON") || lcNorm.Contains("TRÒN") || lcNorm.Contains("CT");
             bool isCongTronDoi = (data.SoCua >= 2 && isTronNorm) || (isTronNorm && (lcNorm.Contains("ĐÔI") || lcNorm.Contains("DOI")));
 
             if (isCongTronDoi)
             {
-                // CỐNG TRÒN ĐÔI: Tách thành 2 trục song song cách nhau d_tim
-                XYZ uPerp = new XYZ(-u.Y, u.X, 0); // Vector pháp tuyến vuông góc trục cống trên mặt bằng
+                // CỐNG TRÒN ĐÔI: Tách thành 2 trục song song cách nhau D_tim
+                XYZ uPerp = new XYZ(-u.Y, u.X, 0);
                 double dTimM = data.KhoangCachTim > 0.1 ? data.KhoangCachTim : (defaultKhoangCachTim > 0.1 ? defaultKhoangCachTim : 2.0);
                 double dHalfFeet = UnitUtils.ConvertToInternalUnits(dTimM / 2.0, UnitTypeId.Meters);
 
                 // Nhánh Trái
                 XYZ p1Left = p1 - uPerp * dHalfFeet;
                 XYZ p2Left = p2 - uPerp * dHalfFeet;
-                BuildBranch(doc, data, bimConfig, customBimParams, familyParameterMappings, symDotChuan, symDotBu, symHopNoi, symBeTongLot,
-                    p1Left, p2Left, u, rotAngle, totalLengthFeet, lStdFeet, lMinFeet, lNgamFeet, bBoxFeet, arrayMode, "T", materialSettings,
-                    symBTL_HN, offsetZ_BTL_DotM, offsetZ_BTL_HNM);
+                BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
+                    p1Left, p2Left, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "T", materialSettings);
 
                 // Nhánh Phải
                 XYZ p1Right = p1 + uPerp * dHalfFeet;
                 XYZ p2Right = p2 + uPerp * dHalfFeet;
-                BuildBranch(doc, data, bimConfig, customBimParams, familyParameterMappings, symDotChuan, symDotBu, symHopNoi, symBeTongLot,
-                    p1Right, p2Right, u, rotAngle, totalLengthFeet, lStdFeet, lMinFeet, lNgamFeet, bBoxFeet, arrayMode, "P", materialSettings,
-                    symBTL_HN, offsetZ_BTL_DotM, offsetZ_BTL_HNM);
+                BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
+                    p1Right, p2Right, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "P", materialSettings);
             }
             else
             {
-                // CỐNG ĐƠN HOẶC CỐNG HỘP ĐÔI (Đúc liền 2 ngăn): Rải theo 1 tim trung tâm
-                BuildBranch(doc, data, bimConfig, customBimParams, familyParameterMappings, symDotChuan, symDotBu, symHopNoi, symBeTongLot,
-                    p1, p2, u, rotAngle, totalLengthFeet, lStdFeet, lMinFeet, lNgamFeet, bBoxFeet, arrayMode, "", materialSettings,
-                    symBTL_HN, offsetZ_BTL_DotM, offsetZ_BTL_HNM);
+                // 1 Tim trung tâm
+                BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
+                    p1, p2, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings);
             }
         }
 
-        private static void BuildBranch(
+        private static void PlaceOutletAssembly(
+            Document doc,
+            XYZ ptBase,
+            double rotAngle,
+            IList<CulvertComponentItem> outletComponents,
+            BimInfoConfig bimConfig,
+            IEnumerable<CustomBimParameterItem>? customBimParams,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            CulvertRowData data,
+            bool isUpstream,
+            IEnumerable<CulvertMaterialItem>? materialSettings)
+        {
+            if (outletComponents == null || outletComponents.Count == 0) return;
+
+            XYZ uDir = new XYZ(Math.Cos(rotAngle), Math.Sin(rotAngle), 0);
+
+            foreach (var comp in outletComponents)
+            {
+                if (!comp.IsActive || comp.SelectedSymbol?.Symbol == null) continue;
+
+                var sym = comp.SelectedSymbol.Symbol;
+                ActivateSymbol(sym);
+
+                double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
+                XYZ ptPlace = ptBase + new XYZ(0, 0, offFeetZ);
+
+                // Nếu là Sân gia cố thì đặt lùi ra phía ngoài thêm 1.5m
+                string cat = (comp.CategoryType ?? "").ToUpperInvariant();
+                if (cat.Contains("GIA CỐ") || cat.Contains("GIA CO") || cat.Contains("SGC"))
+                {
+                    double sgcOffsetFeet = UnitUtils.ConvertToInternalUnits(1.5, UnitTypeId.Meters);
+                    ptPlace -= uDir * sgcOffsetFeet;
+                }
+
+                FamilyInstance inst = doc.Create.NewFamilyInstance(ptPlace, sym, StructuralType.NonStructural);
+                ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptPlace, ptPlace + XYZ.BasisZ), rotAngle);
+
+                string suffix = isUpstream ? "TL" : "HL";
+                string tenCK = $"{comp.CategoryType}_{suffix}";
+                BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "CỬA XẢ THƯỢNG LƯU" : "CỬA XẢ HẠ LƯU", null, null, ptPlace.X, ptPlace.Y, ptPlace.Z);
+                BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, "Cửa xả");
+                BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Cửa xả");
+                TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "");
+            }
+        }
+
+        private static void BuildBranchV2(
             Document doc,
             CulvertRowData data,
             BimInfoConfig bimConfig,
             IEnumerable<CustomBimParameterItem>? customBimParams,
             IEnumerable<ParameterMappingItem>? familyParameterMappings,
-            FamilySymbol symDotChuan,
-            FamilySymbol? symDotBu,
-            FamilySymbol? symHopNoi,
-            FamilySymbol? symBeTongLot,
+            IList<CulvertComponentItem> barrelComponents,
+            IList<CulvertComponentItem> manholeComponents,
             XYZ p1,
             XYZ p2,
             XYZ u,
             double rotAngle,
             double totalLengthFeet,
             double lStdFeet,
-            double lMinFeet,
-            double lNgamFeet,
+            double jointGapFeet,
             double bBoxFeet,
             CulvertArrayMode arrayMode,
             string branchSuffix,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null,
-            FamilySymbol? symBTL_HN = null,
-            double offsetZ_BTL_DotM = -0.10,
-            double offsetZ_BTL_HNM = -0.30)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null)
         {
             if (data.SoHopNoi == 0)
             {
-                // TH1: Không hộp nối, rải giữa 2 sân cống
-                XYZ startPt = p1 + u * lNgamFeet;
-                double segLen = totalLengthFeet - (2 * lNgamFeet);
-                if (segLen > 0)
+                // TH1: Không hộp nối, rải suốt chiều dài cống
+                if (totalLengthFeet > 0)
                 {
-                    LayAdaptiveSegments(doc, symDotChuan, symDotBu, startPt, segLen, lStdFeet, lMinFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, data.Z2, 1, branchSuffix, materialSettings, symBeTongLot, offsetZ_BTL_DotM);
+                    LayAdaptiveSegmentsV2(doc, barrelComponents, p1, totalLengthFeet, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, data.Z2, 1, branchSuffix, materialSettings);
                 }
             }
             else if (data.SoHopNoi == 1)
@@ -391,36 +351,19 @@ namespace InfraBIM.CulvertTool.Services
                 double distHN1Feet = UnitUtils.ConvertToInternalUnits(data.KC_HN1, UnitTypeId.Meters);
                 XYZ pHN1 = p1 + u * distHN1Feet;
 
-                if (symHopNoi != null && string.IsNullOrEmpty(branchSuffix))
+                if (string.IsNullOrEmpty(branchSuffix))
                 {
-                    FamilyInstance instHN1 = doc.Create.NewFamilyInstance(pHN1, symHopNoi, StructuralType.NonStructural);
-                    ElementTransformUtils.RotateElement(doc, instHN1.Id, Line.CreateBound(pHN1, pHN1 + XYZ.BasisZ), rotAngle);
-                    BimParameterService.SetElementBimProperties(instHN1, bimConfig, "HT.1", "HỐ THU 1", null, null, data.X1 + data.KC_HN1 * Math.Cos(rotAngle), data.Y1 + data.KC_HN1 * Math.Sin(rotAngle), data.Z1);
-                    BimParameterService.ApplyFamilyMappedParameters(instHN1, familyParameterMappings, data, "Hộp nối");
-                    BimParameterService.ApplyCustomBimParameters(instHN1, customBimParams, data, "Hộp nối");
-                    TryApplyMaterial(doc, instHN1, materialSettings, "Hộp nối / Hố thu");
-
-                    // BTL Hố thu: Chỉ đặt nếu symBTL_HN được bật
-                    if (symBTL_HN != null)
-                    {
-                        double offFeet = UnitUtils.ConvertToInternalUnits(offsetZ_BTL_HNM, UnitTypeId.Meters);
-                        XYZ pBtlHN = pHN1 + new XYZ(0, 0, offFeet);
-                        FamilyInstance instBTL = doc.Create.NewFamilyInstance(pBtlHN, symBTL_HN, StructuralType.NonStructural);
-                        ElementTransformUtils.RotateElement(doc, instBTL.Id, Line.CreateBound(pBtlHN, pBtlHN + XYZ.BasisZ), rotAngle);
-                        BimParameterService.SetElementBimProperties(instBTL, bimConfig, "BTL.HT.1", "BÊ TÔNG LÓT HỐ THU 1");
-                        TryApplyMaterial(doc, instBTL, materialSettings, "BTL - Hố thu");
-                    }
+                    PlaceManholeAssembly(doc, pHN1, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings);
                 }
 
-                // Đoạn 1: Sân 1 -> Hộp 1
-                XYZ pStart1 = p1 + u * lNgamFeet;
-                double len1 = distHN1Feet - lNgamFeet - (bBoxFeet / 2.0);
-                int dotCount1 = LayAdaptiveSegments(doc, symDotChuan, symDotBu, pStart1, len1, lStdFeet, lMinFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings, symBeTongLot, offsetZ_BTL_DotM);
+                // Đoạn 1: P1 -> Hộp 1
+                double len1 = distHN1Feet - (bBoxFeet / 2.0);
+                int dotCount1 = LayAdaptiveSegmentsV2(doc, barrelComponents, p1, len1, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings);
 
-                // Đoạn 2: Hộp 1 -> Sân 2
+                // Đoạn 2: Hộp 1 -> P2
                 XYZ pStart2 = pHN1 + u * (bBoxFeet / 2.0);
-                double len2 = (totalLengthFeet - distHN1Feet) - lNgamFeet - (bBoxFeet / 2.0);
-                LayAdaptiveSegments(doc, symDotChuan, symDotBu, pStart2, len2, lStdFeet, lMinFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount1 + 1, branchSuffix, materialSettings, symBeTongLot, offsetZ_BTL_DotM);
+                double len2 = totalLengthFeet - distHN1Feet - (bBoxFeet / 2.0);
+                LayAdaptiveSegmentsV2(doc, barrelComponents, pStart2, len2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount1 + 1, branchSuffix, materialSettings);
             }
             else // data.SoHopNoi >= 2
             {
@@ -431,68 +374,70 @@ namespace InfraBIM.CulvertTool.Services
                 XYZ pHN1 = p1 + u * distHN1Feet;
                 XYZ pHN2 = p2 - u * distHN2Feet;
 
-                if (symHopNoi != null && string.IsNullOrEmpty(branchSuffix))
+                if (string.IsNullOrEmpty(branchSuffix))
                 {
-                    // Đặt Hộp nối 1
-                    FamilyInstance instHN1 = doc.Create.NewFamilyInstance(pHN1, symHopNoi, StructuralType.NonStructural);
-                    ElementTransformUtils.RotateElement(doc, instHN1.Id, Line.CreateBound(pHN1, pHN1 + XYZ.BasisZ), rotAngle);
-                    BimParameterService.SetElementBimProperties(instHN1, bimConfig, "HT.1", "HỐ THU 1", null, null, data.X1 + data.KC_HN1 * Math.Cos(rotAngle), data.Y1 + data.KC_HN1 * Math.Sin(rotAngle), data.Z1);
-                    BimParameterService.ApplyFamilyMappedParameters(instHN1, familyParameterMappings, data, "Hộp nối");
-                    BimParameterService.ApplyCustomBimParameters(instHN1, customBimParams, data, "Hộp nối");
-                    TryApplyMaterial(doc, instHN1, materialSettings, "Hộp nối / Hố thu");
-
-                    // Đặt Hộp nối 2
-                    FamilyInstance instHN2 = doc.Create.NewFamilyInstance(pHN2, symHopNoi, StructuralType.NonStructural);
-                    ElementTransformUtils.RotateElement(doc, instHN2.Id, Line.CreateBound(pHN2, pHN2 + XYZ.BasisZ), rotAngle);
-                    BimParameterService.SetElementBimProperties(instHN2, bimConfig, "HT.2", "HỐ THU 2", null, null, data.X2 - data.KC_HN2 * Math.Cos(rotAngle), data.Y2 - data.KC_HN2 * Math.Sin(rotAngle), data.Z2);
-                    BimParameterService.ApplyFamilyMappedParameters(instHN2, familyParameterMappings, data, "Hộp nối");
-                    BimParameterService.ApplyCustomBimParameters(instHN2, customBimParams, data, "Hộp nối");
-                    TryApplyMaterial(doc, instHN2, materialSettings, "Hộp nối / Hố thu");
-
-                    // BTL Hố thu 1 & 2: Chỉ đặt nếu symBTL_HN được bật
-                    if (symBTL_HN != null)
-                    {
-                        double offFeet = UnitUtils.ConvertToInternalUnits(offsetZ_BTL_HNM, UnitTypeId.Meters);
-
-                        XYZ pBtlHN1 = pHN1 + new XYZ(0, 0, offFeet);
-                        FamilyInstance instBTL1 = doc.Create.NewFamilyInstance(pBtlHN1, symBTL_HN, StructuralType.NonStructural);
-                        ElementTransformUtils.RotateElement(doc, instBTL1.Id, Line.CreateBound(pBtlHN1, pBtlHN1 + XYZ.BasisZ), rotAngle);
-                        BimParameterService.SetElementBimProperties(instBTL1, bimConfig, "BTL.HT.1", "BÊ TÔNG LÓT HỐ THU 1");
-                        TryApplyMaterial(doc, instBTL1, materialSettings, "BTL - Hố thu");
-
-                        XYZ pBtlHN2 = pHN2 + new XYZ(0, 0, offFeet);
-                        FamilyInstance instBTL2 = doc.Create.NewFamilyInstance(pBtlHN2, symBTL_HN, StructuralType.NonStructural);
-                        ElementTransformUtils.RotateElement(doc, instBTL2.Id, Line.CreateBound(pBtlHN2, pBtlHN2 + XYZ.BasisZ), rotAngle);
-                        BimParameterService.SetElementBimProperties(instBTL2, bimConfig, "BTL.HT.2", "BÊ TÔNG LÓT HỐ THU 2");
-                        TryApplyMaterial(doc, instBTL2, materialSettings, "BTL - Hố thu");
-                    }
+                    PlaceManholeAssembly(doc, pHN1, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings);
+                    PlaceManholeAssembly(doc, pHN2, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings);
                 }
 
-                // Đoạn 1: Sân 1 -> Hộp 1
-                XYZ pStart1 = p1 + u * lNgamFeet;
-                double len1 = distHN1Feet - lNgamFeet - (bBoxFeet / 2.0);
-                int dotCount1 = LayAdaptiveSegments(doc, symDotChuan, symDotBu, pStart1, len1, lStdFeet, lMinFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings, symBeTongLot, offsetZ_BTL_DotM);
+                // Đoạn 1: P1 -> Hộp 1
+                double len1 = distHN1Feet - (bBoxFeet / 2.0);
+                int dotCount1 = LayAdaptiveSegmentsV2(doc, barrelComponents, p1, len1, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings);
 
                 // Đoạn 2: Hộp 1 -> Hộp 2
                 XYZ pStart2 = pHN1 + u * (bBoxFeet / 2.0);
                 double len2 = (pHN2 - pHN1).GetLength() - bBoxFeet;
-                int dotCount2 = LayAdaptiveSegments(doc, symDotChuan, symDotBu, pStart2, len2, lStdFeet, lMinFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings, symBeTongLot, offsetZ_BTL_DotM);
+                int dotCount2 = LayAdaptiveSegmentsV2(doc, barrelComponents, pStart2, len2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings);
 
-                // Đoạn 3: Hộp 2 -> Sân 2
+                // Đoạn 3: Hộp 2 -> P2
                 XYZ pStart3 = pHN2 + u * (bBoxFeet / 2.0);
-                double len3 = distHN2Feet - lNgamFeet - (bBoxFeet / 2.0);
-                LayAdaptiveSegments(doc, symDotChuan, symDotBu, pStart3, len3, lStdFeet, lMinFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount2 + 1, branchSuffix, materialSettings, symBeTongLot, offsetZ_BTL_DotM);
+                double len3 = distHN2Feet - (bBoxFeet / 2.0);
+                LayAdaptiveSegmentsV2(doc, barrelComponents, pStart3, len3, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount2 + 1, branchSuffix, materialSettings);
             }
         }
 
-        private static int LayAdaptiveSegments(
+        private static void PlaceManholeAssembly(
             Document doc,
-            FamilySymbol symStd,
-            FamilySymbol? symBu,
+            XYZ ptPlace,
+            double rotAngle,
+            IList<CulvertComponentItem> manholeComponents,
+            BimInfoConfig bimConfig,
+            IEnumerable<CustomBimParameterItem>? customBimParams,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            CulvertRowData data,
+            int manholeIndex,
+            IEnumerable<CulvertMaterialItem>? materialSettings)
+        {
+            if (manholeComponents == null || manholeComponents.Count == 0) return;
+
+            foreach (var comp in manholeComponents)
+            {
+                if (!comp.IsActive || comp.SelectedSymbol?.Symbol == null) continue;
+
+                var sym = comp.SelectedSymbol.Symbol;
+                ActivateSymbol(sym);
+
+                double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
+                XYZ ptComp = ptPlace + new XYZ(0, 0, offFeetZ);
+
+                FamilyInstance inst = doc.Create.NewFamilyInstance(ptComp, sym, StructuralType.NonStructural);
+                ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptComp, ptComp + XYZ.BasisZ), rotAngle);
+
+                string tenCK = $"{comp.CategoryType}_{manholeIndex}";
+                BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, $"HỐ GA {manholeIndex}", null, null, ptComp.X, ptComp.Y, ptComp.Z);
+                BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, "Hố ga");
+                BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Hố ga");
+                TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "");
+            }
+        }
+
+        private static int LayAdaptiveSegmentsV2(
+            Document doc,
+            IList<CulvertComponentItem> barrelComponents,
             XYZ pStart,
             double L,
             double lStd,
-            double lMin,
+            double jointGap,
             XYZ u,
             double angle,
             CulvertArrayMode mode,
@@ -504,9 +449,7 @@ namespace InfraBIM.CulvertTool.Services
             double? zCuoiM,
             int startDotIdx,
             string branchSuffix,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null,
-            FamilySymbol? symBTL_Dot = null,
-            double offsetZ_BTL_DotM = -0.10)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null)
         {
             if (L <= 0.001) return startDotIdx - 1;
 
@@ -517,35 +460,29 @@ namespace InfraBIM.CulvertTool.Services
                 int n = (int)Math.Floor(L / lStd);
                 double lBien = (L - (n * lStd)) / 2.0;
 
-                if (lBien < lMin && n > 0)
-                {
-                    n = (n >= 2) ? n - 2 : 0;
-                    lBien = (L - (n * lStd)) / 2.0;
-                }
-
                 double curDist = 0.0;
 
                 // Đốt biên 1
                 if (lBien > 0.001)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceAndTag(doc, symBu ?? symStd, pStart + u * curDist, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, null, materialSettings, symBTL_Dot, offsetZ_BTL_DotM);
-                    curDist += lBien;
+                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, null, materialSettings);
+                    curDist += lBien + jointGap;
                 }
 
                 // Các đốt chuẩn ở giữa
                 for (int i = 0; i < n; i++)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceAndTag(doc, symStd, pStart + u * curDist, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, null, materialSettings, symBTL_Dot, offsetZ_BTL_DotM);
-                    curDist += lStd;
+                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, null, materialSettings);
+                    curDist += lStd + jointGap;
                 }
 
                 // Đốt biên 2
                 if (lBien > 0.001)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceAndTag(doc, symBu ?? symStd, pStart + u * curDist, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, zCuoiM, materialSettings, symBTL_Dot, offsetZ_BTL_DotM);
+                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, zCuoiM, materialSettings);
                 }
             }
             else // OneWay
@@ -553,25 +490,19 @@ namespace InfraBIM.CulvertTool.Services
                 int n = (int)Math.Floor(L / lStd);
                 double lDu = L - (n * lStd);
 
-                if (lDu < lMin && n > 0)
-                {
-                    n = n - 1;
-                    lDu = L - (n * lStd);
-                }
-
                 double curDist = 0.0;
 
                 for (int i = 0; i < n; i++)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceAndTag(doc, symStd, pStart + u * curDist, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (i == 0) ? zDauM : null, null, materialSettings, symBTL_Dot, offsetZ_BTL_DotM);
-                    curDist += lStd;
+                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (i == 0) ? zDauM : null, null, materialSettings);
+                    curDist += lStd + jointGap;
                 }
 
                 if (lDu > 0.001)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceAndTag(doc, symBu ?? symStd, pStart + u * curDist, lDu, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (n == 0) ? zDauM : null, zCuoiM, materialSettings, symBTL_Dot, offsetZ_BTL_DotM);
+                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lDu, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (n == 0) ? zDauM : null, zCuoiM, materialSettings);
                 }
             }
 
@@ -580,7 +511,7 @@ namespace InfraBIM.CulvertTool.Services
 
         private static string FormatDotName(string pattern, int index, string branchSuffix)
         {
-            string name = pattern.Replace("{STT}", index.ToString());
+            string name = (pattern ?? "DOT_{STT}").Replace("{STT}", index.ToString());
             if (!string.IsNullOrEmpty(branchSuffix))
             {
                 name += $".{branchSuffix}";
@@ -588,9 +519,9 @@ namespace InfraBIM.CulvertTool.Services
             return name;
         }
 
-        private static void PlaceAndTag(
+        private static void PlaceBarrelComponents(
             Document doc,
-            FamilySymbol sym,
+            IList<CulvertComponentItem> barrelComponents,
             XYZ pt,
             double lenFeet,
             double angle,
@@ -601,48 +532,28 @@ namespace InfraBIM.CulvertTool.Services
             string tenCauKien,
             double? zDau,
             double? zCuoi,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null,
-            FamilySymbol? symBTL_Dot = null,
-            double offsetZ_BTL_DotM = -0.10)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null)
         {
-            FamilyInstance inst = doc.Create.NewFamilyInstance(pt, sym, StructuralType.NonStructural);
-            ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(pt, pt + XYZ.BasisZ), angle);
+            if (barrelComponents == null) return;
 
-            // Gán chiều dài đốt
-            string[] possibleLenParams = new[] { "L", "Length", "ChieuDai", "L_dot_chuan", "L_dot_bu", "Chiều dài" };
-            foreach (var pName in possibleLenParams)
+            string[] possibleLenParams = new[] { "L", "Length", "ChieuDai", "L_dot_chuan", "L_dot_bu", "Chiều dài", "L_DOT" };
+
+            foreach (var comp in barrelComponents)
             {
-                Parameter p = inst.LookupParameter(pName);
-                if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
-                {
-                    p.Set(lenFeet);
-                    break;
-                }
-            }
+                if (!comp.IsActive || comp.SelectedSymbol?.Symbol == null) continue;
 
-            // Gán các tham số Dimensions tùy chỉnh từ Tab 02
-            BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, "Đốt cống");
+                var sym = comp.SelectedSymbol.Symbol;
+                ActivateSymbol(sym);
 
-            // Gán thông tin BIM cơ bản
-            BimParameterService.SetElementBimProperties(inst, bimConfig, tenCauKien, bimConfig.MoTa, zDau, zCuoi, null, null, null);
+                double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
+                XYZ ptComp = pt + new XYZ(0, 0, offFeetZ);
 
-            // Gán danh sách tham số BIM tùy biến động từ Tab 04
-            BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống");
-
-            // Gán vật liệu kỹ thuật từ Tab 03
-            TryApplyMaterial(doc, inst, materialSettings, "Đốt cống");
-
-            // Đặt BTL Đốt cống (nếu có và IsActive)
-            if (symBTL_Dot != null && symBTL_Dot.Id != sym.Id)
-            {
-                double offFeet = UnitUtils.ConvertToInternalUnits(offsetZ_BTL_DotM, UnitTypeId.Meters);
-                XYZ ptBTL = pt + new XYZ(0, 0, offFeet);
-                FamilyInstance instBTL = doc.Create.NewFamilyInstance(ptBTL, symBTL_Dot, StructuralType.NonStructural);
-                ElementTransformUtils.RotateElement(doc, instBTL.Id, Line.CreateBound(ptBTL, ptBTL + XYZ.BasisZ), angle);
+                FamilyInstance inst = doc.Create.NewFamilyInstance(ptComp, sym, StructuralType.NonStructural);
+                ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptComp, ptComp + XYZ.BasisZ), angle);
 
                 foreach (var pName in possibleLenParams)
                 {
-                    Parameter p = instBTL.LookupParameter(pName);
+                    Parameter p = inst.LookupParameter(pName);
                     if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
                     {
                         p.Set(lenFeet);
@@ -650,8 +561,11 @@ namespace InfraBIM.CulvertTool.Services
                     }
                 }
 
-                BimParameterService.SetElementBimProperties(instBTL, bimConfig, $"BTL.{tenCauKien}", "BÊ TÔNG LÓT THÂN CỐNG", zDau, zCuoi, null, null, null);
-                TryApplyMaterial(doc, instBTL, materialSettings, "BTL - Đốt cống");
+                string nameSub = $"{tenCauKien}_{comp.CategoryType}";
+                BimParameterService.SetElementBimProperties(inst, bimConfig, nameSub, comp.CategoryType, zDau, zCuoi, null, null, null);
+                BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType);
+                BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống");
+                TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType);
             }
         }
 

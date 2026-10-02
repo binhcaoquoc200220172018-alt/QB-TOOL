@@ -83,22 +83,15 @@ namespace InfraBIM.CulvertTool.ViewModels
         }
         #endregion
 
-        #region Properties - Families & Dynamic Assembly
+        #region Properties - Families & 3 Fixed Component Groups
         public ObservableCollection<FamilySymbolWrapper> AllAvailableFamilies { get; } = new();
-        public ObservableCollection<FamilySymbolWrapper> AvailableDotFamilies { get; } = new();
-        public ObservableCollection<FamilySymbolWrapper> AvailableSanFamilies { get; } = new();
-        public ObservableCollection<FamilySymbolWrapper> AvailableHopNoiFamilies { get; } = new();
-        public ObservableCollection<FamilySymbolWrapper> AvailableBeTongLotFamilies { get; } = new();
 
-        // Mẫu loại cống đang chọn để Highlight nút bấm (CỐNG HỘP ĐƠN / CỐNG HỘP ĐÔI / CỐNG TRÒN ĐƠN / CỐNG TRÒN ĐÔI)
-        private string _selectedCulvertTemplateType = "CỐNG HỘP ĐƠN";
-        public string SelectedCulvertTemplateType
-        {
-            get => _selectedCulvertTemplateType;
-            set => SetProperty(ref _selectedCulvertTemplateType, value);
-        }
+        // 3 Cụm cấu kiện cố định chuẩn
+        public ObservableCollection<CulvertComponentItem> BarrelComponents { get; } = new();
+        public ObservableCollection<CulvertComponentItem> OutletComponents { get; } = new();
+        public ObservableCollection<CulvertComponentItem> ManholeComponents { get; } = new();
 
-        // Cụm Family lắp ghép linh hoạt (Dynamic Component Assembly)
+        // Danh sách gộp tất cả cấu kiện phục vụ Tab 02 Parameter Mapping và Tab 04 Vật liệu
         public ObservableCollection<CulvertComponentItem> AssemblyComponents { get; } = new();
 
         private CulvertComponentItem? _selectedAssemblyComponent;
@@ -108,86 +101,146 @@ namespace InfraBIM.CulvertTool.ViewModels
             set => SetProperty(ref _selectedAssemblyComponent, value);
         }
 
-        private FamilySymbolWrapper? _selectedDotChuan;
-        public FamilySymbolWrapper? SelectedDotChuan
+        // Mẫu loại cống đang chọn để Highlight nút bấm
+        private string _selectedCulvertTemplateType = "CỐNG HỘP ĐÚC SẴN";
+        public string SelectedCulvertTemplateType
         {
-            get => _selectedDotChuan;
-            set => SetProperty(ref _selectedDotChuan, value);
-        }
-
-        private FamilySymbolWrapper? _selectedDotBu;
-        public FamilySymbolWrapper? SelectedDotBu
-        {
-            get => _selectedDotBu;
-            set => SetProperty(ref _selectedDotBu, value);
-        }
-
-        private FamilySymbolWrapper? _selectedSanCongTL;
-        public FamilySymbolWrapper? SelectedSanCongTL
-        {
-            get => _selectedSanCongTL;
-            set => SetProperty(ref _selectedSanCongTL, value);
-        }
-
-        private FamilySymbolWrapper? _selectedSanCongHL;
-        public FamilySymbolWrapper? SelectedSanCongHL
-        {
-            get => _selectedSanCongHL;
-            set => SetProperty(ref _selectedSanCongHL, value);
-        }
-
-        private FamilySymbolWrapper? _selectedHopNoi;
-        public FamilySymbolWrapper? SelectedHopNoi
-        {
-            get => _selectedHopNoi;
-            set => SetProperty(ref _selectedHopNoi, value);
-        }
-
-        private FamilySymbolWrapper? _selectedBeTongLot;
-        public FamilySymbolWrapper? SelectedBeTongLot
-        {
-            get => _selectedBeTongLot;
-            set => SetProperty(ref _selectedBeTongLot, value);
+            get => _selectedCulvertTemplateType;
+            set => SetProperty(ref _selectedCulvertTemplateType, value);
         }
         #endregion
 
-        #region Properties - Geometry & Double Culvert Spacing
+        #region Properties - Geometry & Double Culvert Spacing (Decimal Text Inputs)
         private double _lStd = 1.0;
         public double L_Std
         {
             get => _lStd;
-            set => SetProperty(ref _lStd, value);
+            set
+            {
+                if (SetProperty(ref _lStd, value))
+                {
+                    _lStdText = value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(L_Std_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
         }
 
-        private double _lMin = 0.50;
-        public double L_Min
+        private string _lStdText = "1.00";
+        public string L_Std_Text
         {
-            get => _lMin;
-            set => SetProperty(ref _lMin, value);
+            get => _lStdText;
+            set
+            {
+                if (SetProperty(ref _lStdText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v > 0)
+                    {
+                        _lStd = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
         }
 
-        private double _lNgam = 0.30;
-        public double L_Ngam
+        private double _kheHo = 0.01;
+        public double Khe_Ho
         {
-            get => _lNgam;
-            set => SetProperty(ref _lNgam, value);
+            get => _kheHo;
+            set
+            {
+                if (SetProperty(ref _kheHo, value))
+                {
+                    _kheHoText = value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(Khe_Ho_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
         }
 
+        private string _kheHoText = "0.01";
+        public string Khe_Ho_Text
+        {
+            get => _kheHoText;
+            set
+            {
+                if (SetProperty(ref _kheHoText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v >= 0)
+                    {
+                        _kheHo = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
+        }
+
+        private double _khoangCachTimDefault = 2.0;
+        public double KhoangCachTimDefault
+        {
+            get => _khoangCachTimDefault;
+            set
+            {
+                if (SetProperty(ref _khoangCachTimDefault, value))
+                {
+                    _khoangCachTimText = value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(KhoangCachTimDefault_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        private string _khoangCachTimText = "2.00";
+        public string KhoangCachTimDefault_Text
+        {
+            get => _khoangCachTimText;
+            set
+            {
+                if (SetProperty(ref _khoangCachTimText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v > 0)
+                    {
+                        _khoangCachTimDefault = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
+        }
+
+        // Bề rộng hố thu B_Box (khai báo trong Tab 02)
         private double _bBox = 1.50;
         public double B_Box
         {
             get => _bBox;
-            set => SetProperty(ref _bBox, value);
+            set
+            {
+                if (SetProperty(ref _bBox, value))
+                {
+                    _bBoxText = value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(B_Box_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
         }
 
-        private double _kheHo = 0.05;
-        public double Khe_Ho
+        private string _bBoxText = "1.50";
+        public string B_Box_Text
         {
-            get => _kheHo;
-            set => SetProperty(ref _kheHo, value);
+            get => _bBoxText;
+            set
+            {
+                if (SetProperty(ref _bBoxText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v > 0)
+                    {
+                        _bBox = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
         }
 
-        // Kích hoạt cống tròn đôi: CHỈ HIỆN KHI CHỌN CỐNG TRÒN ĐÔI
+        // Kích hoạt cống tròn đôi
         private bool _isDoubleCulvertMode = false;
         public bool IsDoubleCulvertMode
         {
@@ -195,11 +248,12 @@ namespace InfraBIM.CulvertTool.ViewModels
             set => SetProperty(ref _isDoubleCulvertMode, value);
         }
 
-        private double _khoangCachTimDefault = 2.0;
-        public double KhoangCachTimDefault
+        // Kích hoạt chế độ cống đổ tại chỗ
+        private bool _isCastInPlaceMode = false;
+        public bool IsCastInPlaceMode
         {
-            get => _khoangCachTimDefault;
-            set => SetProperty(ref _khoangCachTimDefault, value);
+            get => _isCastInPlaceMode;
+            set => SetProperty(ref _isCastInPlaceMode, value);
         }
 
         public ObservableCollection<string> ArrayModes { get; } = new()
@@ -212,7 +266,21 @@ namespace InfraBIM.CulvertTool.ViewModels
         public int SelectedArrayModeIndex
         {
             get => _selectedArrayModeIndex;
-            set => SetProperty(ref _selectedArrayModeIndex, value);
+            set
+            {
+                if (SetProperty(ref _selectedArrayModeIndex, value))
+                {
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        private static bool TryParseFlexible(string? text, out double value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            string clean = text.Trim().Replace(',', '.');
+            return double.TryParse(clean, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value);
         }
         #endregion
 
@@ -587,13 +655,29 @@ namespace InfraBIM.CulvertTool.ViewModels
             FilterPreviewCulvertRows();
         }
 
+        private FamilySymbolWrapper? FindSymbol(string familyKeyword, string? typeKeyword = null)
+        {
+            var matches = AllAvailableFamilies.Where(f =>
+                f.Symbol.FamilyName.IndexOf(familyKeyword, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            if (!matches.Any())
+            {
+                matches = AllAvailableFamilies.Where(f =>
+                    f.Symbol.Name.IndexOf(familyKeyword, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            }
+            if (!matches.Any()) return null;
+
+            if (!string.IsNullOrEmpty(typeKeyword))
+            {
+                var typeMatch = matches.FirstOrDefault(f =>
+                    f.Symbol.Name.IndexOf(typeKeyword, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (typeMatch != null) return typeMatch;
+            }
+            return matches.FirstOrDefault();
+        }
+
         private void LoadAvailableFamilies()
         {
             AllAvailableFamilies.Clear();
-            AvailableDotFamilies.Clear();
-            AvailableSanFamilies.Clear();
-            AvailableHopNoiFamilies.Clear();
-            AvailableBeTongLotFamilies.Clear();
 
             var collector = new FilteredElementCollector(Doc)
                 .OfClass(typeof(FamilySymbol))
@@ -603,124 +687,295 @@ namespace InfraBIM.CulvertTool.ViewModels
             {
                 var wrapper = new FamilySymbolWrapper(sym);
                 AllAvailableFamilies.Add(wrapper);
-
-                string fn = sym.FamilyName.ToUpperInvariant();
-                string sn = sym.Name.ToUpperInvariant();
-
-                if (fn.Contains("CONG") || fn.Contains("THAN CONG") || sn.Contains("CONG"))
-                {
-                    AvailableDotFamilies.Add(wrapper);
-                }
-
-                if (fn.Contains("SAN") || fn.Contains("CUA XA") || fn.Contains("CỬA") || fn.Contains("MOI") || fn.Contains("TUONG DAU"))
-                {
-                    AvailableSanFamilies.Add(wrapper);
-                }
-
-                if (fn.Contains("HO") || fn.Contains("HOP") || fn.Contains("GA") || fn.Contains("HT") || fn.Contains("HG"))
-                {
-                    AvailableHopNoiFamilies.Add(wrapper);
-                }
-
-                if (fn.Contains("LOT") || fn.Contains("BE TONG") || fn.Contains("BTL") || fn.Contains("DA DAM"))
-                {
-                    AvailableBeTongLotFamilies.Add(wrapper);
-                }
             }
 
-            SelectedDotChuan = AvailableDotFamilies.FirstOrDefault();
-            SelectedDotBu = AvailableDotFamilies.Skip(1).FirstOrDefault() ?? SelectedDotChuan;
-            SelectedSanCongTL = AvailableSanFamilies.FirstOrDefault();
-            SelectedSanCongHL = AvailableSanFamilies.Skip(1).FirstOrDefault() ?? SelectedSanCongTL;
-            SelectedHopNoi = AvailableHopNoiFamilies.FirstOrDefault();
-            SelectedBeTongLot = AvailableBeTongLotFamilies.FirstOrDefault();
+            InitOutletComponents();
+            InitManholeComponents();
+            ApplyAssemblyTemplate(SelectedCulvertTemplateType ?? "CỐNG HỘP ĐÚC SẴN");
+        }
+
+        private void InitOutletComponents()
+        {
+            if (OutletComponents.Count > 0) return;
+
+            OutletComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cửa xả",
+                CategoryType = "Cửa xả - Tường đầu",
+                SelectedSymbol = FindSymbol("TNN_CUA XA", "TUONG DAU") ?? FindSymbol("TNN_CUA XA"),
+                OffsetZ = 0.0,
+                Note = "Tường đầu cửa xả"
+            });
+            OutletComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cửa xả",
+                CategoryType = "Cửa xả - Tường cánh",
+                SelectedSymbol = FindSymbol("TNN_CUA XA", "TUONG CANH") ?? FindSymbol("TNN_CUA XA"),
+                OffsetZ = 0.0,
+                Note = "Tường cánh cửa xả"
+            });
+            OutletComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cửa xả",
+                CategoryType = "Cửa xả - Sân cống",
+                SelectedSymbol = FindSymbol("TNN_CUA XA", "SAN CONG") ?? FindSymbol("TNN_CUA XA"),
+                OffsetZ = 0.0,
+                Note = "Sân cống cửa xả"
+            });
+            OutletComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cửa xả",
+                CategoryType = "Cửa xả - Bê tông lót",
+                SelectedSymbol = FindSymbol("TNN_CUA XA", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                OffsetZ = -0.10,
+                Note = "Bê tông lót cửa xả"
+            });
+            OutletComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cửa xả",
+                CategoryType = "Cửa xả - CPDD / Đá dăm",
+                SelectedSymbol = FindSymbol("TNN_CUA XA", "CPDD") ?? FindSymbol("DA DAM"),
+                OffsetZ = -0.20,
+                Note = "Lớp CPDD / đá dăm đệm cửa xả"
+            });
+
+            OutletComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cửa xả",
+                CategoryType = "Sân gia cố - Tấm sân",
+                SelectedSymbol = FindSymbol("TNN_SAN GIA CO_CUA XA", "SAN GIA CO") ?? FindSymbol("TNN_SAN GIA CO"),
+                OffsetZ = 0.0,
+                Note = "Tấm sân gia cố nối dài"
+            });
+            OutletComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cửa xả",
+                CategoryType = "Sân gia cố - Bê tông lót",
+                SelectedSymbol = FindSymbol("TNN_SAN GIA CO_CUA XA", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                OffsetZ = -0.10,
+                Note = "Bê tông lót sân gia cố"
+            });
+        }
+
+        private void InitManholeComponents()
+        {
+            if (ManholeComponents.Count > 0) return;
+
+            ManholeComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Hố ga",
+                CategoryType = "Thân hố ga",
+                SelectedSymbol = FindSymbol("TNM_HG_DO TAI CHO") ?? FindSymbol("TNM_HG_DUC SAN") ?? FindSymbol("TNM_HG"),
+                OffsetZ = 0.0,
+                Note = "Thân buồng thu hố ga (hộp nối)"
+            });
+            ManholeComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Hố ga",
+                CategoryType = "Cổ giếng",
+                SelectedSymbol = FindSymbol("TNM_HG_CO GIENG") ?? FindSymbol("CO GIENG"),
+                OffsetZ = 0.50,
+                Note = "Cổ giếng hố ga"
+            });
+            ManholeComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Hố ga",
+                CategoryType = "Khuôn hầm",
+                SelectedSymbol = FindSymbol("TNM_HG_KHUON HAM") ?? FindSymbol("KHUON HAM"),
+                OffsetZ = 0.80,
+                Note = "Khuôn đỡ nắp hầm ga"
+            });
+            ManholeComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Hố ga",
+                CategoryType = "Nắp đan",
+                SelectedSymbol = FindSymbol("TNM_HG_NAP DAN") ?? FindSymbol("NAP DAN"),
+                OffsetZ = 0.90,
+                Note = "Tấm đan nắp đậy hố ga"
+            });
+            ManholeComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Hố ga",
+                CategoryType = "Bê tông lót hố ga",
+                SelectedSymbol = FindSymbol("TNM_HG_BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                OffsetZ = -0.20,
+                Note = "Bê tông lót đáy hố ga"
+            });
         }
 
         #region Dynamic Component Assembly Methods
         private void AddNewComponent()
         {
-            var newItem = new CulvertComponentItem
-            {
-                IsActive = true,
-                CategoryType = "Cấu kiện phụ khác",
-                SelectedSymbol = AllAvailableFamilies.FirstOrDefault(),
-                OffsetZ = 0.0,
-                Note = "Cấu kiện bổ sung"
-            };
-            AssemblyComponents.Add(newItem);
-            SelectedAssemblyComponent = newItem;
-            RefreshActiveAssignedFamiliesForTab02();
-            SyncMaterialsFromAssemblyComponents();
+            // Cấu kiện đã cố định theo 3 cụm chuẩn
         }
 
         private void RemoveSelectedComponent()
         {
-            if (SelectedAssemblyComponent != null)
-            {
-                AssemblyComponents.Remove(SelectedAssemblyComponent);
-                SelectedAssemblyComponent = AssemblyComponents.FirstOrDefault();
-                RefreshActiveAssignedFamiliesForTab02();
-                SyncMaterialsFromAssemblyComponents();
-            }
+            // Cấu kiện đã cố định theo 3 cụm chuẩn
         }
 
         public void ApplyAssemblyTemplate(string? templateType)
         {
-            string type = templateType?.ToUpperInvariant() ?? "CỐNG HỘP ĐƠN";
+            string type = templateType?.ToUpperInvariant() ?? "CỐNG HỘP ĐÚC SẴN";
             SelectedCulvertTemplateType = type;
 
+            BarrelComponents.Clear();
+
+            if (type.Contains("ĐỔ TẠI CHỖ") || type.Contains("DO TAI CHO"))
+            {
+                IsCastInPlaceMode = true;
+                IsDoubleCulvertMode = false;
+                L_Std = 4.0;
+                Khe_Ho = 0.02;
+
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Thân cống hộp đổ tại chỗ",
+                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
+                    OffsetZ = 0.0,
+                    Note = "Đốt thân cống hộp đổ tại chỗ"
+                });
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Bê tông lót thân cống",
+                    SelectedSymbol = FindSymbol("TNN_BE TONG LOT_THAN CONG") ?? FindSymbol("BE TONG LOT"),
+                    OffsetZ = -0.10,
+                    Note = "Lớp bê tông lót thân cống"
+                });
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Đá dăm đệm thân cống",
+                    SelectedSymbol = FindSymbol("TNN_DA DAM DEM_THAN CONG") ?? FindSymbol("DA DAM"),
+                    OffsetZ = -0.20,
+                    Note = "Lớp đá dăm đệm thân cống"
+                });
+            }
+            else if (type.Contains("TRÒN") || type.Contains("TRON"))
+            {
+                IsCastInPlaceMode = false;
+                IsDoubleCulvertMode = type.Contains("ĐÔI") || type.Contains("DOI");
+                L_Std = 1.0;
+                Khe_Ho = 0.00;
+
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Thân cống tròn",
+                    SelectedSymbol = FindSymbol("TNN_CT_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
+                    OffsetZ = 0.0,
+                    Note = "Đốt ống cống tròn đúc sẵn"
+                });
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Móng trên cống tròn",
+                    SelectedSymbol = FindSymbol("TNN_CT_MONG TREN") ?? AllAvailableFamilies.FirstOrDefault(),
+                    OffsetZ = -0.05,
+                    Note = "Móng trên cống tròn"
+                });
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Gối cống tròn",
+                    SelectedSymbol = FindSymbol("TNN_CT_GOI CONG") ?? AllAvailableFamilies.FirstOrDefault(),
+                    OffsetZ = -0.15,
+                    Note = "Gối đỡ cống tròn"
+                });
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Vữa xi măng mối nối",
+                    SelectedSymbol = FindSymbol("TNM_CT_VUA XI MANG") ?? AllAvailableFamilies.FirstOrDefault(),
+                    OffsetZ = -0.12,
+                    Note = "Lớp vữa xi măng chèn mối nối"
+                });
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Bê tông lót thân cống",
+                    SelectedSymbol = FindSymbol("TNN_BE TONG LOT_THAN CONG") ?? FindSymbol("BE TONG LOT"),
+                    OffsetZ = -0.30,
+                    Note = "Bê tông lót móng cống tròn"
+                });
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Đá dăm đệm thân cống",
+                    SelectedSymbol = FindSymbol("TNN_DA DAM DEM_THAN CONG") ?? FindSymbol("DA DAM"),
+                    OffsetZ = -0.40,
+                    Note = "Đá dăm đệm cống tròn"
+                });
+            }
+            else
+            {
+                IsCastInPlaceMode = false;
+                IsDoubleCulvertMode = false;
+                L_Std = 1.0;
+                Khe_Ho = 0.01;
+
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Thân cống hộp đúc sẵn",
+                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
+                    OffsetZ = 0.0,
+                    Note = "Đốt thân cống hộp đúc sẵn"
+                });
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Bê tông lót thân cống",
+                    SelectedSymbol = FindSymbol("TNN_BE TONG LOT_THAN CONG") ?? FindSymbol("BE TONG LOT"),
+                    OffsetZ = -0.10,
+                    Note = "Lớp bê tông lót thân cống"
+                });
+                BarrelComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Thân cống",
+                    CategoryType = "Đá dăm đệm thân cống",
+                    SelectedSymbol = FindSymbol("TNN_DA DAM DEM_THAN CONG") ?? FindSymbol("DA DAM"),
+                    OffsetZ = -0.20,
+                    Note = "Lớp đá dăm đệm thân cống"
+                });
+            }
+
+            SyncAllAssemblyComponents();
+            UpdatePreviewGeometry();
+        }
+
+        private void SyncAllAssemblyComponents()
+        {
             AssemblyComponents.Clear();
-
-            var dotChuan = SelectedDotChuan ?? AvailableDotFamilies.FirstOrDefault() ?? AllAvailableFamilies.FirstOrDefault();
-            var dotBu = SelectedDotBu ?? AvailableDotFamilies.Skip(1).FirstOrDefault() ?? dotChuan;
-            var sanTL = SelectedSanCongTL ?? AvailableSanFamilies.FirstOrDefault() ?? AllAvailableFamilies.FirstOrDefault();
-            var sanHL = SelectedSanCongHL ?? AvailableSanFamilies.Skip(1).FirstOrDefault() ?? sanTL;
-            var hopNoi = SelectedHopNoi ?? AvailableHopNoiFamilies.FirstOrDefault() ?? AllAvailableFamilies.FirstOrDefault();
-            var btl = SelectedBeTongLot ?? AvailableBeTongLotFamilies.FirstOrDefault() ?? AllAvailableFamilies.FirstOrDefault();
-
-            // CHỈ CỐNG TRÒN ĐÔI mới kích hoạt ô nhập khoảng cách giữa 2 tim cống
-            IsDoubleCulvertMode = (type == "CỐNG TRÒN ĐÔI");
-
-            if (type == "CỐNG TRÒN ĐÔI")
-            {
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đốt cống chuẩn", SelectedSymbol = dotChuan, OffsetZ = 0.0, Note = "Đốt cống tròn chuẩn (nhánh đôi)" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đốt cống bù / co giãn", SelectedSymbol = dotBu, OffsetZ = 0.0, Note = "Đốt cống tròn bù / co giãn" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Gối cống / Đệm cống", SelectedSymbol = btl, OffsetZ = -0.15, Note = "Gối đệm đỡ ống cống tròn" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Sân cống thượng lưu", SelectedSymbol = sanTL, OffsetZ = 0.0, Note = "Sân cống / Cửa xả thượng lưu" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Sân cống hạ lưu", SelectedSymbol = sanHL, OffsetZ = 0.0, Note = "Sân cống / Cửa xả hạ lưu" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Bê tông lót đốt cống", SelectedSymbol = btl, OffsetZ = -0.30, Note = "Bê tông lót thân cống tròn" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đệm cát / Đá dăm", SelectedSymbol = btl, OffsetZ = -0.40, Note = "Lớp đệm đá dăm / cát đầm chặt" });
-            }
-            else if (type == "CỐNG TRÒN ĐƠN")
-            {
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đốt cống chuẩn", SelectedSymbol = dotChuan, OffsetZ = 0.0, Note = "Đốt cống tròn chuẩn (L_std)" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đốt cống bù / co giãn", SelectedSymbol = dotBu, OffsetZ = 0.0, Note = "Đốt cống tròn bù / co giãn" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Gối cống / Đệm cống", SelectedSymbol = btl, OffsetZ = -0.15, Note = "Gối đệm đỡ ống cống tròn" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Sân cống thượng lưu", SelectedSymbol = sanTL, OffsetZ = 0.0, Note = "Sân cống / Cửa xả thượng lưu" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Sân cống hạ lưu", SelectedSymbol = sanHL, OffsetZ = 0.0, Note = "Sân cống / Cửa xả hạ lưu" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Bê tông lót đốt cống", SelectedSymbol = btl, OffsetZ = -0.30, Note = "Bê tông lót thân cống tròn" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đệm cát / Đá dăm", SelectedSymbol = btl, OffsetZ = -0.40, Note = "Lớp đệm đá dăm / cát đầm chặt" });
-            }
-            else if (type == "CỐNG HỘP ĐÔI")
-            {
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đốt cống chuẩn", SelectedSymbol = dotChuan, OffsetZ = 0.0, Note = "Đốt cống hộp đôi đúc liền 2 ngăn" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đốt cống bù / co giãn", SelectedSymbol = dotBu, OffsetZ = 0.0, Note = "Đốt cống hộp bù / co giãn" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Sân cống thượng lưu", SelectedSymbol = sanTL, OffsetZ = 0.0, Note = "Sân cống / Cửa xả thượng lưu" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Sân cống hạ lưu", SelectedSymbol = sanHL, OffsetZ = 0.0, Note = "Sân cống / Cửa xả hạ lưu" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Hộp nối / Hố thu", SelectedSymbol = hopNoi, OffsetZ = 0.0, Note = "Hộp nối / hố thu nước dọc" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Bê tông lót đốt cống", SelectedSymbol = btl, OffsetZ = -0.10, Note = "Lớp bê tông lót thân cống hộp" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đệm cát / Đá dăm", SelectedSymbol = btl, OffsetZ = -0.20, Note = "Lớp đệm cát hạt thô / đá dăm" });
-            }
-            else // CỐNG HỘP ĐƠN
-            {
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đốt cống chuẩn", SelectedSymbol = dotChuan, OffsetZ = 0.0, Note = "Đốt cống hộp đơn chuẩn (L_std)" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đốt cống bù / co giãn", SelectedSymbol = dotBu, OffsetZ = 0.0, Note = "Đốt cống hộp bù / co giãn" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Sân cống thượng lưu", SelectedSymbol = sanTL, OffsetZ = 0.0, Note = "Sân cống / Cửa xả thượng lưu" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Sân cống hạ lưu", SelectedSymbol = sanHL, OffsetZ = 0.0, Note = "Sân cống / Cửa xả hạ lưu" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Hộp nối / Hố thu", SelectedSymbol = hopNoi, OffsetZ = 0.0, Note = "Hộp nối / hố thu nước dọc" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Bê tông lót đốt cống", SelectedSymbol = btl, OffsetZ = -0.10, Note = "Lớp bê tông lót thân cống hộp" });
-                AssemblyComponents.Add(new CulvertComponentItem { IsActive = true, CategoryType = "Đệm cát / Đá dăm", SelectedSymbol = btl, OffsetZ = -0.20, Note = "Lớp đệm cát hạt thô / đá dăm" });
-            }
+            foreach (var c in BarrelComponents) AssemblyComponents.Add(c);
+            foreach (var c in OutletComponents) AssemblyComponents.Add(c);
+            foreach (var c in ManholeComponents) AssemblyComponents.Add(c);
 
             RefreshActiveAssignedFamiliesForTab02();
             SyncMaterialsFromAssemblyComponents();
@@ -797,27 +1052,29 @@ namespace InfraBIM.CulvertTool.ViewModels
                 return;
             }
 
-            var btlDotComp = AssemblyComponents.FirstOrDefault(c => c.CategoryType.Contains("lót") || c.CategoryType.Contains("BTL"));
+            var btlDotComp = BarrelComponents.FirstOrDefault(c => c.CategoryType.Contains("lót") || c.CategoryType.Contains("BTL"));
             bool hasBtlDot = btlDotComp?.IsActive ?? true;
             double btlOffsetDot = btlDotComp?.OffsetZ ?? -0.10;
 
-            double catOffset = AssemblyComponents.FirstOrDefault(c => c.CategoryType.Contains("cát") || c.CategoryType.Contains("đệm"))?.OffsetZ ?? -0.20;
+            double catOffset = BarrelComponents.FirstOrDefault(c => c.CategoryType.Contains("cát") || c.CategoryType.Contains("đá dăm") || c.CategoryType.Contains("đệm"))?.OffsetZ ?? -0.20;
             var mode = (SelectedArrayModeIndex == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay;
+
+            string lc = (target.LoaiCong ?? "").ToUpperInvariant();
+            bool isRound = lc.Contains("TRON") || lc.Contains("TRÒN") || lc.Contains("CT") || SelectedCulvertTemplateType.Contains("TRÒN");
+            bool isDouble = IsDoubleCulvertMode || (target.SoCua >= 2 && isRound);
 
             CurrentPreviewGeometry = CulvertPreviewService.ComputePreview(
                 target,
                 L_Std,
-                L_Min,
-                L_Ngam,
+                Khe_Ho,
                 B_Box,
-                btlOffsetDot,
-                catOffset,
                 mode,
-                hasBtlDot,
-                false,
-                false,
-                0,
-                0);
+                isCastInPlace: IsCastInPlaceMode,
+                isRound: isRound,
+                isDouble: isDouble,
+                offsetZ_BTL: btlOffsetDot,
+                offsetZ_Cat: catOffset,
+                hasBtlDot: hasBtlDot);
         }
         #endregion
 
@@ -1375,31 +1632,11 @@ namespace InfraBIM.CulvertTool.ViewModels
                 return;
             }
 
-            // Ưu tiên lấy Family từ AssemblyComponents
-            var symDotChuan = AssemblyComponents.FirstOrDefault(c => c.IsActive && c.CategoryType.Contains("chuẩn"))?.SelectedSymbol?.Symbol
-                              ?? SelectedDotChuan?.Symbol;
-
-            if (symDotChuan == null)
+            if (!BarrelComponents.Any(c => c.IsActive && c.SelectedSymbol != null))
             {
-                MessageBox.Show("Vui lòng kích hoạt và chọn Family Đốt cống ở Tab 01.", "Chưa chọn Family", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Vui lòng kích hoạt và chọn Family cho Cụm Thân cống ở Khung 2.", "Chưa chọn Family", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-
-            var symDotBu = AssemblyComponents.FirstOrDefault(c => c.IsActive && (c.CategoryType.Contains("bù") || c.CategoryType.Contains("co giãn")))?.SelectedSymbol?.Symbol
-                           ?? SelectedDotBu?.Symbol ?? symDotChuan;
-
-            var symSanTL = AssemblyComponents.FirstOrDefault(c => c.IsActive && c.CategoryType.Contains("Thượng lưu"))?.SelectedSymbol?.Symbol
-                           ?? SelectedSanCongTL?.Symbol;
-
-            var symSanHL = AssemblyComponents.FirstOrDefault(c => c.IsActive && c.CategoryType.Contains("Hạ lưu"))?.SelectedSymbol?.Symbol
-                           ?? SelectedSanCongHL?.Symbol ?? symSanTL;
-
-            var symHN = AssemblyComponents.FirstOrDefault(c => c.IsActive && (c.CategoryType.Contains("Hộp") || c.CategoryType.Contains("Hố")))?.SelectedSymbol?.Symbol
-                        ?? SelectedHopNoi?.Symbol;
-
-            var btlDotComp = AssemblyComponents.FirstOrDefault(c => c.IsActive && (c.CategoryType.Contains("lót") || c.CategoryType.Contains("BTL")));
-            var symBTL_Dot = btlDotComp?.SelectedSymbol?.Symbol ?? SelectedBeTongLot?.Symbol;
-            double offsetZ_BTL_Dot = btlDotComp?.OffsetZ ?? -0.10;
 
             RunValidation();
             if (TotalErrors > 0)
@@ -1417,29 +1654,23 @@ namespace InfraBIM.CulvertTool.ViewModels
             _eventHandler.SetAction(app =>
             {
                 var doc = app.ActiveUIDocument.Document;
-                var result = CulvertCoreEngine.BuildAllCulverts(
+                var result = CulvertCoreEngine.BuildAllCulvertsV2(
                     doc,
                     rowsToBuild,
                     BimConfig,
                     CustomBimParameters,
                     ParameterMappings,
-                    symDotChuan,
-                    symDotBu,
-                    symSanTL,
-                    symSanHL,
-                    symHN,
-                    symBTL_Dot,
+                    BarrelComponents.ToList(),
+                    OutletComponents.ToList(),
+                    ManholeComponents.ToList(),
                     L_Std,
-                    L_Min,
+                    Khe_Ho,
                     B_Box,
                     KhoangCachTimDefault,
                     mode,
+                    IsCastInPlaceMode,
                     useSurveyPoint,
-                    ComponentMaterials,
-                    AllAvailableFamilies.Select(f => f.Symbol).ToList(),
-                    null,
-                    null,
-                    offsetZ_BTL_Dot);
+                    ComponentMaterials);
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {

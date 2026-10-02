@@ -22,6 +22,13 @@ namespace InfraBIM.CulvertTool.Models
             "Cấu kiện phụ khác"
         };
 
+        private string _groupType = "Thân cống";
+        public string GroupType
+        {
+            get => _groupType;
+            set { _groupType = value; OnPropertyChanged(); }
+        }
+
         private bool _isActive = true;
         public bool IsActive
         {
@@ -64,3 +71,4 @@ namespace InfraBIM.CulvertTool.Models
         }
     }
 }
+

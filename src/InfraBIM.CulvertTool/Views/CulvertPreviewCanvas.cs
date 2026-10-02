@@ -305,10 +305,10 @@ namespace InfraBIM.CulvertTool.Views
             // 1. VẼ LỚP ĐỆM CÁT / ĐÁ DĂM (DƯỚI CÙNG)
             double catThick = 0.20;
             double btlThick = 0.10;
-            Point pCat1 = MapPoint(-1.5, -culvertH / scaleY - btlThick - catThick);
-            Point pCat2 = MapPoint(totalL + 1.5, -culvertH / scaleY - btlThick - catThick);
-            Point pCat3 = MapPoint(totalL + 1.5, -culvertH / scaleY - btlThick);
-            Point pCat4 = MapPoint(-1.5, -culvertH / scaleY - btlThick);
+            Point pCat1 = MapPoint(-2.5, -culvertH / scaleY - btlThick - catThick);
+            Point pCat2 = MapPoint(totalL + 2.5, -culvertH / scaleY - btlThick - catThick);
+            Point pCat3 = MapPoint(totalL + 2.5, -culvertH / scaleY - btlThick);
+            Point pCat4 = MapPoint(-2.5, -culvertH / scaleY - btlThick);
 
             var catPath = new PathGeometry();
             var catFig = new PathFigure { StartPoint = pCat1, IsClosed = true };
@@ -317,8 +317,9 @@ namespace InfraBIM.CulvertTool.Views
             catFig.Segments.Add(new LineSegment(pCat4, true));
             catPath.Figures.Add(catFig);
             dc.DrawGeometry(CatBrush, new Pen(new SolidColorBrush(Color.FromRgb(217, 119, 6)), 1.0), catPath);
+            DrawCenteredText(dc, "LỚP ĐÁ DĂM ĐỆM / CPDD", new Point((pCat1.X + pCat2.X) / 2.0, pCat1.Y + 8), 9.0, new SolidColorBrush(Color.FromArgb(180, 255, 255, 255)));
 
-            // 2. VẼ LỚP BÊ TÔNG LÓT (BTL) ĐỐT CỐNG (Tự động ngắt quãng trước hố thu để không xuyên hố thu)
+            // 2. VẼ LỚP BÊ TÔNG LÓT (BTL) ĐỐT CỐNG (Tự động ngắt quãng trước hố thu)
             if (geom.HasBTL_Dot)
             {
                 var btlPen = new Pen(new SolidColorBrush(Color.FromRgb(71, 85, 105)), 1.0);
@@ -363,21 +364,67 @@ namespace InfraBIM.CulvertTool.Views
                 }
             }
 
-            // 3. VẼ SÂN CỐNG THƯỢNG LƯU (P1, Z1)
-            Point pSanTL_Top = MapPoint(-1.8, 0.4);
+            // 3. NẾU LÀ CỐNG TRÒN: VẼ CÁC GỐI CỐNG & MÓNG TRÊN
+            if (geom.IsRoundCulvert)
+            {
+                var goiBrush = new SolidColorBrush(Color.FromArgb(220, 100, 116, 139));
+                var goiPen = new Pen(new SolidColorBrush(Color.FromRgb(148, 163, 184)), 1.0);
+                double goiWidthM = 0.40;
+                double goiHeightM = 0.20;
+
+                foreach (var seg in geom.Segments)
+                {
+                    double centerM = (seg.StartDistanceM + seg.EndDistanceM) / 2.0;
+                    Point pGoi1 = MapPoint(centerM - goiWidthM / 2.0, -culvertH / scaleY - goiHeightM);
+                    Point pGoi2 = MapPoint(centerM + goiWidthM / 2.0, -culvertH / scaleY - goiHeightM);
+                    Point pGoi3 = MapPoint(centerM + goiWidthM / 2.0, -culvertH / scaleY);
+                    Point pGoi4 = MapPoint(centerM - goiWidthM / 2.0, -culvertH / scaleY);
+
+                    var gPath = new PathGeometry();
+                    var gFig = new PathFigure { StartPoint = pGoi1, IsClosed = true };
+                    gFig.Segments.Add(new LineSegment(pGoi2, true));
+                    gFig.Segments.Add(new LineSegment(pGoi3, true));
+                    gFig.Segments.Add(new LineSegment(pGoi4, true));
+                    gPath.Figures.Add(gFig);
+                    dc.DrawGeometry(goiBrush, goiPen, gPath);
+                }
+            }
+
+            // 4. VẼ CỬA XẢ & SÂN GIA CỐ THƯỢNG LƯU (P1, Z1)
+            // Sân gia cố kéo dài ra ngoài
+            Point pSgcTL_Top = MapPoint(-3.0, 0.0);
+            Point pSgcTL_Bot = MapPoint(-1.5, -culvertH / scaleY);
+            Rect rSgcTL = new Rect(pSgcTL_Top.X, pSgcTL_Top.Y, Math.Max(pSgcTL_Bot.X - pSgcTL_Top.X, 25), culvertH);
+            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(180, 30, 58, 95)), new Pen(new SolidColorBrush(Color.FromRgb(96, 165, 250)), 1.2), rSgcTL);
+            DrawCenteredText(dc, "SÂN GIA CỐ", new Point(rSgcTL.X + rSgcTL.Width / 2, rSgcTL.Y + rSgcTL.Height / 2), 8.5, MintTextBrush);
+
+            // Cửa xả thượng lưu (Tường đầu + Tường cánh + Sân cống)
+            Point pSanTL_Top = MapPoint(-1.5, 0.45);
             Point pSanTL_Bot = MapPoint(0, -culvertH / scaleY);
-            Rect rSanTL = new Rect(pSanTL_Top.X, pSanTL_Top.Y, Math.Max(pSanTL_Bot.X - pSanTL_Top.X, 30), culvertH + (0.4 * scaleY));
+            Rect rSanTL = new Rect(pSanTL_Top.X, pSanTL_Top.Y, Math.Max(pSanTL_Bot.X - pSanTL_Top.X, 30), culvertH + (0.45 * scaleY));
             dc.DrawRectangle(ApronBrush, ApronPen, rSanTL);
-            DrawCenteredText(dc, "SÂN CỐNG TL", new Point(rSanTL.X + rSanTL.Width / 2, rSanTL.Y + rSanTL.Height / 2), 10, CyanTextBrush);
+            DrawCenteredText(dc, "CỬA XẢ TL\n(Tường đầu)", new Point(rSanTL.X + rSanTL.Width / 2, rSanTL.Y + rSanTL.Height / 2), 9.5, CyanTextBrush);
 
-            // 4. VẼ SÂN CỐNG HẠ LƯU (P2, Z2)
-            Point pSanHL_Top = MapPoint(totalL, 0.4);
-            Point pSanHL_Bot = MapPoint(totalL + 1.8, -culvertH / scaleY);
-            Rect rSanHL = new Rect(pSanHL_Top.X, pSanHL_Top.Y, Math.Max(pSanHL_Bot.X - pSanHL_Top.X, 30), culvertH + (0.4 * scaleY));
+            // 5. VẼ CỬA XẢ & SÂN GIA CỐ HẠ LƯU (P2, Z2)
+            // Cửa xả hạ lưu
+            Point pSanHL_Top = MapPoint(totalL, 0.45);
+            Point pSanHL_Bot = MapPoint(totalL + 1.5, -culvertH / scaleY);
+            Rect rSanHL = new Rect(pSanHL_Top.X, pSanHL_Top.Y, Math.Max(pSanHL_Bot.X - pSanHL_Top.X, 30), culvertH + (0.45 * scaleY));
             dc.DrawRectangle(ApronBrush, ApronPen, rSanHL);
-            DrawCenteredText(dc, "SÂN CỐNG HL", new Point(rSanHL.X + rSanHL.Width / 2, rSanHL.Y + rSanHL.Height / 2), 10, CyanTextBrush);
+            DrawCenteredText(dc, "CỬA XẢ HL\n(Tường đầu)", new Point(rSanHL.X + rSanHL.Width / 2, rSanHL.Y + rSanHL.Height / 2), 9.5, CyanTextBrush);
 
-            // 5. VẼ CÁC ĐỐT CỐNG (STANDARD & COMPENSATING)
+            // Sân gia cố hạ lưu
+            Point pSgcHL_Top = MapPoint(totalL + 1.5, 0.0);
+            Point pSgcHL_Bot = MapPoint(totalL + 3.0, -culvertH / scaleY);
+            Rect rSgcHL = new Rect(pSgcHL_Top.X, pSgcHL_Top.Y, Math.Max(pSgcHL_Bot.X - pSgcHL_Top.X, 25), culvertH);
+            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(180, 30, 58, 95)), new Pen(new SolidColorBrush(Color.FromRgb(96, 165, 250)), 1.2), rSgcHL);
+            DrawCenteredText(dc, "SÂN GIA CỐ", new Point(rSgcHL.X + rSgcHL.Width / 2, rSgcHL.Y + rSgcHL.Height / 2), 8.5, MintTextBrush);
+
+            // 6. VẼ CÁC ĐỐT CỐNG (STANDARD & COMPENSATING & JOINTS)
+            double wallThickM = 0.15;
+            double wallThickPx = wallThickM * scaleY;
+            var innerVoidBrush = new SolidColorBrush(Color.FromArgb(120, 15, 23, 42)); // Lòng cống rỗng bên trong
+
             foreach (var seg in geom.Segments)
             {
                 Point pt1 = MapPoint(seg.StartDistanceM, 0);
@@ -392,47 +439,54 @@ namespace InfraBIM.CulvertTool.Views
                 segFig.Segments.Add(new LineSegment(pt4, true));
                 segPath.Figures.Add(segFig);
 
-                Brush fill;
-                Pen stroke;
-                if (seg.IsStandard)
-                {
-                    fill = StdSegBrush;
-                    stroke = StdSegPen;
-                }
-                else if (seg.LengthM < geom.L_Min)
-                {
-                    fill = WarnSegBrush;
-                    stroke = WarnSegPen;
-                }
-                else
-                {
-                    fill = CompSegBrush;
-                    stroke = CompSegPen;
-                }
+                Brush fill = seg.IsStandard ? StdSegBrush : CompSegBrush;
+                Pen stroke = seg.IsStandard ? StdSegPen : CompSegPen;
 
                 dc.DrawGeometry(fill, stroke, segPath);
+
+                // Lòng cống rỗng bên trong
+                Point pi1 = MapPoint(seg.StartDistanceM, -wallThickM);
+                Point pi2 = MapPoint(seg.EndDistanceM, -wallThickM);
+                Point pi3 = MapPoint(seg.EndDistanceM, -culvertH / scaleY + wallThickM);
+                Point pi4 = MapPoint(seg.StartDistanceM, -culvertH / scaleY + wallThickM);
+
+                var voidPath = new PathGeometry();
+                var voidFig = new PathFigure { StartPoint = pi1, IsClosed = true };
+                voidFig.Segments.Add(new LineSegment(pi2, true));
+                voidFig.Segments.Add(new LineSegment(pi3, true));
+                voidFig.Segments.Add(new LineSegment(pi4, true));
+                voidPath.Figures.Add(voidFig);
+                dc.DrawGeometry(innerVoidBrush, new Pen(new SolidColorBrush(Color.FromArgb(60, 56, 189, 248)), 0.8), voidPath);
 
                 // Nhãn đốt cống
                 Point mid = new Point((pt1.X + pt2.X) / 2.0, (pt1.Y + pt3.Y) / 2.0);
                 string segLabel = seg.IsStandard ? $"Đ{seg.Index}\n{seg.LengthM:N2}m" : $"Đ.Bù\n{seg.LengthM:N2}m";
-                Brush lblBrush = seg.IsStandard ? TextBrush : (seg.LengthM < geom.L_Min ? RedTextBrush : MintTextBrush);
+                Brush lblBrush = seg.IsStandard ? TextBrush : MintTextBrush;
                 DrawCenteredText(dc, segLabel, mid, 10, lblBrush);
+
+                // Đường phân cách mối nối giữa các đốt
+                dc.DrawLine(new Pen(new SolidColorBrush(Color.FromRgb(250, 204, 21)), 1.5), pt2, pt3);
             }
 
-            // 6. VẼ HỘP NỐI / HỐ THU (NẾU CÓ)
+            // 7. VẼ HỘP NỐI / HỐ GA (NẾU CÓ)
             foreach (var mh in geom.Manholes)
             {
                 double leftM = mh.DistanceFromP1M - (mh.WidthM / 2.0);
                 double rightM = mh.DistanceFromP1M + (mh.WidthM / 2.0);
-                Point pMhTop = MapPoint(leftM, 0.6);
+                Point pMhTop = MapPoint(leftM, 0.7);
                 Point pMhBot = MapPoint(rightM, -culvertH / scaleY - btlThick);
 
-                Rect rMh = new Rect(pMhTop.X, pMhTop.Y, Math.Max(pMhBot.X - pMhTop.X, 24), culvertH + (0.6 * scaleY) + (btlThick * scaleY));
+                Rect rMh = new Rect(pMhTop.X, pMhTop.Y, Math.Max(pMhBot.X - pMhTop.X, 28), culvertH + (0.7 * scaleY) + (btlThick * scaleY));
                 dc.DrawRectangle(ManholeBrush, ManholePen, rMh);
-                DrawCenteredText(dc, $"{mh.Title}\n{mh.WidthM:N2}m", new Point(rMh.X + rMh.Width / 2, rMh.Y + rMh.Height / 2), 10, YellowTextBrush);
+
+                // Nắp đan hố ga ở đỉnh
+                Rect rCap = new Rect(rMh.X, rMh.Y - 6, rMh.Width, 8);
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(203, 213, 225)), new Pen(new SolidColorBrush(Color.FromRgb(248, 250, 252)), 1.2), rCap);
+
+                DrawCenteredText(dc, $"{mh.Title}\nB={mh.WidthM:N2}m", new Point(rMh.X + rMh.Width / 2, rMh.Y + rMh.Height / 2), 10, YellowTextBrush);
             }
 
-            // 7. VẼ ĐƯỜNG GIÓNG KÍCH THƯỚC (DIMENSION LINES) CHUẨN CAD
+            // 8. VẼ ĐƯỜNG GIÓNG KÍCH THƯỚC (DIMENSION LINES) CHUẨN CAD
             // a) Chuỗi kích thước chi tiết từng đốt ở TRÊN ĐỈNH CỐNG
             double dimTopY = centerY - (0.9 * scaleY) - 25;
             foreach (var seg in geom.Segments)
@@ -448,17 +502,30 @@ namespace InfraBIM.CulvertTool.Views
             double dimBotY = centerY + (visualSlope * totalL * scaleX) + culvertH + 35;
             DrawCadDimension(dc, new Point(pTotalStart.X, dimBotY), new Point(pTotalEnd.X, dimBotY), $"TỔNG CHIỀU DÀI L = {totalL:N2} m", 11.5, CyanTextBrush, true);
 
-            // c) Chú thích ngàm sân cống
-            Point pNgamStart = MapPoint(0);
-            Point pNgamEnd = MapPoint(geom.L_Ngam);
-            DrawCadDimension(dc, new Point(pNgamStart.X, dimTopY + 14), new Point(pNgamEnd.X, dimTopY + 14), $"{geom.L_Ngam:N2}", 8.5, TextBrush);
+            // c) Khoảng cách vị trí các hố ga (nếu có)
+            if (geom.Manholes.Count > 0)
+            {
+                double dimMhY = dimBotY + 25;
+                double curX = 0.0;
+                foreach (var mh in geom.Manholes)
+                {
+                    Point pFrom = MapPoint(curX);
+                    Point pTo = MapPoint(mh.DistanceFromP1M);
+                    double distSeg = mh.DistanceFromP1M - curX;
+                    DrawCadDimension(dc, new Point(pFrom.X, dimMhY), new Point(pTo.X, dimMhY), $"{distSeg:N2}m", 9.5, YellowTextBrush);
+                    curX = mh.DistanceFromP1M;
+                }
+                Point pLast = MapPoint(curX);
+                Point pEnd = MapPoint(totalL);
+                DrawCadDimension(dc, new Point(pLast.X, dimMhY), new Point(pEnd.X, dimMhY), $"{totalL - curX:N2}m", 9.5, YellowTextBrush);
+            }
 
             // d) Ký hiệu cao độ mốc mực nước / đáy cống (Elevation Level Markers ∇)
             DrawElevationMarker(dc, MapPoint(0, 0), $"Z1 = {geom.Z1:N3} m", true);
             DrawElevationMarker(dc, MapPoint(totalL, 0), $"Z2 = {geom.Z2:N3} m", false);
 
             // e) Mũi tên độ dốc cống i (%)
-            Point pSlopeMid = MapPoint(totalL / 2.0, 0.3);
+            Point pSlopeMid = MapPoint(totalL / 2.0, 0.35);
             DrawSlopeIndicator(dc, pSlopeMid, geom.DoDocPercent);
         }
         #endregion

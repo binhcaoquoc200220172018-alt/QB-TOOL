@@ -71,10 +71,18 @@ namespace InfraBIM.CulvertTool.Models
 
         public double L_Std { get; set; } = 1.0;
         public double L_Min { get; set; } = 0.5;
-        public double L_Ngam { get; set; } = 0.3;
+        public double L_Ngam { get; set; } = 0.0;
         public double B_Box { get; set; } = 1.5;
         public double OffsetZ_BTL { get; set; } = -0.10;
         public double OffsetZ_Cat { get; set; } = -0.20;
+
+        public bool IsCastInPlace { get; set; } = false;
+        public double JointGapM { get; set; } = 0.01;
+        public bool IsRoundCulvert { get; set; } = false;
+        public bool IsDoublePipe { get; set; } = false;
+        public bool HasGoiCong { get; set; } = false;
+        public bool HasMongTren { get; set; } = false;
+        public bool HasDaDamDem { get; set; } = true;
 
         public bool HasBTL_Dot { get; set; } = true;
         public bool HasBTL_San { get; set; } = false;
