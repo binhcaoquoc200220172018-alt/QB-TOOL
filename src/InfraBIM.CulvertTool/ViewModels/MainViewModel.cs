@@ -550,7 +550,7 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             BrowseExcelCommand = new RelayCommand(BrowseExcel);
             CreateSampleExcelCommand = new RelayCommand(CreateSampleExcel);
-            ReloadExcelCommand = new RelayCommand(LoadExcelData);
+            ReloadExcelCommand = new RelayCommand(ReloadExcelData);
             ScanFamilyParamsCommand = new RelayCommand(ScanCurrentSelectedFamilyParameters);
             BatchApplyCommand = new RelayCommand(ApplyBatchValue);
             ValidateCommand = new RelayCommand(RunValidation);
@@ -640,6 +640,34 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
         }
 
+        private void ReloadExcelData()
+        {
+            if (string.IsNullOrEmpty(ExcelFilePath) || !File.Exists(ExcelFilePath)) return;
+
+            try
+            {
+                string curSheet = SelectedSheetName;
+                var sheets = ExcelReaderService.GetSheetNames(ExcelFilePath);
+                SheetNames.Clear();
+                foreach (var s in sheets) SheetNames.Add(s);
+
+                if (!string.IsNullOrEmpty(curSheet) && SheetNames.Contains(curSheet))
+                {
+                    SelectedSheetName = curSheet;
+                }
+                else if (SheetNames.Count > 0)
+                {
+                    SelectedSheetName = SheetNames[0];
+                }
+
+                LoadExcelData();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi đọc lại file Excel: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void LoadExcelData()
         {
             if (string.IsNullOrEmpty(ExcelFilePath) || !File.Exists(ExcelFilePath)) return;
@@ -664,19 +692,22 @@ namespace InfraBIM.CulvertTool.ViewModels
             FilteredCulvertRows.Clear();
             foreach (var r in AllCulvertRows)
             {
+                string lc = (r.LoaiCong ?? "").ToUpperInvariant();
+                string resolved = (r.ResolvedCulvertType ?? "").ToUpperInvariant();
+
                 if (SelectedTypeFilter == "TẤT CẢ")
                 {
                     FilteredCulvertRows.Add(r);
                 }
-                else if (SelectedTypeFilter == "CỐNG HỘP" && r.LoaiCong.Contains("HOP"))
+                else if (SelectedTypeFilter == "CỐNG HỘP" && (lc.Contains("HOP") || lc.Contains("HỘP") || resolved.Contains("HỘP")))
                 {
                     FilteredCulvertRows.Add(r);
                 }
-                else if (SelectedTypeFilter == "CỐNG TRÒN" && r.LoaiCong.Contains("TRON"))
+                else if (SelectedTypeFilter == "CỐNG TRÒN" && (lc.Contains("TRON") || lc.Contains("TRÒN") || resolved.Contains("TRÒN")))
                 {
                     FilteredCulvertRows.Add(r);
                 }
-                else if (SelectedTypeFilter == "CỐNG ĐÔI" && r.SoCua >= 2)
+                else if (SelectedTypeFilter == "CỐNG ĐÔI" && (r.SoCua >= 2 || resolved.Contains("ĐÔI")))
                 {
                     FilteredCulvertRows.Add(r);
                 }

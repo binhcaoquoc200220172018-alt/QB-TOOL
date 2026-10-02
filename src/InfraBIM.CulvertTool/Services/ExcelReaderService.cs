@@ -12,6 +12,32 @@ namespace InfraBIM.CulvertTool.Services
         /// <summary>
         /// Lấy danh sách tên các Sheet trong file Excel (.xlsx)
         /// </summary>
+        /// <summary>
+        /// Mở XLWorkbook an toàn qua MemoryStream với FileShare.ReadWrite & retry, không bị khóa file khi Excel đang mở
+        /// </summary>
+        public static XLWorkbook OpenWorkbookSafe(string filePath)
+        {
+            Exception? lastEx = null;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    var ms = new MemoryStream();
+                    fs.CopyTo(ms);
+                    ms.Position = 0;
+                    return new XLWorkbook(ms);
+                }
+                catch (IOException ex)
+                {
+                    lastEx = ex;
+                    System.Threading.Thread.Sleep(80);
+                }
+            }
+            if (lastEx != null) throw lastEx;
+            throw new IOException($"Không thể mở file: {filePath}");
+        }
+
         public static List<string> GetSheetNames(string filePath)
         {
             var sheetNames = new List<string>();
@@ -23,7 +49,7 @@ namespace InfraBIM.CulvertTool.Services
                 return sheetNames;
             }
 
-            using (var workbook = new XLWorkbook(filePath))
+            using (var workbook = OpenWorkbookSafe(filePath))
             {
                 foreach (var ws in workbook.Worksheets)
                 {
@@ -34,7 +60,7 @@ namespace InfraBIM.CulvertTool.Services
         }
 
         /// <summary>
-        /// Đọc bảng dữ liệu cống từ Sheet được chỉ định (hoặc từ file CSV)
+        /// Đọc bảng dữ liệu cống từ Sheet được chỉ định (hoặc từ file CSV) - Chống khóa file khi Excel đang mở
         /// </summary>
         public static List<CulvertRowData> ReadCulvertRows(string filePath, string sheetName)
         {
@@ -46,7 +72,7 @@ namespace InfraBIM.CulvertTool.Services
                 return ReadCsvRows(filePath);
             }
 
-            using (var workbook = new XLWorkbook(filePath))
+            using (var workbook = OpenWorkbookSafe(filePath))
             {
                 IXLWorksheet ws = null!;
                 if (!string.IsNullOrEmpty(sheetName) && workbook.Worksheets.Contains(sheetName))
@@ -102,24 +128,27 @@ namespace InfraBIM.CulvertTool.Services
                 int colSTT = FindCol(new[] { "STT" }, 1);
                 int colLyTrinh = FindCol(new[] { "LYTRINH", "LÝ TRÌNH", "LY TRINH" }, 2);
                 int colLoaiCong = FindCol(new[] { "LOAICONG", "LOẠI CỐNG", "LOAI CONG" }, 3);
-                int colSoCua = FindCol(new[] { "SOCUA", "SỐ CỬA", "SO CUA" }, 4);
-                int colKhauDo = FindCol(new[] { "KHAUDO", "KHẨU ĐỘ", "KHAU DO" }, 5);
-                int colX1 = FindCol(new[] { "X1" }, 6);
-                int colY1 = FindCol(new[] { "Y1" }, 7);
-                int colZ1 = FindCol(new[] { "Z1" }, 8);
-                int colX2 = FindCol(new[] { "X2" }, 9);
-                int colY2 = FindCol(new[] { "Y2" }, 10);
-                int colZ2 = FindCol(new[] { "Z2" }, 11);
-                int colChieuDai = FindCol(new[] { "CHIEUDAI", "CHIỀU DÀI", "CHIEU DAI", "L_CONG" }, 12);
-                int colDoDoc = FindCol(new[] { "DODOC", "ĐỘ DỐC", "DO DOC", "I_CONG" }, 13);
-                int colGocXoay = FindCol(new[] { "GOCXOAY", "GÓC XOAY", "GOC XOAY", "AZIMUTH" }, 14);
-                int colSoHopNoi = FindCol(new[] { "SOHOPNOI", "SỐ HỘP NỐI", "SO HOP NOI", "SO_HO_THU" }, 15);
-                int colKC_HN1 = FindCol(new[] { "KC_HN1", "DIST_HN1", "KC_HT1", "DIST_HT1" }, 16);
-                int colKC_HN2 = FindCol(new[] { "KC_HN2", "DIST_HN2", "KC_HT2", "DIST_HT2" }, 17);
-                int colB_HT1 = FindCol(new[] { "B_HT1", "B_HN1", "BERONG_HT1", "BERONG_HN1", "B HỐ THU 1", "B HO THU 1" }, colMap.ContainsKey("B_HT1") ? colMap["B_HT1"] : (colMap.ContainsKey("B_HN1") ? colMap["B_HN1"] : (lastCol >= 21 ? 18 : 0)));
-                int colB_HT2 = FindCol(new[] { "B_HT2", "B_HN2", "BERONG_HT2", "BERONG_HN2", "B HỐ THU 2", "B HO THU 2" }, colMap.ContainsKey("B_HT2") ? colMap["B_HT2"] : (colMap.ContainsKey("B_HN2") ? colMap["B_HN2"] : (lastCol >= 21 ? 19 : 0)));
-                int colL_Ngam = FindCol(new[] { "L_NGAM_SAN", "L_NGAM", "NGAM_SAN" }, lastCol >= 21 ? 20 : 18);
-                int colKheHo = FindCol(new[] { "KHE_HO_HN", "KHE_HO", "KHEHO" }, lastCol >= 21 ? 21 : 19);
+                int colCauKien = FindCol(new[] { "CAUKIEN", "CẤU KIỆN", "CAU KIEN", "PHUONG PHAP", "THI CONG", "DUC_SAN" }, -1);
+                int offsetCK = (colCauKien > 0) ? 1 : 0;
+                int colSoCua = FindCol(new[] { "SOCUA", "SỐ CỬA", "SO CUA" }, 4 + offsetCK);
+                int colKhauDo = FindCol(new[] { "KHAUDO", "KHẨU ĐỘ", "KHAU DO" }, 5 + offsetCK);
+                int colX1 = FindCol(new[] { "X1" }, 6 + offsetCK);
+                int colY1 = FindCol(new[] { "Y1" }, 7 + offsetCK);
+                int colZ1 = FindCol(new[] { "Z1" }, 8 + offsetCK);
+                int colX2 = FindCol(new[] { "X2" }, 9 + offsetCK);
+                int colY2 = FindCol(new[] { "Y2" }, 10 + offsetCK);
+                int colZ2 = FindCol(new[] { "Z2" }, 11 + offsetCK);
+                int colChieuDai = FindCol(new[] { "CHIEUDAI", "CHIỀU DÀI", "CHIEU DAI", "L_CONG" }, 12 + offsetCK);
+                int colDoDoc = FindCol(new[] { "DODOC", "ĐỘ DỐC", "DO DOC", "I_CONG" }, 13 + offsetCK);
+                int colGocXoay = FindCol(new[] { "GOCXOAY", "GÓC XOAY", "GOC XOAY", "AZIMUTH" }, 14 + offsetCK);
+                int colSoHopNoi = FindCol(new[] { "SOHOPNOI", "SỐ HỘP NỐI", "SO HOP NOI", "SO_HO_THU" }, 15 + offsetCK);
+                int colKC_HN1 = FindCol(new[] { "KC_HN1", "DIST_HN1", "KC_HT1", "DIST_HT1" }, 16 + offsetCK);
+                int colKC_HN2 = FindCol(new[] { "KC_HN2", "DIST_HN2", "KC_HT2", "DIST_HT2" }, 17 + offsetCK);
+                int colB_HT1 = FindCol(new[] { "B_HT1", "B_HN1", "BERONG_HT1", "BERONG_HN1", "B HỐ THU 1", "B HO THU 1" }, colMap.ContainsKey("B_HT1") ? colMap["B_HT1"] : (18 + offsetCK));
+                int colB_HT2 = FindCol(new[] { "B_HT2", "B_HN2", "BERONG_HT2", "BERONG_HN2", "B HỐ THU 2", "B HO THU 2" }, colMap.ContainsKey("B_HT2") ? colMap["B_HT2"] : (19 + offsetCK));
+                int colL_Ngam = FindCol(new[] { "L_NGAM_SAN", "L_NGAM", "NGAM_SAN" }, 20 + offsetCK);
+                int colKheHo = FindCol(new[] { "KHE_HO_HN", "KHE_HO", "KHEHO" }, 21 + offsetCK);
+                int colGhiChu = FindCol(new[] { "GHICHU", "GHI CHÚ", "GHI CHU", "LOAI RAI", "LOAIRAI", "PHAN LOAI", "CHUNGLOAI" }, 22 + offsetCK);
 
                 for (int r = headerRow + 1; r <= lastRow; r++)
                 {
@@ -140,14 +169,30 @@ namespace InfraBIM.CulvertTool.Services
                     // Cột B: LyTrinh
                     item.LyTrinh = row.Cell(colLyTrinh).GetString().Trim();
 
-                    // Cột C: LoaiCong (CONG_TRON / CONG_HOP)
-                    string loai = row.Cell(colLoaiCong).GetString().Trim().ToUpperInvariant();
-                    item.LoaiCong = loai.Contains("HOP") ? "CONG_HOP" : "CONG_TRON";
+                    // Cột C: LoaiCong (Cống hộp / Cống tròn / Cống kỹ thuật)
+                    string loaiRaw = row.Cell(colLoaiCong).GetString().Trim();
+                    if (loaiRaw.ToUpperInvariant().Contains("KỸ THUẬT") || loaiRaw.ToUpperInvariant().Contains("KY THUAT"))
+                        item.LoaiCong = "Cống kỹ thuật";
+                    else if (loaiRaw.ToUpperInvariant().Contains("TRÒN") || loaiRaw.ToUpperInvariant().Contains("TRON") || loaiRaw.ToUpperInvariant().Contains("CT"))
+                        item.LoaiCong = "Cống tròn";
+                    else
+                        item.LoaiCong = "Cống hộp";
 
-                    // Cột D: SoCua
+                    // Cột D: CauKien (Đúc sẵn / Đổ tại chỗ)
+                    if (colCauKien > 0)
+                    {
+                        string ckRaw = row.Cell(colCauKien).GetString().Trim();
+                        item.CauKien = (ckRaw.ToUpperInvariant().Contains("ĐỔ") || ckRaw.ToUpperInvariant().Contains("DO")) ? "Đổ tại chỗ" : "Đúc sẵn";
+                    }
+                    else
+                    {
+                        item.CauKien = "Đúc sẵn";
+                    }
+
+                    // Cột SoCua
                     item.SoCua = ParseInt(row.Cell(colSoCua), 1);
 
-                    // Cột E: KhauDo
+                    // Cột KhauDo
                     item.KhauDo = row.Cell(colKhauDo).GetString().Trim();
 
                     // Cột F -> H: X1, Y1, Z1 (Thượng lưu - VN2000)
@@ -189,6 +234,16 @@ namespace InfraBIM.CulvertTool.Services
                     item.L_Ngam_San = ParseDouble(row.Cell(colL_Ngam), 0.30);
                     item.Khe_Ho_HN = ParseDouble(row.Cell(colKheHo), 0.05);
 
+                    // Cột GhiChu (Quyết định loại rải cống tự động)
+                    if (colGhiChu > 0)
+                    {
+                        item.GhiChu = row.Cell(colGhiChu).GetString().Trim();
+                    }
+                    if (string.IsNullOrEmpty(item.GhiChu))
+                    {
+                        item.GhiChu = item.DetermineCulvertType();
+                    }
+
                     // Mặc định khoảng cách tim cống đôi = 2.0m
                     item.KhoangCachTim = 2.0;
 
@@ -227,7 +282,7 @@ namespace InfraBIM.CulvertTool.Services
         }
 
         /// <summary>
-        /// Tạo file mẫu Excel chuẩn 21 cột với dữ liệu thực tế và tên cột B_HT1, B_HT2
+        /// Tạo file mẫu Excel chuẩn 23 cột với dữ liệu thực tế, Drop-down validation và cột GhiChu tự động
         /// </summary>
         public static void CreateSampleExcelTemplate(string filePath)
         {
@@ -235,13 +290,13 @@ namespace InfraBIM.CulvertTool.Services
             {
                 var ws = workbook.Worksheets.Add("DuLieuCongNgang");
 
-                // Headers chuẩn hóa (21 cột bao gồm B_HT1, B_HT2)
+                // Headers chuẩn hóa (23 cột bao gồm CauKien và GhiChu)
                 string[] headers = new[]
                 {
-                    "STT", "LyTrinh", "LoaiCong", "SoCua", "KhauDo",
+                    "STT", "LyTrinh", "LoaiCong", "CauKien", "SoCua", "KhauDo",
                     "X1", "Y1", "Z1", "X2", "Y2", "Z2",
                     "ChieuDai", "DoDoc", "GocXoay", "SoHopNoi",
-                    "KC_HN1", "KC_HN2", "B_HT1", "B_HT2", "L_Ngam_San", "Khe_Ho_HN"
+                    "KC_HN1", "KC_HN2", "B_HT1", "B_HT2", "L_Ngam_San", "Khe_Ho_HN", "GhiChu"
                 };
 
                 for (int col = 0; col < headers.Length; col++)
@@ -258,44 +313,44 @@ namespace InfraBIM.CulvertTool.Services
                     cell.Style.Border.OutsideBorderColor = XLColor.FromHtml("#38BDF8");
                 }
 
-                // Dòng mẫu 1: Cống tròn đôi 2D1500, TH2: 2 hộp nối (Km1+250.50)
+                // Dòng mẫu 1: Cống tròn đôi 2D1500 đúc sẵn (Km1+250.50)
                 object[] row1 = new object[]
                 {
-                    1, "Km1+250.50", "CONG_TRON", 2, "D1500",
+                    1, "Km1+250.50", "Cống tròn", "Đúc sẵn", 2, "D1500",
                     587234.120, 1194562.890, 265.140,
                     587248.560, 1194558.120, 264.840,
                     15.21, 2.00, 108.30, 2,
-                    5.38, 4.20, 1.50, 1.50, 0.30, 0.05
+                    5.38, 4.20, 1.50, 1.50, 0.30, 0.05, "Cống tròn đôi đúc sẵn"
                 };
 
-                // Dòng mẫu 2: Cống tròn đơn 1D1000, TH1: Không hộp nối (Km1+680.00)
+                // Dòng mẫu 2: Cống tròn đơn 1D1000 đúc sẵn (Km1+680.00)
                 object[] row2 = new object[]
                 {
-                    2, "Km1+680.00", "CONG_TRON", 1, "D1000",
+                    2, "Km1+680.00", "Cống tròn", "Đúc sẵn", 1, "D1000",
                     587420.350, 1194605.100, 266.500,
                     587432.800, 1194601.200, 266.250,
                     13.05, 1.92, 107.40, 0,
-                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05
+                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, "Cống tròn đúc sẵn"
                 };
 
-                // Dòng mẫu 3: Cống hộp đơn 2000x2000, TH1: Không hộp nối (Km2+100.20)
+                // Dòng mẫu 3: Cống hộp đơn 1.5x1.5 đúc sẵn (Km2+100.20)
                 object[] row3 = new object[]
                 {
-                    3, "Km2+100.20", "CONG_HOP", 1, "2000x2000",
+                    3, "Km2+100.20", "Cống hộp", "Đúc sẵn", 1, "1.5x1.5",
                     587750.800, 1194710.450, 268.000,
                     587768.200, 1194704.900, 267.650,
                     18.25, 1.92, 107.70, 0,
-                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05
+                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, "Cống hộp đúc sẵn"
                 };
 
-                // Dòng mẫu 4: Cống hộp đôi 2500x2000, TH2: 2 hộp nối (Km2+550.00)
+                // Dòng mẫu 4: Cống hộp đôi 2.5x2.0 đổ tại chỗ (Km2+550.00)
                 object[] row4 = new object[]
                 {
-                    4, "Km2+550.00", "CONG_HOP", 2, "2500x2000",
+                    4, "Km2+550.00", "Cống hộp", "Đổ tại chỗ", 2, "2.5x2.0",
                     588120.400, 1194830.150, 269.800,
                     588142.100, 1194823.300, 269.360,
                     22.75, 1.93, 107.50, 2,
-                    6.50, 5.80, 1.60, 1.60, 0.35, 0.05
+                    6.50, 5.80, 1.60, 1.60, 0.35, 0.05, "Cống hộp đổ tại chỗ"
                 };
 
                 for (int c = 0; c < row1.Length; c++) ws.Cell(2, c + 1).Value = XLCellValue.FromObject(row1[c]);
@@ -304,12 +359,32 @@ namespace InfraBIM.CulvertTool.Services
                 for (int c = 0; c < row4.Length; c++) ws.Cell(5, c + 1).Value = XLCellValue.FromObject(row4[c]);
 
                 // Định dạng hiển thị chuẩn không có dấu phẩy hàng nghìn (đúng chuẩn CAD/Revit 0.000)
-                ws.Range("F2:K100").Style.NumberFormat.Format = "0.000";
-                ws.Range("L2:N100").Style.NumberFormat.Format = "0.00";
-                ws.Range("P2:U100").Style.NumberFormat.Format = "0.00";
+                ws.Range("G2:L100").Style.NumberFormat.Format = "0.000";
+                ws.Range("M2:O100").Style.NumberFormat.Format = "0.00";
+                ws.Range("Q2:V100").Style.NumberFormat.Format = "0.00";
                 ws.Range("A2:A100").Style.NumberFormat.Format = "0";
-                ws.Range("D2:D100").Style.NumberFormat.Format = "0";
-                ws.Range("O2:O100").Style.NumberFormat.Format = "0";
+                ws.Range("E2:E100").Style.NumberFormat.Format = "0";
+                ws.Range("P2:P100").Style.NumberFormat.Format = "0";
+
+                // Thêm Data Validation Drop-down list
+                try
+                {
+                    // Cột C (LoaiCong): Cống hộp, Cống tròn, Cống kỹ thuật
+                    var valLoai = ws.Range("C2:C500").CreateDataValidation();
+                    valLoai.List("\"Cống hộp, Cống tròn, Cống kỹ thuật\"", true);
+
+                    // Cột D (CauKien): Đúc sẵn, Đổ tại chỗ
+                    var valCauKien = ws.Range("D2:D500").CreateDataValidation();
+                    valCauKien.List("\"Đúc sẵn, Đổ tại chỗ\"", true);
+
+                    // Cột W (GhiChu): Danh sách chủng loại rải tự động
+                    var valGhiChu = ws.Range("W2:W500").CreateDataValidation();
+                    valGhiChu.List("\"Cống hộp đúc sẵn, Cống tròn đúc sẵn, Cống tròn đôi đúc sẵn, Cống hộp đổ tại chỗ, Cống kỹ thuật\"", true);
+                }
+                catch
+                {
+                    // Tránh crash nếu ClosedXML version không hỗ trợ DataValidation
+                }
 
                 ws.SheetView.FreezeRows(1);
                 ws.Columns().AdjustToContents(15.0, 30.0);
@@ -322,13 +397,23 @@ namespace InfraBIM.CulvertTool.Services
             var list = new List<CulvertRowData>();
             if (!File.Exists(filePath)) return list;
 
-            var lines = File.ReadAllLines(filePath);
-            if (lines.Length <= 1) return list;
+            List<string> lines = new List<string>();
+            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var sr = new StreamReader(fs, System.Text.Encoding.UTF8))
+            {
+                string? l;
+                while ((l = sr.ReadLine()) != null)
+                {
+                    lines.Add(l);
+                }
+            }
+
+            if (lines.Count <= 1) return list;
 
             char delimiter = lines[0].Contains(';') ? ';' : ',';
 
             int headerLineIdx = 0;
-            for (int i = 0; i < Math.Min(10, lines.Length); i++)
+            for (int i = 0; i < Math.Min(10, lines.Count); i++)
             {
                 string upper = lines[i].ToUpperInvariant();
                 if (upper.Contains("STT") || upper.Contains("LYTRINH") || upper.Contains("LÝ TRÌNH") || upper.Contains("X1"))
@@ -355,32 +440,35 @@ namespace InfraBIM.CulvertTool.Services
                 {
                     if (colMap.TryGetValue(a, out int idx)) return idx;
                 }
-                return (defaultIdx < headerCols.Length) ? defaultIdx : -1;
+                return (defaultIdx >= 0 && defaultIdx < headerCols.Length) ? defaultIdx : -1;
             }
 
             int colSTT = FindCol(new[] { "STT" }, 0);
             int colLyTrinh = FindCol(new[] { "LYTRINH", "LÝ TRÌNH", "LY TRINH", "LÝ_TRÌNH" }, 1);
             int colLoaiCong = FindCol(new[] { "LOAICONG", "LOẠI CỐNG", "LOAI CONG", "LOAI_CONG" }, 2);
-            int colSoCua = FindCol(new[] { "SOCUA", "SỐ CỬA", "SO CUA", "SO_CUA" }, 3);
-            int colKhauDo = FindCol(new[] { "KHAUDO", "KHẨU ĐỘ", "KHAU DO", "KHAU_DO" }, 4);
-            int colX1 = FindCol(new[] { "X1" }, 5);
-            int colY1 = FindCol(new[] { "Y1" }, 6);
-            int colZ1 = FindCol(new[] { "Z1" }, 7);
-            int colX2 = FindCol(new[] { "X2" }, 8);
-            int colY2 = FindCol(new[] { "Y2" }, 9);
-            int colZ2 = FindCol(new[] { "Z2" }, 10);
-            int colChieuDai = FindCol(new[] { "CHIEUDAI", "CHIỀU DÀI", "CHIEU DAI", "L_CONG" }, 11);
-            int colDoDoc = FindCol(new[] { "DODOC", "ĐỘ DỐC", "DO DOC", "I_CONG" }, 12);
-            int colGocXoay = FindCol(new[] { "GOCXOAY", "GÓC XOAY", "GOC XOAY", "AZIMUTH" }, 13);
-            int colSoHopNoi = FindCol(new[] { "SOHOPNOI", "SỐ HỘP NỐI", "SO HOP NOI", "SO_HO_THU" }, 14);
-            int colKC_HN1 = FindCol(new[] { "KC_HN1", "DIST_HN1", "KC_HT1", "DIST_HT1" }, 15);
-            int colKC_HN2 = FindCol(new[] { "KC_HN2", "DIST_HN2", "KC_HT2", "DIST_HT2" }, 16);
-            int colB_HT1 = FindCol(new[] { "B_HT1", "B_HN1", "BERONG_HT1", "BERONG_HN1", "B HỐ THU 1" }, 17);
-            int colB_HT2 = FindCol(new[] { "B_HT2", "B_HN2", "BERONG_HT2", "BERONG_HN2", "B HỐ THU 2" }, 18);
-            int colL_Ngam = FindCol(new[] { "L_NGAM_SAN", "L_NGAM", "NGAM_SAN" }, 19);
-            int colKheHo = FindCol(new[] { "KHE_HO_HN", "KHE_HO", "KHEHO" }, 20);
+            int colCauKien = FindCol(new[] { "CAUKIEN", "CẤU KIỆN", "CAU KIEN", "PHUONG PHAP", "THI CONG", "DUC_SAN" }, -1);
+            int offsetCK = (colCauKien >= 0) ? 1 : 0;
+            int colSoCua = FindCol(new[] { "SOCUA", "SỐ CỬA", "SO CUA", "SO_CUA" }, 3 + offsetCK);
+            int colKhauDo = FindCol(new[] { "KHAUDO", "KHẨU ĐỘ", "KHAU DO", "KHAU_DO" }, 4 + offsetCK);
+            int colX1 = FindCol(new[] { "X1" }, 5 + offsetCK);
+            int colY1 = FindCol(new[] { "Y1" }, 6 + offsetCK);
+            int colZ1 = FindCol(new[] { "Z1" }, 7 + offsetCK);
+            int colX2 = FindCol(new[] { "X2" }, 8 + offsetCK);
+            int colY2 = FindCol(new[] { "Y2" }, 9 + offsetCK);
+            int colZ2 = FindCol(new[] { "Z2" }, 10 + offsetCK);
+            int colChieuDai = FindCol(new[] { "CHIEUDAI", "CHIỀU DÀI", "CHIEU DAI", "L_CONG" }, 11 + offsetCK);
+            int colDoDoc = FindCol(new[] { "DODOC", "ĐỘ DỐC", "DO DOC", "I_CONG" }, 12 + offsetCK);
+            int colGocXoay = FindCol(new[] { "GOCXOAY", "GÓC XOAY", "GOC XOAY", "AZIMUTH" }, 13 + offsetCK);
+            int colSoHopNoi = FindCol(new[] { "SOHOPNOI", "SỐ HỘP NỐI", "SO HOP NOI", "SO_HO_THU" }, 14 + offsetCK);
+            int colKC_HN1 = FindCol(new[] { "KC_HN1", "DIST_HN1", "KC_HT1", "DIST_HT1" }, 15 + offsetCK);
+            int colKC_HN2 = FindCol(new[] { "KC_HN2", "DIST_HN2", "KC_HT2", "DIST_HT2" }, 16 + offsetCK);
+            int colB_HT1 = FindCol(new[] { "B_HT1", "B_HN1", "BERONG_HT1", "BERONG_HN1", "B HỐ THU 1" }, 17 + offsetCK);
+            int colB_HT2 = FindCol(new[] { "B_HT2", "B_HN2", "BERONG_HT2", "BERONG_HN2", "B HỐ THU 2" }, 18 + offsetCK);
+            int colL_Ngam = FindCol(new[] { "L_NGAM_SAN", "L_NGAM", "NGAM_SAN" }, 19 + offsetCK);
+            int colKheHo = FindCol(new[] { "KHE_HO_HN", "KHE_HO", "KHEHO" }, 20 + offsetCK);
+            int colGhiChu = FindCol(new[] { "GHICHU", "GHI CHÚ", "GHI CHU", "LOAI RAI", "LOAIRAI" }, 21 + offsetCK);
 
-            for (int r = headerLineIdx + 1; r < lines.Length; r++)
+            for (int r = headerLineIdx + 1; r < lines.Count; r++)
             {
                 string line = lines[r].Trim();
                 if (string.IsNullOrWhiteSpace(line)) continue;
@@ -396,12 +484,27 @@ namespace InfraBIM.CulvertTool.Services
                 item.STT = int.TryParse(sttStr, out int sttVal) ? sttVal : (r - headerLineIdx);
                 item.LyTrinh = lyTrinhStr;
 
-                string loai = GetCell(colLoaiCong).ToUpperInvariant();
-                item.LoaiCong = loai.Contains("HOP") ? "CONG_HOP" : "CONG_TRON";
+                string loaiRaw = GetCell(colLoaiCong);
+                if (loaiRaw.ToUpperInvariant().Contains("KỸ THUẬT") || loaiRaw.ToUpperInvariant().Contains("KY THUAT"))
+                    item.LoaiCong = "Cống kỹ thuật";
+                else if (loaiRaw.ToUpperInvariant().Contains("TRÒN") || loaiRaw.ToUpperInvariant().Contains("TRON") || loaiRaw.ToUpperInvariant().Contains("CT"))
+                    item.LoaiCong = "Cống tròn";
+                else
+                    item.LoaiCong = "Cống hộp";
+
+                if (colCauKien >= 0)
+                {
+                    string ckRaw = GetCell(colCauKien);
+                    item.CauKien = (ckRaw.ToUpperInvariant().Contains("ĐỔ") || ckRaw.ToUpperInvariant().Contains("DO")) ? "Đổ tại chỗ" : "Đúc sẵn";
+                }
+                else
+                {
+                    item.CauKien = "Đúc sẵn";
+                }
 
                 item.SoCua = int.TryParse(GetCell(colSoCua), out int sc) ? sc : 1;
                 item.KhauDo = GetCell(colKhauDo);
-                if (string.IsNullOrEmpty(item.KhauDo)) item.KhauDo = item.LoaiCong.Contains("HOP") ? "1.5x1.5" : "D1000";
+                if (string.IsNullOrEmpty(item.KhauDo)) item.KhauDo = item.LoaiCong.Contains("hộp") ? "1.5x1.5" : "D1000";
 
                 item.X1 = ParseDoubleString(GetCell(colX1), 0);
                 item.Y1 = ParseDoubleString(GetCell(colY1), 0);
@@ -432,6 +535,16 @@ namespace InfraBIM.CulvertTool.Services
                 item.L_Ngam_San = ParseDoubleString(GetCell(colL_Ngam), 0.30);
                 item.Khe_Ho_HN = ParseDoubleString(GetCell(colKheHo), 0.05);
 
+                if (colGhiChu >= 0)
+                {
+                    item.GhiChu = GetCell(colGhiChu);
+                }
+                if (string.IsNullOrEmpty(item.GhiChu))
+                {
+                    item.GhiChu = item.DetermineCulvertType();
+                }
+
+                item.KhoangCachTim = 2.0;
                 list.Add(item);
             }
 

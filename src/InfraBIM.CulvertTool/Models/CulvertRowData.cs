@@ -10,9 +10,10 @@ namespace InfraBIM.CulvertTool.Models
         // Cột A -> E: Thông tin chung
         public int STT { get; set; }
         public string LyTrinh { get; set; } = string.Empty;
-        public string LoaiCong { get; set; } = "CONG_TRON"; // CONG_TRON / CONG_HOP
+        public string LoaiCong { get; set; } = "Cống hộp"; // Cống hộp / Cống tròn / Cống kỹ thuật
+        public string CauKien { get; set; } = "Đúc sẵn";   // Đúc sẵn / Đổ tại chỗ
         public int SoCua { get; set; } = 1;
-        public string KhauDo { get; set; } = "D1500";
+        public string KhauDo { get; set; } = "1.5x1.5";
 
         // Cột F -> H: Tọa độ sân cống 1 (Thượng lưu - VN2000)
         public double X1 { get; set; }
@@ -69,6 +70,44 @@ namespace InfraBIM.CulvertTool.Models
 
         // Bổ sung: Khoảng cách giữa 2 tim cống tròn đôi (m)
         public double KhoangCachTim { get; set; } = 2.0;
+
+        // Cột cuối: Ghi chú loại cống rải tự động
+        public string GhiChu { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Tự động xác định loại cống rải chính xác theo cấu trúc thiết lập
+        /// </summary>
+        public string DetermineCulvertType()
+        {
+            string gc = (GhiChu ?? string.Empty).Trim().ToUpperInvariant();
+            if (!string.IsNullOrEmpty(gc))
+            {
+                if (gc.Contains("KỸ THUẬT") || gc.Contains("KY THUAT")) return "CỐNG KỸ THUẬT";
+                if (gc.Contains("TRÒN ĐÔI") || gc.Contains("TRON DOI") || gc.Contains("ĐÔI")) return "CỐNG TRÒN ĐÔI";
+                if (gc.Contains("TRÒN") || gc.Contains("TRON")) return "CỐNG TRÒN ĐƠN";
+                if (gc.Contains("ĐỔ TẠI CHỖ") || gc.Contains("DO TAI CHO")) return "CỐNG HỘP ĐỔ TẠI CHỖ";
+                if (gc.Contains("HỘP ĐÚC SẴN") || gc.Contains("HOP DUC SAN")) return "CỐNG HỘP ĐÚC SẴN";
+                if (gc.Contains("HỘP") || gc.Contains("HOP")) return (SoCua > 1) ? "CỐNG HỘP ĐỔ TẠI CHỖ" : "CỐNG HỘP ĐÚC SẴN";
+            }
+
+            string lc = (LoaiCong ?? string.Empty).Trim().ToUpperInvariant();
+            string ck = (CauKien ?? string.Empty).Trim().ToUpperInvariant();
+
+            if (lc.Contains("KỸ THUẬT") || lc.Contains("KY THUAT")) return "CỐNG KỸ THUẬT";
+
+            if (lc.Contains("TRON") || lc.Contains("TRÒN") || lc.Contains("CT"))
+            {
+                if (SoCua > 1) return "CỐNG TRÒN ĐÔI";
+                return "CỐNG TRÒN ĐƠN";
+            }
+
+            // Mặc định: cống hộp
+            if (SoCua > 1) return "CỐNG HỘP ĐỔ TẠI CHỖ";
+            if (ck.Contains("ĐỔ") || ck.Contains("DO") || ck.Contains("TẠI CHỖ")) return "CỐNG HỘP ĐỔ TẠI CHỖ";
+            return "CỐNG HỘP ĐÚC SẴN";
+        }
+
+        public string ResolvedCulvertType => DetermineCulvertType();
 
         // Trạng thái kiểm tra (Validation)
         public bool IsSelected { get; set; } = true;

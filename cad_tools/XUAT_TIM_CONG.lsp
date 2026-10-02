@@ -1,9 +1,14 @@
 ;;; ==========================================================================
-;;; CHUONG TRINH AUTOLISP: XUAT TIM CONG SANG CSV (DV_TOOL_HTKT - PHIEN BAN V3.0)
+;;; CHUONG TRINH AUTOLISP: XUAT TIM CONG SANG CSV (DV_TOOL_HTKT - PHIEN BAN V4.0)
 ;;; Tac gia: DV_TOOL_HTKT
 ;;; Muc dich: Trich xuat toa do VN2000 (X1, Y1, Z1, X2, Y2, Z2), Chieu dai,
-;;;           Goc xoay, Do doc va du lieu 21 COT CHUAN cho Add-in Revit
+;;;           Goc xoay, Do doc va du lieu 23 COT CHUAN cho Add-in Revit
 ;;; Dinh dang so: So thuc thap phan chuan khong dau phay hang nghin (vd: 580860.018, 1477321.694)
+;;; 23 COT CHUAN:
+;;;   STT, LyTrinh, LoaiCong, CauKien, SoCua, KhauDo,
+;;;   X1, Y1, Z1, X2, Y2, Z2,
+;;;   ChieuDai, DoDoc, GocXoay, SoHopNoi,
+;;;   KC_HN1, KC_HN2, B_HT1, B_HT2, L_Ngam_San, Khe_Ho_HN, GhiChu
 ;;; Lenh su dung: 
 ;;;   - XTC  hoac XUAT_TIM_CONG : Pick 2 diem dau cong (Khuyen dung)
 ;;;   - XTCL                    : Click chon duong Line/Polyline tim cong co san
@@ -15,7 +20,8 @@
 
 ;; Bien toan cuc quan ly file va cai dat mac dinh
 (setq *xtc_file* nil)
-(if (null *xtc_def_loaicong*) (setq *xtc_def_loaicong* "CONG_HOP"))
+(if (null *xtc_def_loaicong*) (setq *xtc_def_loaicong* "Cống hộp"))
+(if (null *xtc_def_caukien*)  (setq *xtc_def_caukien* "Đúc sẵn"))
 (if (null *xtc_def_socua*)    (setq *xtc_def_socua* 1))
 (if (null *xtc_def_khaudo*)   (setq *xtc_def_khaudo* "1.5x1.5"))
 (if (null *xtc_def_sohn*)     (setq *xtc_def_sohn* 2))
@@ -53,7 +59,7 @@
   dwg_dir
 )
 
-;; Ham lay duong dan CSV chuan 21 cot
+;; Ham lay duong dan CSV chuan 23 cot
 (defun get_safe_csv_path (/ dir def_path f)
   (setq dir (get_csv_dir))
   (setq def_path (strcat dir "DU_LIEU_CONG_NAP_TOOL.csv"))
@@ -71,14 +77,14 @@
   )
 )
 
-;; Khoi tao Header chuan 21 COT
+;; Khoi tao Header chuan 23 COT
 (defun init_csv_file (csv_path / f)
   (if (not (findfile csv_path))
     (progn
       (setq f (open csv_path "w"))
       (if f
         (progn
-          (write-line "STT,LyTrinh,LoaiCong,SoCua,KhauDo,X1,Y1,Z1,X2,Y2,Z2,ChieuDai,DoDoc,GocXoay,SoHopNoi,KC_HN1,KC_HN2,B_HT1,B_HT2,L_Ngam_San,Khe_Ho_HN" f)
+          (write-line "STT,LyTrinh,LoaiCong,CauKien,SoCua,KhauDo,X1,Y1,Z1,X2,Y2,Z2,ChieuDai,DoDoc,GocXoay,SoHopNoi,KC_HN1,KC_HN2,B_HT1,B_HT2,L_Ngam_San,Khe_Ho_HN,GhiChu" f)
           (close f)
         )
       )
@@ -120,12 +126,12 @@
         (setq ch (substr raw_str i 1))
         (cond
           ((and (= ch "\\") (<= (1+ i) len) (= (strcase (substr raw_str (1+ i) 1)) "P"))
-           (setq res (strcat res " "))
-           (setq i (1+ i)))
+            (setq res (strcat res " "))
+            (setq i (1+ i)))
           ((or (= ch ",") (= ch ";") (= ch "\"") (= ch "}") (= ch "{"))
-           (setq res (strcat res " ")))
+            (setq res (strcat res " ")))
           (T
-           (setq res (strcat res ch)))
+            (setq res (strcat res ch)))
         )
         (setq i (1+ i))
       )
@@ -143,13 +149,13 @@
       (setq typ (cdr (assoc 0 ed)))
       (cond
         ((or (= typ "TEXT") (= typ "MTEXT"))
-         (setq txt_val (cdr (assoc 1 ed))))
+          (setq txt_val (cdr (assoc 1 ed))))
         ((= typ "LEADER")
-         (setq ref_ent (cdr (assoc 340 ed)))
-         (if ref_ent
-           (setq txt_val (cdr (assoc 1 (entget ref_ent))))
-           (setq txt_val nil)
-         ))
+          (setq ref_ent (cdr (assoc 340 ed)))
+          (if ref_ent
+            (setq txt_val (cdr (assoc 1 (entget ref_ent))))
+            (setq txt_val nil)
+          ))
         (T (setq txt_val nil))
       )
     )
@@ -175,22 +181,41 @@
 (defun auto_detect_culvert_info (txt / up)
   (setq up (strcase txt))
   (cond
+    ((or (vl-string-search "KY THUAT" up) (vl-string-search "KỸ THUẬT" up))
+      (setq *xtc_def_loaicong* "Cống kỹ thuật"))
     ((or (vl-string-search "HOP" up) (vl-string-search "HỘP" up) (vl-string-search "CH" up) (vl-string-search "X" up))
-     (setq *xtc_def_loaicong* "CONG_HOP"))
+      (setq *xtc_def_loaicong* "Cống hộp"))
     ((or (vl-string-search "TRON" up) (vl-string-search "TRÒN" up) (vl-string-search "CT" up) (vl-string-search "D" up))
-     (setq *xtc_def_loaicong* "CONG_TRON"))
+      (setq *xtc_def_loaicong* "Cống tròn"))
   )
   (if (or (vl-string-search "2D" up) (vl-string-search "2X" up) (vl-string-search "ĐÔI" up) (vl-string-search "DOI" up))
     (setq *xtc_def_socua* 2)
+    (setq *xtc_def_socua* 1)
+  )
+)
+
+;; Ham tinh toan GhiChu loai cong tu dong theo dung Rule nguoi dung
+(defun determine_ghichu (loai_c cau_k so_c / res)
+  (cond
+    ((= loai_c "Cống kỹ thuật")
+      "Cống kỹ thuật")
+    ((= loai_c "Cống tròn")
+      (if (> so_c 1) "Cống tròn đôi đúc sẵn" "Cống tròn đúc sẵn"))
+    (T ; Cống hộp
+      (if (> so_c 1)
+        "Cống hộp đổ tại chỗ"
+        (if (= cau_k "Đổ tại chỗ") "Cống hộp đổ tại chỗ" "Cống hộp đúc sẵn")
+      )
+    )
   )
 )
 
 ;; ==========================================================================
-;; LENH CHINH: XTC (hoac XUAT_TIM_CONG) - Pick 2 diem dau cong (Chuan 21 cot)
+;; LENH CHINH: XTC (hoac XUAT_TIM_CONG) - Pick 2 diem dau cong (Chuan 23 cot)
 ;; ==========================================================================
 (defun c:XTC (/ old_error old_cmdecho old_osmode csv_path stt cont
                 p1 p2 x1 y1 z1 x2 y2 z2 len_c ang do_doc ent txt_raw ly_trinh
-                loai_cong so_cua khau_do so_hn b_ht1 b_ht2 l_ngam khe_ho row_str)
+                loai_cong cau_kien so_cua khau_do so_hn b_ht1 b_ht2 l_ngam khe_ho ghi_chu row_str)
   (setq old_error *error*)
   (setq *error* xtc_err)
   (setq old_cmdecho (getvar "CMDECHO"))
@@ -201,7 +226,7 @@
   (setq stt (get_current_stt csv_path))
 
   (princ "\n==========================================================================")
-  (princ "\n>>> XUAT TIM CONG SANG CSV CHUAN 21 COT (DV_TOOL_HTKT V3.0) <<<")
+  (princ "\n>>> XUAT TIM CONG SANG CSV CHUAN 23 COT (DV_TOOL_HTKT V4.0) <<<")
   (princ (strcat "\n>>> File luu tai: " csv_path))
   (princ "\n>>> DINH DANG TOA DO: Khong dau phay hang nghin (Chuan 0.000 nap thang vao Revit)")
   (princ "\n>>> Thao tac:")
@@ -263,9 +288,10 @@
               )
             )
 
-            ;; Cac tham so mac dinh 21 cot
+            ;; Cac tham so mac dinh 23 cot
             (setq loai_cong *xtc_def_loaicong*)
             (setq so_cua *xtc_def_socua*)
+            (setq cau_kien (if (and (= loai_cong "Cống hộp") (> so_cua 1)) "Đổ tại chỗ" *xtc_def_caukien*))
             (setq khau_do *xtc_def_khaudo*)
             (setq so_hn *xtc_def_sohn*)
             (setq b_ht1 *xtc_def_bht1*)
@@ -277,11 +303,15 @@
             (setq kc_hn1 (if (> so_hn 0) 0.38 0.0))
             (setq kc_hn2 (if (> so_hn 1) 0.38 0.0))
 
-            ;; Tao chuoi du lieu 21 COT CHUAN (rtos voi che do 2 la thap phan KHONG DAU PHAY HANG NGHIN)
+            ;; Ghi chu loai cong tu dong
+            (setq ghi_chu (determine_ghichu loai_cong cau_kien so_cua))
+
+            ;; Tao chuoi du lieu 23 COT CHUAN (rtos voi che do 2 la thap phan KHONG DAU PHAY HANG NGHIN)
             (setq row_str (strcat
               (itoa stt) ","
               ly_trinh ","
               loai_cong ","
+              cau_kien ","
               (itoa so_cua) ","
               khau_do ","
               (rtos x1 2 3) ","
@@ -299,12 +329,14 @@
               (rtos b_ht1 2 2) ","
               (rtos b_ht2 2 2) ","
               (rtos l_ngam 2 2) ","
-              (rtos khe_ho 2 2)
+              (rtos khe_ho 2 2) ","
+              ghi_chu
             ))
 
             ;; Ghi ra file
             (if (append_to_csv csv_path row_str)
-              (princ (strcat "\n==> [OK DA LUU 21 COT]: " ly_trinh
+              (princ (strcat "\n==> [OK DA LUU 23 COT]: " ly_trinh
+                             " | " ghi_chu
                              " | P1=(" (rtos x1 2 3) "; " (rtos y1 2 3) ")"
                              " -> P2=(" (rtos x2 2 3) "; " (rtos y2 2 3) ")"
                              " | L=" (rtos len_c 2 2) "m"))
@@ -320,7 +352,7 @@
 
   (if old_cmdecho (setvar "CMDECHO" old_cmdecho))
   (setq *error* old_error)
-  (princ (strcat "\n\n>>> HOAN TAT! Da luu 21 cot tai: " csv_path " <<<"))
+  (princ (strcat "\n\n>>> HOAN TAT! Da luu 23 cot tai: " csv_path " <<<"))
   (princ "\n>>> Go lenh 'XTC_OPEN' de mo xem file CSV ngay trong Excel.")
   (princ)
 )
@@ -329,7 +361,8 @@
 ;; LENH PHU: XTCL - Click chon duong LINE/POLYLINE tim cong co san
 ;; ==========================================================================
 (defun c:XTCL (/ old_error old_cmdecho csv_path stt ent ed typ obj
-                 p1 p2 x1 y1 z1 x2 y2 z2 len_c ang ent_txt txt_raw ly_trinh row_str)
+                 p1 p2 x1 y1 z1 x2 y2 z2 len_c ang ent_txt txt_raw ly_trinh
+                 loai_cong cau_kien so_cua ghi_chu row_str)
   (setq old_error *error*)
   (setq *error* xtc_err)
   (setq old_cmdecho (getvar "CMDECHO"))
@@ -347,63 +380,70 @@
       (setq typ (cdr (assoc 0 ed)))
       (cond
         ((or (= typ "LINE") (= typ "LWPOLYLINE") (= typ "POLYLINE"))
-         (setq obj (vlax-ename->vla-object (car ent)))
-         (setq p1 (vlax-curve-getStartPoint obj))
-         (setq p2 (vlax-curve-getEndPoint obj))
-         (setq x1 (car p1))
-         (setq y1 (cadr p1))
-         (setq z1 (if (caddr p1) (caddr p1) 0.0))
-         (setq x2 (car p2))
-         (setq y2 (cadr p2))
-         (setq z2 (if (caddr p2) (caddr p2) 0.0))
-         (setq len_c (vlax-curve-getDistAtParam obj (vlax-curve-getEndParam obj)))
-         (setq ang (r2d (angle (list x1 y1) (list x2 y2))))
+          (setq obj (vlax-ename->vla-object (car ent)))
+          (setq p1 (vlax-curve-getStartPoint obj))
+          (setq p2 (vlax-curve-getEndPoint obj))
+          (setq x1 (car p1))
+          (setq y1 (cadr p1))
+          (setq z1 (if (caddr p1) (caddr p1) 0.0))
+          (setq x2 (car p2))
+          (setq y2 (cadr p2))
+          (setq z2 (if (caddr p2) (caddr p2) 0.0))
+          (setq len_c (vlax-curve-getDistAtParam obj (vlax-curve-getEndParam obj)))
+          (setq ang (r2d (angle (list x1 y1) (list x2 y2))))
 
-         (princ "\nChon TEXT Ly trinh tren ban ve (hoac ENTER de go tay): ")
-         (setq ent_txt (entsel))
-         (if ent_txt
-           (setq txt_raw (get_text_from_entity (car ent_txt)))
-           (setq txt_raw nil)
-         )
-         (if (or (null txt_raw) (= txt_raw ""))
-           (progn
-             (setq ly_trinh (getstring T (strcat "\nNhap ly trinh [Km " (itoa stt) "+000]: ")))
-             (if (= ly_trinh "") (setq ly_trinh (strcat "Km " (itoa stt) "+000")))
-           )
-           (progn
-             (setq ly_trinh (clean_text_value txt_raw))
-             (auto_detect_culvert_info txt_raw)
-           )
-         )
+          (princ "\nChon TEXT Ly trinh tren ban ve (hoac ENTER de go tay): ")
+          (setq ent_txt (entsel))
+          (if ent_txt
+            (setq txt_raw (get_text_from_entity (car ent_txt)))
+            (setq txt_raw nil)
+          )
+          (if (or (null txt_raw) (= txt_raw ""))
+            (progn
+              (setq ly_trinh (getstring T (strcat "\nNhap ly trinh [Km " (itoa stt) "+000]: ")))
+              (if (= ly_trinh "") (setq ly_trinh (strcat "Km " (itoa stt) "+000")))
+            )
+            (progn
+              (setq ly_trinh (clean_text_value txt_raw))
+              (auto_detect_culvert_info txt_raw)
+            )
+          )
 
-         (setq row_str (strcat
-           (itoa stt) ","
-           ly_trinh ","
-           *xtc_def_loaicong* ","
-           (itoa *xtc_def_socua*) ","
-           *xtc_def_khaudo* ","
-           (rtos x1 2 3) ","
-           (rtos y1 2 3) ","
-           (rtos z1 2 3) ","
-           (rtos x2 2 3) ","
-           (rtos y2 2 3) ","
-           (rtos z2 2 3) ","
-           (rtos len_c 2 2) ","
-           "0.45,"
-           (rtos ang 2 2) ","
-           (itoa *xtc_def_sohn*) ","
-           "0.38,0.38,"
-           (rtos *xtc_def_bht1* 2 2) ","
-           (rtos *xtc_def_bht2* 2 2) ","
-           (rtos *xtc_def_lngam* 2 2) ","
-           (rtos *xtc_def_kheho* 2 2)
-         ))
+          (setq loai_cong *xtc_def_loaicong*)
+          (setq so_cua *xtc_def_socua*)
+          (setq cau_kien (if (and (= loai_cong "Cống hộp") (> so_cua 1)) "Đổ tại chỗ" *xtc_def_caukien*))
+          (setq ghi_chu (determine_ghichu loai_cong cau_kien so_cua))
 
-         (append_to_csv csv_path row_str)
-         (princ (strcat "\n==> [OK DA LUU 21 COT]: " ly_trinh " | L=" (rtos len_c 2 2) "m"))
+          (setq row_str (strcat
+            (itoa stt) ","
+            ly_trinh ","
+            loai_cong ","
+            cau_kien ","
+            (itoa so_cua) ","
+            *xtc_def_khaudo* ","
+            (rtos x1 2 3) ","
+            (rtos y1 2 3) ","
+            (rtos z1 2 3) ","
+            (rtos x2 2 3) ","
+            (rtos y2 2 3) ","
+            (rtos z2 2 3) ","
+            (rtos len_c 2 2) ","
+            "0.45,"
+            (rtos ang 2 2) ","
+            (itoa *xtc_def_sohn*) ","
+            "0.38,0.38,"
+            (rtos *xtc_def_bht1* 2 2) ","
+            (rtos *xtc_def_bht2* 2 2) ","
+            (rtos *xtc_def_lngam* 2 2) ","
+            (rtos *xtc_def_kheho* 2 2) ","
+            ghi_chu
+          ))
+
+          (append_to_csv csv_path row_str)
+          (princ (strcat "\n==> [OK DA LUU 23 COT]: " ly_trinh " | " ghi_chu " | L=" (rtos len_c 2 2) "m"))
         )
         (T
-         (princ (strcat "\n[CHU Y]: Doi tuong ban chon la " typ " khong phai Line/Polyline!"))
+          (princ (strcat "\n[CHU Y]: Doi tuong ban chon la " typ " khong phai Line/Polyline!"))
         )
       )
     )
@@ -446,7 +486,7 @@
     )
     (progn
       (init_csv_file csv_path)
-      (princ "\nDa tao moi file CSV 21 cot!")
+      (princ "\nDa tao moi file CSV 23 cot!")
     )
   )
   (princ)
@@ -459,8 +499,8 @@
 (defun c:LAYTOADO () (c:XTC))
 
 (princ "\n==========================================================================")
-(princ "\n  DA LOAD THANH CONG LISP XUAT TIM CONG V3.0 (21 COT CHUAN DV_TOOL_HTKT)!")
-(princ "\n  --> Lenh 'XTC'       : Pick 2 diem tim cong xuat 21 cot (Khuyen dung)")
+(princ "\n  DA LOAD THANH CONG LISP XUAT TIM CONG V4.0 (23 COT CHUAN DV_TOOL_HTKT)!")
+(princ "\n  --> Lenh 'XTC'       : Pick 2 diem tim cong xuat 23 cot (Khuyen dung)")
 (princ "\n  --> Lenh 'XTCL'      : Click chon Polyline/Line co san")
 (princ "\n  --> Lenh 'XTC_OPEN'  : Mo file CSV kiem tra ngay tren Excel")
 (princ "\n  --> Lenh 'XTC_RESET' : Khoi tao lai file tu STT 1")
