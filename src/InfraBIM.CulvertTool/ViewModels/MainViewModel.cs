@@ -600,8 +600,8 @@ namespace InfraBIM.CulvertTool.ViewModels
         {
             var dlg = new OpenFileDialog
             {
-                Filter = "Excel Files (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|All Files (*.*)|*.*",
-                Title = "Chọn bảng dữ liệu cống ngang Excel"
+                Filter = "Tất cả bảng tính (*.xlsx;*.xlsm;*.csv)|*.xlsx;*.xlsm;*.csv|Excel Files (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|CSV Files (*.csv)|*.csv|All Files (*.*)|*.*",
+                Title = "Chọn bảng dữ liệu cống ngang Excel hoặc CSV"
             };
 
             if (dlg.ShowDialog() == true)

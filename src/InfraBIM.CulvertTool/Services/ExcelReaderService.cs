@@ -17,6 +17,12 @@ namespace InfraBIM.CulvertTool.Services
             var sheetNames = new List<string>();
             if (!File.Exists(filePath)) return sheetNames;
 
+            if (filePath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                sheetNames.Add(Path.GetFileNameWithoutExtension(filePath));
+                return sheetNames;
+            }
+
             using (var workbook = new XLWorkbook(filePath))
             {
                 foreach (var ws in workbook.Worksheets)
@@ -28,12 +34,17 @@ namespace InfraBIM.CulvertTool.Services
         }
 
         /// <summary>
-        /// Đọc bảng dữ liệu cống từ Sheet được chỉ định
+        /// Đọc bảng dữ liệu cống từ Sheet được chỉ định (hoặc từ file CSV)
         /// </summary>
         public static List<CulvertRowData> ReadCulvertRows(string filePath, string sheetName)
         {
             var list = new List<CulvertRowData>();
             if (!File.Exists(filePath)) return list;
+
+            if (filePath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                return ReadCsvRows(filePath);
+            }
 
             using (var workbook = new XLWorkbook(filePath))
             {
@@ -292,10 +303,139 @@ namespace InfraBIM.CulvertTool.Services
                 for (int c = 0; c < row3.Length; c++) ws.Cell(4, c + 1).Value = XLCellValue.FromObject(row3[c]);
                 for (int c = 0; c < row4.Length; c++) ws.Cell(5, c + 1).Value = XLCellValue.FromObject(row4[c]);
 
+                // Định dạng hiển thị chuẩn không có dấu phẩy hàng nghìn (đúng chuẩn CAD/Revit 0.000)
+                ws.Range("F2:K100").Style.NumberFormat.Format = "0.000";
+                ws.Range("L2:N100").Style.NumberFormat.Format = "0.00";
+                ws.Range("P2:U100").Style.NumberFormat.Format = "0.00";
+                ws.Range("A2:A100").Style.NumberFormat.Format = "0";
+                ws.Range("D2:D100").Style.NumberFormat.Format = "0";
+                ws.Range("O2:O100").Style.NumberFormat.Format = "0";
+
                 ws.SheetView.FreezeRows(1);
                 ws.Columns().AdjustToContents(15.0, 30.0);
                 workbook.SaveAs(filePath);
             }
+        }
+
+        public static List<CulvertRowData> ReadCsvRows(string filePath)
+        {
+            var list = new List<CulvertRowData>();
+            if (!File.Exists(filePath)) return list;
+
+            var lines = File.ReadAllLines(filePath);
+            if (lines.Length <= 1) return list;
+
+            char delimiter = lines[0].Contains(';') ? ';' : ',';
+
+            int headerLineIdx = 0;
+            for (int i = 0; i < Math.Min(10, lines.Length); i++)
+            {
+                string upper = lines[i].ToUpperInvariant();
+                if (upper.Contains("STT") || upper.Contains("LYTRINH") || upper.Contains("LÝ TRÌNH") || upper.Contains("X1"))
+                {
+                    headerLineIdx = i;
+                    break;
+                }
+            }
+
+            var headerCols = lines[headerLineIdx].Split(delimiter);
+            var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int c = 0; c < headerCols.Length; c++)
+            {
+                string hName = headerCols[c].Trim().Trim('"');
+                if (!string.IsNullOrEmpty(hName) && !colMap.ContainsKey(hName))
+                {
+                    colMap[hName] = c;
+                }
+            }
+
+            int FindCol(string[] aliases, int defaultIdx)
+            {
+                foreach (var a in aliases)
+                {
+                    if (colMap.TryGetValue(a, out int idx)) return idx;
+                }
+                return (defaultIdx < headerCols.Length) ? defaultIdx : -1;
+            }
+
+            int colSTT = FindCol(new[] { "STT" }, 0);
+            int colLyTrinh = FindCol(new[] { "LYTRINH", "LÝ TRÌNH", "LY TRINH", "LÝ_TRÌNH" }, 1);
+            int colLoaiCong = FindCol(new[] { "LOAICONG", "LOẠI CỐNG", "LOAI CONG", "LOAI_CONG" }, 2);
+            int colSoCua = FindCol(new[] { "SOCUA", "SỐ CỬA", "SO CUA", "SO_CUA" }, 3);
+            int colKhauDo = FindCol(new[] { "KHAUDO", "KHẨU ĐỘ", "KHAU DO", "KHAU_DO" }, 4);
+            int colX1 = FindCol(new[] { "X1" }, 5);
+            int colY1 = FindCol(new[] { "Y1" }, 6);
+            int colZ1 = FindCol(new[] { "Z1" }, 7);
+            int colX2 = FindCol(new[] { "X2" }, 8);
+            int colY2 = FindCol(new[] { "Y2" }, 9);
+            int colZ2 = FindCol(new[] { "Z2" }, 10);
+            int colChieuDai = FindCol(new[] { "CHIEUDAI", "CHIỀU DÀI", "CHIEU DAI", "L_CONG" }, 11);
+            int colDoDoc = FindCol(new[] { "DODOC", "ĐỘ DỐC", "DO DOC", "I_CONG" }, 12);
+            int colGocXoay = FindCol(new[] { "GOCXOAY", "GÓC XOAY", "GOC XOAY", "AZIMUTH" }, 13);
+            int colSoHopNoi = FindCol(new[] { "SOHOPNOI", "SỐ HỘP NỐI", "SO HOP NOI", "SO_HO_THU" }, 14);
+            int colKC_HN1 = FindCol(new[] { "KC_HN1", "DIST_HN1", "KC_HT1", "DIST_HT1" }, 15);
+            int colKC_HN2 = FindCol(new[] { "KC_HN2", "DIST_HN2", "KC_HT2", "DIST_HT2" }, 16);
+            int colB_HT1 = FindCol(new[] { "B_HT1", "B_HN1", "BERONG_HT1", "BERONG_HN1", "B HỐ THU 1" }, 17);
+            int colB_HT2 = FindCol(new[] { "B_HT2", "B_HN2", "BERONG_HT2", "BERONG_HN2", "B HỐ THU 2" }, 18);
+            int colL_Ngam = FindCol(new[] { "L_NGAM_SAN", "L_NGAM", "NGAM_SAN" }, 19);
+            int colKheHo = FindCol(new[] { "KHE_HO_HN", "KHE_HO", "KHEHO" }, 20);
+
+            for (int r = headerLineIdx + 1; r < lines.Length; r++)
+            {
+                string line = lines[r].Trim();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var cells = line.Split(delimiter);
+                string GetCell(int idx) => (idx >= 0 && idx < cells.Length) ? cells[idx].Trim().Trim('"') : string.Empty;
+
+                string sttStr = GetCell(colSTT);
+                string lyTrinhStr = GetCell(colLyTrinh);
+                if (string.IsNullOrEmpty(sttStr) && string.IsNullOrEmpty(lyTrinhStr)) continue;
+
+                var item = new CulvertRowData();
+                item.STT = int.TryParse(sttStr, out int sttVal) ? sttVal : (r - headerLineIdx);
+                item.LyTrinh = lyTrinhStr;
+
+                string loai = GetCell(colLoaiCong).ToUpperInvariant();
+                item.LoaiCong = loai.Contains("HOP") ? "CONG_HOP" : "CONG_TRON";
+
+                item.SoCua = int.TryParse(GetCell(colSoCua), out int sc) ? sc : 1;
+                item.KhauDo = GetCell(colKhauDo);
+                if (string.IsNullOrEmpty(item.KhauDo)) item.KhauDo = item.LoaiCong.Contains("HOP") ? "1.5x1.5" : "D1000";
+
+                item.X1 = ParseDoubleString(GetCell(colX1), 0);
+                item.Y1 = ParseDoubleString(GetCell(colY1), 0);
+                item.Z1 = ParseDoubleString(GetCell(colZ1), 0);
+
+                item.X2 = ParseDoubleString(GetCell(colX2), 0);
+                item.Y2 = ParseDoubleString(GetCell(colY2), 0);
+                item.Z2 = ParseDoubleString(GetCell(colZ2), 0);
+
+                double len2D = item.TinhChieuDai2D();
+                item.ChieuDai = ParseDoubleString(GetCell(colChieuDai), len2D);
+
+                double docTinhToan = item.TinhDoDocThucTe();
+                item.DoDoc = ParseDoubleString(GetCell(colDoDoc), docTinhToan);
+
+                double gocNhap = ParseDoubleString(GetCell(colGocXoay), 0);
+                item.GocXoay = (gocNhap > 0.001) ? gocNhap : item.TinhGocAzimuthDeg();
+
+                item.SoHopNoi = int.TryParse(GetCell(colSoHopNoi), out int shn) ? shn : 0;
+                item.KC_HN1 = ParseDoubleString(GetCell(colKC_HN1), 0);
+                item.KC_HN2 = ParseDoubleString(GetCell(colKC_HN2), 0);
+
+                item.B_HT1 = ParseDoubleString(GetCell(colB_HT1), 1.50);
+                item.B_HT2 = ParseDoubleString(GetCell(colB_HT2), 1.50);
+                if (item.B_HT1 <= 0.1) item.B_HT1 = 1.50;
+                if (item.B_HT2 <= 0.1) item.B_HT2 = 1.50;
+
+                item.L_Ngam_San = ParseDoubleString(GetCell(colL_Ngam), 0.30);
+                item.Khe_Ho_HN = ParseDoubleString(GetCell(colKheHo), 0.05);
+
+                list.Add(item);
+            }
+
+            return list;
         }
 
         private static int ParseInt(IXLCell cell, int defaultVal)
@@ -309,8 +449,29 @@ namespace InfraBIM.CulvertTool.Services
         private static double ParseDouble(IXLCell cell, double defaultVal)
         {
             if (cell.TryGetValue<double>(out double val)) return val;
-            string s = cell.GetString().Trim().Replace(',', '.');
-            if (double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out double parsed)) return parsed;
+            return ParseDoubleString(cell.GetString(), defaultVal);
+        }
+
+        public static double ParseDoubleString(string? text, double defaultVal)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return defaultVal;
+            string s = text.Trim();
+
+            // Xử lý linh hoạt cả trường hợp có dấu phẩy phân cách hàng nghìn (vd: 580,860.018)
+            // hoặc dấu phẩy kiểu Việt Nam (vd: 580860,018)
+            if (s.Contains(",") && s.Contains("."))
+            {
+                s = s.Replace(",", ""); // Loại bỏ dấu phẩy phân cách hàng nghìn -> "580860.018"
+            }
+            else if (s.Contains(",") && !s.Contains("."))
+            {
+                s = s.Replace(',', '.'); // Dấu phẩy là dấu thập phân -> "580860.018"
+            }
+
+            if (double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out double parsed))
+            {
+                return parsed;
+            }
             return defaultVal;
         }
     }
