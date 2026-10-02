@@ -19,6 +19,11 @@ namespace GenerateSampleExcel
 
             if (args.Length > 0)
             {
+                if (args[0] == "inspect-family")
+                {
+                    InspectFamilyFiles();
+                    return;
+                }
                 if (args[0] == "fix-excel")
                 {
                     FixExcelData();
@@ -1463,6 +1468,68 @@ namespace GenerateSampleExcel
 
             wb.Save();
             Console.WriteLine("[SUCCESS] Đã cập nhật KC_HN1=5.18m và KC_HN2=5.01m vào file: " + path);
+        }
+
+        static void InspectFamilyFiles()
+        {
+            string famDir = @"C:\Users\ADMIN\Desktop\HTKT_TNN_DUONG VEN BIEN PHU YEN\REVIT_FAMILY RAI CONG NGANG";
+            string[] rfaFiles = Directory.GetFiles(famDir, "*.rfa", SearchOption.AllDirectories);
+            Console.WriteLine($"[INSPECT] Tìm thấy {rfaFiles.Length} file Family RFA:");
+
+            foreach (var rfa in rfaFiles)
+            {
+                string fn = Path.GetFileName(rfa);
+                Console.WriteLine($"\n==========================================");
+                Console.WriteLine($"FAMILY: {fn}");
+                Console.WriteLine($"Đường dẫn: {rfa}");
+
+                byte[] bytes = File.ReadAllBytes(rfa);
+                // Tìm kiếm chuỗi Unicode
+                var uniStrings = ExtractStrings(bytes, true);
+                var utf8Strings = ExtractStrings(bytes, false);
+                var allStrings = uniStrings.Concat(utf8Strings).Distinct().ToList();
+
+                var dims = allStrings.Where(s => 
+                    s.StartsWith("L_") || s.StartsWith("B_") || s.StartsWith("H_") ||
+                    s.Contains("Length") || s.Contains("Width") || s.Contains("Height") ||
+                    s.Contains("Chieu") || s.Contains("Cao") || s.Contains("Rong") || s.Contains("Day") ||
+                    s.Contains("DOT") || s.Contains("CUA") || s.Contains("SAN") || s.Contains("GA") ||
+                    s.Contains("Front") || s.Contains("Back") || s.Contains("Left") || s.Contains("Right")
+                ).Distinct().Take(30).ToList();
+
+                Console.WriteLine($"   Các tham số / nhãn hình học ({dims.Count}):");
+                foreach (var d in dims)
+                {
+                    Console.WriteLine($"      - {d}");
+                }
+            }
+        }
+
+        static List<string> ExtractStrings(byte[] bytes, bool isUnicode)
+        {
+            var res = new List<string>();
+            var enc = isUnicode ? System.Text.Encoding.Unicode : System.Text.Encoding.UTF8;
+            int step = isUnicode ? 2 : 1;
+            var sb = new System.Text.StringBuilder();
+
+            for (int i = 0; i < bytes.Length - step; i += step)
+            {
+                char c = isUnicode ? (char)BitConverter.ToUInt16(bytes, i) : (char)bytes[i];
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == ' ')
+                {
+                    sb.Append(c);
+                }
+                else
+                {
+                    if (sb.Length >= 2 && sb.Length <= 40)
+                    {
+                        string s = sb.ToString().Trim();
+                        if (s.Length >= 2) res.Add(s);
+                    }
+                    sb.Clear();
+                }
+            }
+            return res;
         }
     }
 }

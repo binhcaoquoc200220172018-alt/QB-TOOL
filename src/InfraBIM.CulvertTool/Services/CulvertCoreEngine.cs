@@ -69,15 +69,20 @@ namespace InfraBIM.CulvertTool.Services
                         {
                             subT.Start();
 
+                            // Tự động nhận diện Family tương ứng cho từng dòng cống theo Loại cống, Khẩu độ, Cấu kiện
+                            var curBarrel = ResolveComponentsForCulvert(doc, barrelComponents, row);
+                            var curOutlet = ResolveComponentsForCulvert(doc, outletComponents, row);
+                            var curManhole = ResolveComponentsForCulvert(doc, manholeComponents, row);
+
                             BuildSingleCulvertV2(
                                 doc,
                                 row,
                                 bimConfig,
                                 customBimParams,
                                 familyParameterMappings,
-                                barrelComponents,
-                                outletComponents,
-                                manholeComponents,
+                                curBarrel,
+                                curOutlet,
+                                curManhole,
                                 lStdM,
                                 jointGapM,
                                 bBoxM,
@@ -112,6 +117,51 @@ namespace InfraBIM.CulvertTool.Services
             {
                 sym.Activate();
             }
+        }
+
+        private static IList<CulvertComponentItem> ResolveComponentsForCulvert(
+            Document doc,
+            IList<CulvertComponentItem> baseComponents,
+            CulvertRowData row)
+        {
+            if (baseComponents == null || baseComponents.Count == 0) return baseComponents;
+
+            var list = new List<CulvertComponentItem>();
+            var allSymbols = new FilteredElementCollector(doc)
+                .OfClass(typeof(FamilySymbol))
+                .Cast<FamilySymbol>()
+                .ToList();
+
+            string loaiCong = row.LoaiCong ?? "";
+            string ghiChu = row.GhiChu ?? "";
+            string combinedLC = $"{loaiCong} {ghiChu}".Trim();
+
+            foreach (var baseComp in baseComponents)
+            {
+                var copy = new CulvertComponentItem
+                {
+                    IsActive = baseComp.IsActive,
+                    GroupType = baseComp.GroupType,
+                    CategoryType = baseComp.CategoryType,
+                    SelectedSymbol = baseComp.SelectedSymbol,
+                    OffsetZ = baseComp.OffsetZ,
+                    Note = baseComp.Note
+                };
+
+                if (copy.IsActive)
+                {
+                    var matchSym = ResolveFamilyForCulvert(allSymbols, combinedLC, row.KhauDo, copy.CategoryType ?? "");
+                    if (matchSym != null)
+                    {
+                        copy.SelectedSymbol = new FamilySymbolWrapper(matchSym);
+                        ActivateSymbol(matchSym);
+                    }
+                }
+
+                list.Add(copy);
+            }
+
+            return list;
         }
 
 
@@ -242,13 +292,23 @@ namespace InfraBIM.CulvertTool.Services
             double bBoxFeet = UnitUtils.ConvertToInternalUnits(bBoxM > 0 ? bBoxM : 1.50, UnitTypeId.Meters);
 
             // 2. Đặt Cửa xả Thượng lưu (P1) & Hạ lưu (P2)
-            PlaceOutletAssembly(doc, p1, rotAngle, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, materialSettings);
-            PlaceOutletAssembly(doc, p2, rotAngle + Math.PI, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, materialSettings);
+            // Trong hệ thống Family Revit của dự án (TNN_SAN GIA CO_CUA XA & TNN_CUA XA):
+            // Hình học hướng thoát nước của Cửa xả & Sân gia cố nằm dọc theo trục Facing (+Y).
+            // - Hạ lưu (P2): Thoát nước xuôi dòng theo +u -> Facing = +u -> quay góc (rotAngle - PI/2)
+            // - Thượng lưu (P1): Đón nước ngược dòng từ taluy vào cống theo -u -> Facing = -u -> quay góc (rotAngle + PI/2)
+            double rotOutletTL = rotAngle + Math.PI / 2.0;
+            double rotOutletHL = rotAngle - Math.PI / 2.0;
+            PlaceOutletAssembly(doc, p1, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, materialSettings);
+            PlaceOutletAssembly(doc, p2, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, materialSettings);
 
             // 3. Phân biệt Cống tròn đôi và Cống 1 tim
             string lcNorm = (data.LoaiCong ?? "").ToUpperInvariant();
-            bool isTronNorm = lcNorm.Contains("TRON") || lcNorm.Contains("TRÒN") || lcNorm.Contains("CT");
-            bool isCongTronDoi = (data.SoCua >= 2 && isTronNorm) || (isTronNorm && (lcNorm.Contains("ĐÔI") || lcNorm.Contains("DOI")));
+            string gcNorm = (data.GhiChu ?? "").ToUpperInvariant();
+            bool isTronNorm = lcNorm.Contains("TRON") || lcNorm.Contains("TRÒN") || lcNorm.Contains("CT") || gcNorm.Contains("TRÒN") || gcNorm.Contains("TRON");
+            bool isCongTronDoi = (data.SoCua >= 2 && isTronNorm) || (isTronNorm && (lcNorm.Contains("ĐÔI") || lcNorm.Contains("DOI") || gcNorm.Contains("ĐÔI") || gcNorm.Contains("DOI")));
+
+            // Góc xoay chuẩn cho Thân cống và Hố ga (dọc theo trục Facing +Y)
+            double rotBarrel = rotAngle - Math.PI / 2.0;
 
             if (isCongTronDoi)
             {
@@ -261,19 +321,19 @@ namespace InfraBIM.CulvertTool.Services
                 XYZ p1Left = p1 - uPerp * dHalfFeet;
                 XYZ p2Left = p2 - uPerp * dHalfFeet;
                 BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
-                    p1Left, p2Left, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "T", materialSettings);
+                    p1Left, p2Left, u, rotBarrel, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "T", materialSettings);
 
                 // Nhánh Phải
                 XYZ p1Right = p1 + uPerp * dHalfFeet;
                 XYZ p2Right = p2 + uPerp * dHalfFeet;
                 BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
-                    p1Right, p2Right, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "P", materialSettings);
+                    p1Right, p2Right, u, rotBarrel, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "P", materialSettings);
             }
             else
             {
                 // 1 Tim trung tâm
                 BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
-                    p1, p2, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings);
+                    p1, p2, u, rotBarrel, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings);
             }
         }
 

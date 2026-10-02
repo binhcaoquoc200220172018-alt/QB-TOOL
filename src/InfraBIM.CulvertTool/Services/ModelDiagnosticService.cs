@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -14,94 +15,7 @@ namespace InfraBIM.CulvertTool.Services
             try
             {
                 var doc = uiApp.ActiveUIDocument.Document;
-                var sb = new StringBuilder();
-
-                sb.AppendLine("=== INFRA BIM - BÁO CÁO CHẨN ĐOÁN HỆ TỌA ĐỘ VÀ CẤU KIỆN TRONG 1.RVT ===");
-                sb.AppendLine($"Thời gian: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                sb.AppendLine($"File Revit hiện tại: {doc.PathName}");
-                sb.AppendLine($"Tiêu đề Document: {doc.Title}");
-
-                // 1. Hệ tọa độ
-                sb.AppendLine("\n--- 1. HỆ TỌA ĐỘ DỰ ÁN ---");
-                if (doc.ActiveProjectLocation != null)
-                {
-                    var pos = doc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero);
-                    sb.AppendLine($"Active Project Location: {doc.ActiveProjectLocation.Name}");
-                    sb.AppendLine($"EastWest (m): {UnitUtils.ConvertFromInternalUnits(pos.EastWest, UnitTypeId.Meters):F4}");
-                    sb.AppendLine($"NorthSouth (m): {UnitUtils.ConvertFromInternalUnits(pos.NorthSouth, UnitTypeId.Meters):F4}");
-                    sb.AppendLine($"Elevation (m): {UnitUtils.ConvertFromInternalUnits(pos.Elevation, UnitTypeId.Meters):F4}");
-                    sb.AppendLine($"Angle (rad): {pos.Angle:F6} (deg: {pos.Angle * 180.0 / Math.PI:F4})");
-                }
-                else
-                {
-                    sb.AppendLine("Không tìm thấy ActiveProjectLocation!");
-                }
-
-                // Base points
-                var basePoints = new FilteredElementCollector(doc).OfClass(typeof(BasePoint)).Cast<BasePoint>().ToList();
-                foreach (var bp in basePoints)
-                {
-                    string bpType = bp.IsShared ? "SURVEY POINT" : "PROJECT BASE POINT";
-                    XYZ pt = bp.Position;
-                    sb.AppendLine($"{bpType}: Id={bp.Id}, X={UnitUtils.ConvertFromInternalUnits(pt.X, UnitTypeId.Meters):F4}m, Y={UnitUtils.ConvertFromInternalUnits(pt.Y, UnitTypeId.Meters):F4}m, Z={UnitUtils.ConvertFromInternalUnits(pt.Z, UnitTypeId.Meters):F4}m");
-                }
-
-                // 2. Danh sách đối tượng cống đã được tạo trong mô hình 1.rvt
-                sb.AppendLine("\n--- 2. CÁC ĐỐI TƯỢNG CỐNG TRONG MÔ HÌNH HIỆN TẠI (1.RVT) ---");
-                var culvertInstances = new FilteredElementCollector(doc)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .Where(fi =>
-                    {
-                        string fn = fi.Symbol.FamilyName.ToUpperInvariant();
-                        return fn.Contains("TNN") || fn.Contains("TNM") || fn.Contains("CUA XA") || fn.Contains("THAN CONG") || fn.Contains("HO GA") || fn.Contains("CONG");
-                    })
-                    .ToList();
-
-                sb.AppendLine($"Tổng số đối tượng cống tìm thấy: {culvertInstances.Count}");
-                foreach (var fi in culvertInstances)
-                {
-                    string famName = fi.Symbol.FamilyName;
-                    string typeName = fi.Name;
-                    XYZ loc = (fi.Location as LocationPoint)?.Point ?? XYZ.Zero;
-                    double locX_M = UnitUtils.ConvertFromInternalUnits(loc.X, UnitTypeId.Meters);
-                    double locY_M = UnitUtils.ConvertFromInternalUnits(loc.Y, UnitTypeId.Meters);
-                    double locZ_M = UnitUtils.ConvertFromInternalUnits(loc.Z, UnitTypeId.Meters);
-
-                    double rotDeg = 0.0;
-                    if (fi.Location is LocationPoint lp)
-                    {
-                        rotDeg = lp.Rotation * 180.0 / Math.PI;
-                    }
-
-                    XYZ facing = fi.FacingOrientation;
-                    XYZ hand = fi.HandOrientation;
-
-                    // Tọa độ thực VN2000
-                    var (vnX, vnY, vnZ) = CoordinateService.ConvertRevitInternalToVN2000(doc, loc, true);
-
-                    sb.AppendLine($"ID: {fi.Id.Value} | Family: {famName} | Type: {typeName}");
-                    sb.AppendLine($"   Internal(m): ({locX_M:F3}, {locY_M:F3}, {locZ_M:F3}) | VN2000: ({vnX:F3}, {vnY:F3}, {vnZ:F3})");
-                    sb.AppendLine($"   Rot: {rotDeg:F2}° | Facing: ({facing.X:F2}, {facing.Y:F2}, {facing.Z:F2}) | Hand: ({hand.X:F2}, {hand.Y:F2}, {hand.Z:F2})");
-                    
-                    // Các tham số kích thước
-                    var pL = fi.LookupParameter("L") ?? fi.LookupParameter("Length") ?? fi.LookupParameter("ChieuDai") ?? fi.LookupParameter("Chiều dài");
-                    if (pL != null && pL.StorageType == StorageType.Double)
-                    {
-                        sb.AppendLine($"   Param L (m): {UnitUtils.ConvertFromInternalUnits(pL.AsDouble(), UnitTypeId.Meters):F3}");
-                    }
-                }
-
-                // Ghi ra file
-                string outPath = @"C:\Users\ADMIN\Desktop\DEBUG_REVIT_MODEL.txt";
-                File.WriteAllText(outPath, sb.ToString(), Encoding.UTF8);
-
-                // 3. Phân tích mô hình tham khảo
-                string refPath = @"C:\Users\ADMIN\Desktop\HTKT_TNN_DUONG VEN BIEN PHU YEN\THAM KHAO\770B-iDECO-CD-PD2-D-M3-CONG_DUC_SAN.rvt";
-                if (File.Exists(refPath))
-                {
-                    InspectReferenceModel(uiApp.Application, refPath);
-                }
+                RunDeepDiagnostic(uiApp.Application, doc);
             }
             catch (Exception ex)
             {
@@ -109,73 +23,202 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
-        private static void InspectReferenceModel(Autodesk.Revit.ApplicationServices.Application app, string refPath)
+        public static void RunDeepDiagnostic(Autodesk.Revit.ApplicationServices.Application app, Document doc)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("=== PHÂN TÍCH MÔ HÌNH THAM KHẢO 770B-iDECO-CD-PD2-D-M3-CONG_DUC_SAN.rvt ===");
+            sb.AppendLine("=== INFRA BIM - BÁO CÁO PHÂN TÍCH CHUYÊN SÂU HỆ TỌA ĐỘ VÀ CẤU KIỆN CỐNG ===");
+            sb.AppendLine($"Thời gian: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine($"File Revit hiện tại: {doc.PathName}");
+            sb.AppendLine($"Tiêu đề Document: {doc.Title}");
+
+            // 1. Hệ tọa độ của 1.rvt
+            sb.AppendLine("\n--- 1. HỆ TỌA ĐỘ 1.RVT ---");
+            if (doc.ActiveProjectLocation != null)
+            {
+                var pos = doc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero);
+                sb.AppendLine($"Active Project Location: {doc.ActiveProjectLocation.Name}");
+                sb.AppendLine($"EastWest (m): {UnitUtils.ConvertFromInternalUnits(pos.EastWest, UnitTypeId.Meters):F4}");
+                sb.AppendLine($"NorthSouth (m): {UnitUtils.ConvertFromInternalUnits(pos.NorthSouth, UnitTypeId.Meters):F4}");
+                sb.AppendLine($"Elevation (m): {UnitUtils.ConvertFromInternalUnits(pos.Elevation, UnitTypeId.Meters):F4}");
+                sb.AppendLine($"Angle (rad): {pos.Angle:F6} (deg: {pos.Angle * 180.0 / Math.PI:F4})");
+            }
+            var basePoints = new FilteredElementCollector(doc).OfClass(typeof(BasePoint)).Cast<BasePoint>().ToList();
+            foreach (var bp in basePoints)
+            {
+                string bpType = bp.IsShared ? "SURVEY POINT" : "PROJECT BASE POINT";
+                XYZ pt = bp.Position;
+                sb.AppendLine($"{bpType}: Id={bp.Id}, X={UnitUtils.ConvertFromInternalUnits(pt.X, UnitTypeId.Meters):F4}m, Y={UnitUtils.ConvertFromInternalUnits(pt.Y, UnitTypeId.Meters):F4}m, Z={UnitUtils.ConvertFromInternalUnits(pt.Z, UnitTypeId.Meters):F4}m");
+            }
+
+            // 2. Các FamilySymbol cống đã nạp trong 1.rvt kèm toàn bộ Type Parameters
+            sb.AppendLine("\n--- 2. DANH SÁCH FAMILY SYMBOLS CỐNG TRONG 1.RVT ---");
+            var culvertSymbols = new FilteredElementCollector(doc)
+                .OfClass(typeof(FamilySymbol))
+                .Cast<FamilySymbol>()
+                .Where(s =>
+                {
+                    string fn = s.FamilyName.ToUpperInvariant();
+                    return fn.Contains("TNN") || fn.Contains("TNM") || fn.Contains("CONG") || fn.Contains("CUA XA") || fn.Contains("HO GA");
+                })
+                .ToList();
+
+            foreach (var sym in culvertSymbols)
+            {
+                sb.AppendLine($"\nFamily: {sym.FamilyName} | Type: {sym.Name} | Category: {sym.Category?.Name}");
+                sb.AppendLine("   [Type Parameters]:");
+                foreach (Parameter p in sym.Parameters)
+                {
+                    if (p.Definition == null) continue;
+                    string val = ParameterToString(p);
+                    if (!string.IsNullOrEmpty(val))
+                    {
+                        sb.AppendLine($"      {p.Definition.Name} = {val} ({p.StorageType})");
+                    }
+                }
+            }
+
+            // 3. Các đối tượng cống đã rải trong 1.rvt kèm BoundingBox và Instance Parameters
+            sb.AppendLine("\n--- 3. CÁC ĐỐI TƯỢNG CỐNG ĐÃ RẢI TRONG 1.RVT ---");
+            var instancesInCurrent = new FilteredElementCollector(doc)
+                .OfClass(typeof(FamilyInstance))
+                .Cast<FamilyInstance>()
+                .Where(fi =>
+                {
+                    string fn = fi.Symbol.FamilyName.ToUpperInvariant();
+                    return fn.Contains("TNN") || fn.Contains("TNM") || fn.Contains("CONG") || fn.Contains("CUA XA") || fn.Contains("HO GA");
+                })
+                .ToList();
+
+            sb.AppendLine($"Tổng số đối tượng: {instancesInCurrent.Count}");
+            // Lấy mẫu từng họ Family trong 1.rvt
+            var groupedByFam = instancesInCurrent.GroupBy(fi => fi.Symbol.FamilyName);
+            foreach (var grp in groupedByFam)
+            {
+                sb.AppendLine($"\n=== HỌ FAMILY: {grp.Key} (Số lượng: {grp.Count()}) ===");
+                var fiSample = grp.First();
+                LogInstanceDetails(sb, doc, fiSample);
+            }
+
+            // 4. Phân tích mô hình tham khảo 770B
+            string refPath = @"C:\Users\ADMIN\Desktop\HTKT_TNN_DUONG VEN BIEN PHU YEN\THAM KHAO\770B-iDECO-CD-PD2-D-M3-CONG_DUC_SAN.rvt";
+            if (File.Exists(refPath))
+            {
+                sb.AppendLine("\n=======================================================");
+                sb.AppendLine("--- 4. PHÂN TÍCH MÔ HÌNH THAM KHẢO 770B ---");
+                try
+                {
+                    var opt = new OpenOptions { DetachFromCentralOption = DetachFromCentralOption.DoNotDetach };
+                    var modelPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(refPath);
+                    using var refDoc = app.OpenDocumentFile(modelPath, opt);
+
+                    if (refDoc.ActiveProjectLocation != null)
+                    {
+                        var pos = refDoc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero);
+                        sb.AppendLine($"Reference Active Project Location: {refDoc.ActiveProjectLocation.Name}");
+                        sb.AppendLine($"EastWest (m): {UnitUtils.ConvertFromInternalUnits(pos.EastWest, UnitTypeId.Meters):F4}");
+                        sb.AppendLine($"NorthSouth (m): {UnitUtils.ConvertFromInternalUnits(pos.NorthSouth, UnitTypeId.Meters):F4}");
+                        sb.AppendLine($"Elevation (m): {UnitUtils.ConvertFromInternalUnits(pos.Elevation, UnitTypeId.Meters):F4}");
+                        sb.AppendLine($"Angle (deg): {pos.Angle * 180.0 / Math.PI:F4}");
+                    }
+
+                    var refInstances = new FilteredElementCollector(refDoc)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi =>
+                        {
+                            string fn = fi.Symbol.FamilyName.ToUpperInvariant();
+                            return fn.Contains("TNN") || fn.Contains("TNM") || fn.Contains("CONG") || fn.Contains("CUA XA") || fn.Contains("HO GA") || fn.Contains("SAN GIA CO");
+                        })
+                        .ToList();
+
+                    sb.AppendLine($"Tổng số đối tượng cống trong file tham khảo: {refInstances.Count}");
+
+                    // Nhóm theo FamilyName
+                    var refGrouped = refInstances.GroupBy(fi => fi.Symbol.FamilyName);
+                    foreach (var grp in refGrouped)
+                    {
+                        sb.AppendLine($"\n>>> THAM KHẢO HỌ: {grp.Key} (Tổng: {grp.Count()}) <<<");
+                        // Lấy 2 mẫu đầu tiên
+                        foreach (var fi in grp.Take(2))
+                        {
+                            LogInstanceDetails(sb, refDoc, fi);
+                        }
+                    }
+
+                    refDoc.Close(false);
+                }
+                catch (Exception exRef)
+                {
+                    sb.AppendLine($"Lỗi khi phân tích file tham khảo: {exRef.Message}");
+                }
+            }
+
+            string outPath = @"C:\Users\ADMIN\Desktop\DEBUG_DEEP_ANALYSIS.txt";
+            File.WriteAllText(outPath, sb.ToString(), Encoding.UTF8);
+        }
+
+        private static void LogInstanceDetails(StringBuilder sb, Document doc, FamilyInstance fi)
+        {
+            string famName = fi.Symbol.FamilyName;
+            string typeName = fi.Name;
+            string catName = fi.Category?.Name ?? "N/A";
+            XYZ loc = (fi.Location as LocationPoint)?.Point ?? XYZ.Zero;
+            double locX_M = UnitUtils.ConvertFromInternalUnits(loc.X, UnitTypeId.Meters);
+            double locY_M = UnitUtils.ConvertFromInternalUnits(loc.Y, UnitTypeId.Meters);
+            double locZ_M = UnitUtils.ConvertFromInternalUnits(loc.Z, UnitTypeId.Meters);
+            double rotDeg = (fi.Location is LocationPoint lp) ? (lp.Rotation * 180.0 / Math.PI) : 0.0;
+            XYZ facing = fi.FacingOrientation;
+            XYZ hand = fi.HandOrientation;
+
+            var bbox = fi.get_BoundingBox(null);
+            string bboxStr = "N/A";
+            if (bbox != null)
+            {
+                double dx = UnitUtils.ConvertFromInternalUnits(bbox.Max.X - bbox.Min.X, UnitTypeId.Meters);
+                double dy = UnitUtils.ConvertFromInternalUnits(bbox.Max.Y - bbox.Min.Y, UnitTypeId.Meters);
+                double dz = UnitUtils.ConvertFromInternalUnits(bbox.Max.Z - bbox.Min.Z, UnitTypeId.Meters);
+                bboxStr = $"Size(Dx={dx:F3}m, Dy={dy:F3}m, Dz={dz:F3}m)";
+            }
+
+            sb.AppendLine($"   ID: {fi.Id.Value} | {famName} | Type: {typeName} | Cat: {catName}");
+            sb.AppendLine($"      Pos(m): ({locX_M:F3}, {locY_M:F3}, {locZ_M:F3}) | Rot: {rotDeg:F2}° | {bboxStr}");
+            sb.AppendLine($"      Facing: ({facing.X:F3}, {facing.Y:F3}, {facing.Z:F3}) | Hand: ({hand.X:F3}, {hand.Y:F3}, {hand.Z:F3})");
+
+            // Instance Parameters quan trọng
+            sb.AppendLine("      [Instance Parameters]:");
+            foreach (Parameter p in fi.Parameters)
+            {
+                if (p.Definition == null || p.IsReadOnly) continue;
+                string val = ParameterToString(p);
+                if (!string.IsNullOrEmpty(val))
+                {
+                    sb.AppendLine($"         {p.Definition.Name} = {val}");
+                }
+            }
+        }
+
+        private static string ParameterToString(Parameter p)
+        {
             try
             {
-                var opt = new OpenOptions { DetachFromCentralOption = DetachFromCentralOption.DoNotDetach };
-                var modelPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(refPath);
-                using var refDoc = app.OpenDocumentFile(modelPath, opt);
-
-                // Hệ tọa độ
-                if (refDoc.ActiveProjectLocation != null)
+                switch (p.StorageType)
                 {
-                    var pos = refDoc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero);
-                    sb.AppendLine($"Active Project Location: {refDoc.ActiveProjectLocation.Name}");
-                    sb.AppendLine($"EastWest (m): {UnitUtils.ConvertFromInternalUnits(pos.EastWest, UnitTypeId.Meters):F4}");
-                    sb.AppendLine($"NorthSouth (m): {UnitUtils.ConvertFromInternalUnits(pos.NorthSouth, UnitTypeId.Meters):F4}");
-                    sb.AppendLine($"Elevation (m): {UnitUtils.ConvertFromInternalUnits(pos.Elevation, UnitTypeId.Meters):F4}");
-                    sb.AppendLine($"Angle (deg): {pos.Angle * 180.0 / Math.PI:F4}");
+                    case StorageType.Double:
+                        return $"{UnitUtils.ConvertFromInternalUnits(p.AsDouble(), UnitTypeId.Meters):F4}m (raw: {p.AsDouble():F4})";
+                    case StorageType.Integer:
+                        return p.AsInteger().ToString();
+                    case StorageType.String:
+                        return p.AsString();
+                    case StorageType.ElementId:
+                        return p.AsElementId().Value.ToString();
+                    default:
+                        return p.AsValueString();
                 }
-
-                var basePoints = new FilteredElementCollector(refDoc).OfClass(typeof(BasePoint)).Cast<BasePoint>().ToList();
-                foreach (var bp in basePoints)
-                {
-                    string bpType = bp.IsShared ? "SURVEY POINT" : "PROJECT BASE POINT";
-                    XYZ pt = bp.Position;
-                    sb.AppendLine($"{bpType}: Id={bp.Id}, X={UnitUtils.ConvertFromInternalUnits(pt.X, UnitTypeId.Meters):F4}m, Y={UnitUtils.ConvertFromInternalUnits(pt.Y, UnitTypeId.Meters):F4}m, Z={UnitUtils.ConvertFromInternalUnits(pt.Z, UnitTypeId.Meters):F4}m");
-                }
-
-                // Quét mẫu 1 cụm cống trong file tham khảo
-                var refCulverts = new FilteredElementCollector(refDoc)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .Where(fi =>
-                    {
-                        string fn = fi.Symbol.FamilyName.ToUpperInvariant();
-                        return fn.Contains("TNN") || fn.Contains("TNM") || fn.Contains("CUA XA") || fn.Contains("THAN CONG") || fn.Contains("HO GA") || fn.Contains("CONG");
-                    })
-                    .Take(40)
-                    .ToList();
-
-                sb.AppendLine($"\nTìm thấy {refCulverts.Count} đối tượng cống mẫu trong file tham khảo (lấy tối đa 40 mẫu):");
-                foreach (var fi in refCulverts)
-                {
-                    string famName = fi.Symbol.FamilyName;
-                    string typeName = fi.Name;
-                    XYZ loc = (fi.Location as LocationPoint)?.Point ?? XYZ.Zero;
-                    double locX_M = UnitUtils.ConvertFromInternalUnits(loc.X, UnitTypeId.Meters);
-                    double locY_M = UnitUtils.ConvertFromInternalUnits(loc.Y, UnitTypeId.Meters);
-                    double locZ_M = UnitUtils.ConvertFromInternalUnits(loc.Z, UnitTypeId.Meters);
-                    double rotDeg = (fi.Location is LocationPoint lp) ? (lp.Rotation * 180.0 / Math.PI) : 0.0;
-                    XYZ facing = fi.FacingOrientation;
-                    XYZ hand = fi.HandOrientation;
-
-                    sb.AppendLine($"ID: {fi.Id.Value} | Family: {famName} | Type: {typeName}");
-                    sb.AppendLine($"   Internal(m): ({locX_M:F3}, {locY_M:F3}, {locZ_M:F3}) | Rot: {rotDeg:F2}°");
-                    sb.AppendLine($"   Facing: ({facing.X:F2}, {facing.Y:F2}, {facing.Z:F2}) | Hand: ({hand.X:F2}, {hand.Y:F2}, {hand.Z:F2})");
-                }
-
-                refDoc.Close(false);
             }
-            catch (Exception ex)
+            catch
             {
-                sb.AppendLine($"Lỗi khi đọc file tham khảo: {ex.Message}");
+                return "";
             }
-
-            File.WriteAllText(@"C:\Users\ADMIN\Desktop\DEBUG_REFERENCE_MODEL.txt", sb.ToString(), Encoding.UTF8);
         }
     }
 }

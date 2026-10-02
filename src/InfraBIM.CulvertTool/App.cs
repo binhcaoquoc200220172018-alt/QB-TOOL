@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows.Media.Imaging;
 using Autodesk.Revit.UI;
+using InfraBIM.CulvertTool.Services;
 
 namespace InfraBIM.CulvertTool
 {
@@ -53,6 +54,19 @@ namespace InfraBIM.CulvertTool
                 }
 
                 panel.AddItem(buttonData);
+
+                // Tự động chẩn đoán khi mở file Revit
+                application.ControlledApplication.DocumentOpened += (s, e) =>
+                {
+                    try
+                    {
+                        if (e.Document != null && !e.Document.IsFamilyDocument)
+                        {
+                            ModelDiagnosticService.RunDeepDiagnostic(e.Document.Application, e.Document);
+                        }
+                    }
+                    catch { }
+                };
 
                 return Result.Succeeded;
             }
