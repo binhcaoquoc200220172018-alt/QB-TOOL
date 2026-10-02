@@ -380,7 +380,7 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="📄 Tạo Excel mẫu 19 cột" Command="{Binding CreateSampleExcelCommand}" Margin="0,0,8,0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}"/>
+                    <Button Content="📄 Tạo Excel mẫu 21 cột" Command="{Binding CreateSampleExcelCommand}" Margin="0,0,8,0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}"/>
                     <Button Content="🔍 Kiểm tra mô hình" Command="{Binding ValidateCommand}" Margin="0,0,8,0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}"/>
                 </StackPanel>
             </Grid>
@@ -534,7 +534,7 @@
                                                   HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                                             <DataGrid.Columns>
                                                 <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsActive}" Width="45" MinWidth="40"/>
-                                                <DataGridTextColumn Header="Cấu kiện" Binding="{Binding CategoryType}" Width="150" MinWidth="130" IsReadOnly="True" FontWeight="SemiBold"/>
+                                                <DataGridTextColumn Header="Cấu kiện" Binding="{Binding CategoryType, UpdateSourceTrigger=PropertyChanged}" Width="160" MinWidth="130" IsReadOnly="False" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
                                                 <DataGridTemplateColumn Header="Family Revit" Width="220" MinWidth="180">
                                                     <DataGridTemplateColumn.CellTemplate>
                                                         <DataTemplate>
@@ -570,7 +570,7 @@
                                                   HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                                             <DataGrid.Columns>
                                                 <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsActive}" Width="45" MinWidth="40"/>
-                                                <DataGridTextColumn Header="Cấu kiện" Binding="{Binding CategoryType}" Width="150" MinWidth="130" IsReadOnly="True" FontWeight="SemiBold"/>
+                                                <DataGridTextColumn Header="Cấu kiện" Binding="{Binding CategoryType, UpdateSourceTrigger=PropertyChanged}" Width="160" MinWidth="130" IsReadOnly="False" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
                                                 <DataGridTemplateColumn Header="Family Revit" Width="220" MinWidth="180">
                                                     <DataGridTemplateColumn.CellTemplate>
                                                         <DataTemplate>
@@ -606,7 +606,7 @@
                                                   HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                                             <DataGrid.Columns>
                                                 <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsActive}" Width="45" MinWidth="40"/>
-                                                <DataGridTextColumn Header="Cấu kiện" Binding="{Binding CategoryType}" Width="150" MinWidth="130" IsReadOnly="True" FontWeight="SemiBold"/>
+                                                <DataGridTextColumn Header="Cấu kiện" Binding="{Binding CategoryType, UpdateSourceTrigger=PropertyChanged}" Width="160" MinWidth="130" IsReadOnly="False" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
                                                 <DataGridTemplateColumn Header="Family Revit" Width="220" MinWidth="180">
                                                     <DataGridTemplateColumn.CellTemplate>
                                                         <DataTemplate>
@@ -669,8 +669,8 @@
                         </GroupBox>
                     </Grid>
 
-                    <!-- KHUNG 4: BẢNG DỮ LIỆU EXCEL 19 CỘT (CHỐNG CO ÉP CỘT & HỖ TRỢ THANH CUỘN 2 CHIỀU) -->
-                    <GroupBox Header="4. BẢNG DỮ LIỆU TRÍCH XUẤT TỪ EXCEL (19 CỘT CHUẨN - TỰ ĐỘNG TÍNH GÓC XOAY &amp; ĐỘ DỐC)" Grid.Row="1" Margin="0,4,0,0">
+                    <!-- KHUNG 4: BẢNG DỮ LIỆU EXCEL 21 CỘT (CHỐNG CO ÉP CỘT & HỖ TRỢ THANH CUỘN 2 CHIỀU) -->
+                    <GroupBox Header="4. BẢNG DỮ LIỆU TRÍCH XUẤT TỪ EXCEL (21 CỘT CHUẨN - TỰ ĐỘNG TÍNH GÓC XOAY, ĐỘ DỐC &amp; BỀ RỘNG HỐ THU)" Grid.Row="1" Margin="0,4,0,0">
                         <DataGrid ItemsSource="{Binding FilteredCulvertRows}"
                                   AutoGenerateColumns="False"
                                   CanUserAddRows="False"
@@ -701,6 +701,8 @@
                                 <DataGridTextColumn Header="Số HN" Binding="{Binding SoHopNoi}" Width="70" MinWidth="65"/>
                                 <DataGridTextColumn Header="KC_HN1 (m)" Binding="{Binding KC_HN1, StringFormat=N2}" Width="110" MinWidth="100"/>
                                 <DataGridTextColumn Header="KC_HN2 (m)" Binding="{Binding KC_HN2, StringFormat=N2}" Width="110" MinWidth="100"/>
+                                <DataGridTextColumn Header="B_HT1 (m)" Binding="{Binding B_HT1, StringFormat=N2}" Width="110" MinWidth="100"/>
+                                <DataGridTextColumn Header="B_HT2 (m)" Binding="{Binding B_HT2, StringFormat=N2}" Width="110" MinWidth="100"/>
                                 <DataGridTextColumn Header="Ngàm sân (m)" Binding="{Binding L_Ngam_San, StringFormat=N2}" Width="115" MinWidth="105"/>
                                 <DataGridTextColumn Header="Trạng thái" Binding="{Binding StatusNote}" Width="260" MinWidth="220"/>
                             </DataGrid.Columns>
@@ -758,13 +760,9 @@
                                     <Button Grid.Column="2" Content="🔄 Quét tham số Family" Command="{Binding ScanFamilyParamsCommand}" Margin="6,0,0,0" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
                                 </Grid>
 
-                                <!-- Bộ lọc tham số & Khai báo Bề rộng hố thu B -->
+                                <!-- Bộ lọc tham số -->
                                 <Grid Grid.Row="1" Margin="0,4,0,2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="Bộ lọc tham số:" Foreground="{StaticResource TextMuted}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                         <CheckBox Content="Kích thước (Dimensions)" 
                                                   IsChecked="{Binding ShowDimensions}" 
@@ -773,13 +771,6 @@
                                                   IsChecked="{Binding ShowOther}" 
                                                   Foreground="{StaticResource CyanLight}" FontWeight="SemiBold"/>
                                     </StackPanel>
-                                    <!-- Khai báo B_hố thu trong Tab 02 theo đúng yêu cầu -->
-                                    <Border Grid.Column="1" Background="#16325C" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="4" Padding="6,2">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="Bề rộng hố thu B (m):" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                            <TextBox Text="{Binding B_Box_Text, UpdateSourceTrigger=PropertyChanged}" Width="55" Padding="3,1" FontWeight="Bold" Foreground="{StaticResource CyanPrimary}" ToolTip="Bề rộng phủ bì ngoài hố thu / hộp nối dọc theo tim cống (mặc định 1.50m)"/>
-                                        </StackPanel>
-                                    </Border>
                                 </Grid>
                             </Grid>
 
@@ -1176,6 +1167,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
@@ -1188,7 +1180,27 @@
                                 <TextBlock Text="* Tự do thêm/xóa cấu kiện, đổi tên và bấm 🎨 để đổi màu sắc." VerticalAlignment="Center" Foreground="{StaticResource TextMuted}" FontStyle="Italic"/>
                             </StackPanel>
 
-                            <DataGrid Grid.Row="1" ItemsSource="{Binding ComponentMaterials}" SelectedItem="{Binding SelectedMaterialItem}"
+                            <!-- Thanh Lọc Cụm Cấu Kiện (Khớp 3 cụm ở Tab 01: Thân cống, Cửa xả, Hố ga) -->
+                            <Border Grid.Row="1" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
+                                <DockPanel LastChildFill="False">
+                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Lọc cụm cấu kiện:" VerticalAlignment="Center" Foreground="{StaticResource CyanLight}" FontWeight="Bold" Margin="0,0,8,0"/>
+                                        <Button Content="📁 Tất cả" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="All" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
+                                        <Button Content="🧱 Thân cống" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="Barrel" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
+                                        <Button Content="🌊 Cửa xả &amp; Sân gia cố" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="Outlet" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
+                                        <Button Content="🕳️ Hố ga (Hộp nối)" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="Manhole" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
+                                    </StackPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Đang hiển thị: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                        <TextBlock Text="{Binding SelectedMaterialGroupFilterName}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11"/>
+                                        <TextBlock Text=" (" Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                        <TextBlock Text="{Binding FilteredComponentMaterials.Count}" Foreground="{StaticResource TextWhite}" FontWeight="Bold" FontSize="11"/>
+                                        <TextBlock Text=" cấu kiện)" Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+
+                            <DataGrid Grid.Row="2" ItemsSource="{Binding FilteredComponentMaterials}" SelectedItem="{Binding SelectedMaterialItem}"
                                       AutoGenerateColumns="False"
                                       CanUserAddRows="False"
                                       CanUserResizeColumns="True"
@@ -1199,9 +1211,10 @@
                                       ScrollViewer.CanContentScroll="True">
                                 <DataGrid.Columns>
                                     <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsActive}" Width="48" MinWidth="42"/>
+                                    <DataGridTextColumn Header="Cụm cấu kiện" Binding="{Binding GroupType}" IsReadOnly="True" Width="120" MinWidth="100" Foreground="{StaticResource MintLight}" FontWeight="SemiBold"/>
                                     
-                                    <!-- Cột loại cấu kiện: Cho phép chỉnh sửa trực tiếp tên hoặc phân loại -->
-                                    <DataGridTemplateColumn Header="Loại cấu kiện" Width="145" MinWidth="130">
+                                    <!-- Cột tên cấu kiện: Cho phép chỉnh sửa trực tiếp tên cấu kiện -->
+                                    <DataGridTemplateColumn Header="Tên cấu kiện" Width="150" MinWidth="130">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding CategoryType}" VerticalAlignment="Center" Margin="3,0" FontWeight="SemiBold" Foreground="{StaticResource TextLight}"/>

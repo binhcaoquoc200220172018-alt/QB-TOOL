@@ -47,6 +47,22 @@ namespace InfraBIM.CulvertTool.Models
             set => Dist_HN2 = value;
         }
 
+        // Bề rộng hố thu 1 và hố thu 2 (m)
+        public double B_HT1 { get; set; } = 1.50;
+        public double B_HT2 { get; set; } = 1.50;
+
+        public double B_HN1
+        {
+            get => B_HT1;
+            set => B_HT1 = value;
+        }
+
+        public double B_HN2
+        {
+            get => B_HT2;
+            set => B_HT2 = value;
+        }
+
         // Cột R -> S: Khe hở và ngàm
         public double L_Ngam_San { get; set; } = 0.30;
         public double Khe_Ho_HN { get; set; } = 0.05;

@@ -92,6 +92,8 @@ namespace InfraBIM.CulvertTool.Models
         public double L_Min { get; set; } = 0.5;
         public double L_Ngam { get; set; } = 0.0;
         public double B_Box { get; set; } = 1.5;
+        public double B_HT1 { get; set; } = 1.5;
+        public double B_HT2 { get; set; } = 1.5;
         public double OffsetZ_BTL { get; set; } = -0.10;
         public double OffsetZ_Cat { get; set; } = -0.20;
 

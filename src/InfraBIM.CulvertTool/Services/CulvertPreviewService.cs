@@ -49,6 +49,8 @@ namespace InfraBIM.CulvertTool.Services
                 L_Min = 0.0,
                 L_Ngam = 0.0,
                 B_Box = bBox > 0.2 ? bBox : 1.5,
+                B_HT1 = row.B_HT1 > 0.1 ? row.B_HT1 : 1.50,
+                B_HT2 = row.B_HT2 > 0.1 ? row.B_HT2 : 1.50,
                 JointGapM = jointGapM >= 0 ? jointGapM : (isCastInPlace ? 0.02 : 0.01),
                 IsCastInPlace = isCastInPlace,
                 IsRoundCulvert = isTron,
@@ -126,12 +128,13 @@ namespace InfraBIM.CulvertTool.Services
                 double distHN1 = Math.Clamp(row.KC_HN1, 1.0, totalL - 1.0);
                 double zHN1 = GetElevationAt(distHN1);
 
+                double wHn1 = geom.B_HT1;
                 geom.Manholes.Add(new PreviewManholeItem
                 {
                     Index = 1,
                     Title = "Hố thu 1",
                     DistanceFromP1M = distHN1,
-                    WidthM = geom.B_Box,
+                    WidthM = wHn1,
                     ElevationZ = zHN1,
                     BottomElevationZ = zHN1 - 0.20,
                     TopElevationZ = zHN1 + geom.BarrelHeightM + 0.80,
@@ -140,14 +143,14 @@ namespace InfraBIM.CulvertTool.Services
 
                 // Nhịp 1: Sân 1 -> Hộp 1
                 double start1 = 0.0;
-                double len1 = distHN1 - (geom.B_Box / 2.0);
+                double len1 = distHN1 - (wHn1 / 2.0);
                 if (len1 > 0)
                 {
                     GenerateSpanSegments(geom, start1, len1, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
 
                 // Nhịp 2: Hộp 1 -> Sân 2
-                double start2 = distHN1 + (geom.B_Box / 2.0);
+                double start2 = distHN1 + (wHn1 / 2.0);
                 double len2 = totalL - start2;
                 if (len2 > 0)
                 {
@@ -163,12 +166,15 @@ namespace InfraBIM.CulvertTool.Services
                 double zHN1 = GetElevationAt(distHN1);
                 double zHN2 = GetElevationAt(posHN2);
 
+                double wHn1 = geom.B_HT1;
+                double wHn2 = geom.B_HT2;
+
                 geom.Manholes.Add(new PreviewManholeItem
                 {
                     Index = 1,
                     Title = "Hố thu 1",
                     DistanceFromP1M = distHN1,
-                    WidthM = geom.B_Box,
+                    WidthM = wHn1,
                     ElevationZ = zHN1,
                     BottomElevationZ = zHN1 - 0.20,
                     TopElevationZ = zHN1 + geom.BarrelHeightM + 0.80,
@@ -180,7 +186,7 @@ namespace InfraBIM.CulvertTool.Services
                     Index = 2,
                     Title = "Hố thu 2",
                     DistanceFromP1M = posHN2,
-                    WidthM = geom.B_Box,
+                    WidthM = wHn2,
                     ElevationZ = zHN2,
                     BottomElevationZ = zHN2 - 0.20,
                     TopElevationZ = zHN2 + geom.BarrelHeightM + 0.80,
@@ -188,22 +194,22 @@ namespace InfraBIM.CulvertTool.Services
                 });
 
                 // Nhịp 1: Đầu cống -> Hộp 1
-                double len1 = distHN1 - (geom.B_Box / 2.0);
+                double len1 = distHN1 - (wHn1 / 2.0);
                 if (len1 > 0)
                 {
                     GenerateSpanSegments(geom, 0.0, len1, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
 
                 // Nhịp 2: Hộp 1 -> Hộp 2
-                double start2 = distHN1 + (geom.B_Box / 2.0);
-                double len2 = (posHN2 - (geom.B_Box / 2.0)) - start2;
+                double start2 = distHN1 + (wHn1 / 2.0);
+                double len2 = (posHN2 - (wHn2 / 2.0)) - start2;
                 if (len2 > 0)
                 {
                     GenerateSpanSegments(geom, start2, len2, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
 
                 // Nhịp 3: Hộp 2 -> Cuối cống
-                double start3 = posHN2 + (geom.B_Box / 2.0);
+                double start3 = posHN2 + (wHn2 / 2.0);
                 double len3 = totalL - start3;
                 if (len3 > 0)
                 {

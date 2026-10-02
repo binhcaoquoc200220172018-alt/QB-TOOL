@@ -349,6 +349,7 @@ namespace InfraBIM.CulvertTool.Services
             {
                 // TH2.1: Có 1 hộp nối
                 double distHN1Feet = UnitUtils.ConvertToInternalUnits(data.KC_HN1, UnitTypeId.Meters);
+                double b1Feet = UnitUtils.ConvertToInternalUnits(data.B_HT1 > 0.1 ? data.B_HT1 : 1.50, UnitTypeId.Meters);
                 XYZ pHN1 = p1 + u * distHN1Feet;
 
                 if (string.IsNullOrEmpty(branchSuffix))
@@ -357,12 +358,12 @@ namespace InfraBIM.CulvertTool.Services
                 }
 
                 // Đoạn 1: P1 -> Hộp 1
-                double len1 = distHN1Feet - (bBoxFeet / 2.0);
+                double len1 = distHN1Feet - (b1Feet / 2.0);
                 int dotCount1 = LayAdaptiveSegmentsV2(doc, barrelComponents, p1, len1, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings);
 
                 // Đoạn 2: Hộp 1 -> P2
-                XYZ pStart2 = pHN1 + u * (bBoxFeet / 2.0);
-                double len2 = totalLengthFeet - distHN1Feet - (bBoxFeet / 2.0);
+                XYZ pStart2 = pHN1 + u * (b1Feet / 2.0);
+                double len2 = totalLengthFeet - distHN1Feet - (b1Feet / 2.0);
                 LayAdaptiveSegmentsV2(doc, barrelComponents, pStart2, len2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount1 + 1, branchSuffix, materialSettings);
             }
             else // data.SoHopNoi >= 2
@@ -370,6 +371,8 @@ namespace InfraBIM.CulvertTool.Services
                 // TH2.2: Có 2 hộp nối
                 double distHN1Feet = UnitUtils.ConvertToInternalUnits(data.KC_HN1, UnitTypeId.Meters);
                 double distHN2Feet = UnitUtils.ConvertToInternalUnits(data.KC_HN2, UnitTypeId.Meters);
+                double b1Feet = UnitUtils.ConvertToInternalUnits(data.B_HT1 > 0.1 ? data.B_HT1 : 1.50, UnitTypeId.Meters);
+                double b2Feet = UnitUtils.ConvertToInternalUnits(data.B_HT2 > 0.1 ? data.B_HT2 : 1.50, UnitTypeId.Meters);
 
                 XYZ pHN1 = p1 + u * distHN1Feet;
                 XYZ pHN2 = p2 - u * distHN2Feet;
@@ -381,17 +384,17 @@ namespace InfraBIM.CulvertTool.Services
                 }
 
                 // Đoạn 1: P1 -> Hộp 1
-                double len1 = distHN1Feet - (bBoxFeet / 2.0);
+                double len1 = distHN1Feet - (b1Feet / 2.0);
                 int dotCount1 = LayAdaptiveSegmentsV2(doc, barrelComponents, p1, len1, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings);
 
                 // Đoạn 2: Hộp 1 -> Hộp 2
-                XYZ pStart2 = pHN1 + u * (bBoxFeet / 2.0);
-                double len2 = (pHN2 - pHN1).GetLength() - bBoxFeet;
+                XYZ pStart2 = pHN1 + u * (b1Feet / 2.0);
+                double len2 = (pHN2 - pHN1).GetLength() - ((b1Feet + b2Feet) / 2.0);
                 int dotCount2 = LayAdaptiveSegmentsV2(doc, barrelComponents, pStart2, len2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings);
 
                 // Đoạn 3: Hộp 2 -> P2
-                XYZ pStart3 = pHN2 + u * (bBoxFeet / 2.0);
-                double len3 = distHN2Feet - (bBoxFeet / 2.0);
+                XYZ pStart3 = pHN2 + u * (b2Feet / 2.0);
+                double len3 = distHN2Feet - (b2Feet / 2.0);
                 LayAdaptiveSegmentsV2(doc, barrelComponents, pStart3, len3, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount2 + 1, branchSuffix, materialSettings);
             }
         }

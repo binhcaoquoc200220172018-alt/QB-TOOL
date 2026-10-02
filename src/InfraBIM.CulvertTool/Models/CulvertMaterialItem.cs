@@ -15,6 +15,13 @@ namespace InfraBIM.CulvertTool.Models
             set { _isActive = value; OnPropertyChanged(); }
         }
 
+        private string _groupType = "Thân cống";
+        public string GroupType
+        {
+            get => _groupType;
+            set { _groupType = value; OnPropertyChanged(); }
+        }
+
         private string _categoryType = string.Empty;
         public string CategoryType
         {

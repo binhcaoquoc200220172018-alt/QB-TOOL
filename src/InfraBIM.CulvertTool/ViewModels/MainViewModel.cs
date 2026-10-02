@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -465,6 +466,30 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         #region Properties - Tab 03 Material Management
         public ObservableCollection<CulvertMaterialItem> ComponentMaterials { get; } = new();
+        public ObservableCollection<CulvertMaterialItem> FilteredComponentMaterials { get; } = new();
+
+        private string _selectedMaterialGroupFilter = "All";
+        public string SelectedMaterialGroupFilter
+        {
+            get => _selectedMaterialGroupFilter;
+            set
+            {
+                if (SetProperty(ref _selectedMaterialGroupFilter, value))
+                {
+                    OnPropertyChanged(nameof(SelectedMaterialGroupFilterName));
+                    ApplyMaterialGroupFilter();
+                }
+            }
+        }
+
+        public string SelectedMaterialGroupFilterName => _selectedMaterialGroupFilter switch
+        {
+            "Barrel" => "🧱 Thân cống",
+            "Outlet" => "🌊 Cửa xả & Sân gia cố",
+            "Manhole" => "🕳️ Hố ga (Hộp nối)",
+            _ => "📁 Tất cả các cụm"
+        };
+
         public ObservableCollection<string> AvailableRevitMaterials { get; } = new();
 
         private CulvertMaterialItem? _selectedMaterialItem;
@@ -503,6 +528,7 @@ namespace InfraBIM.CulvertTool.ViewModels
         public RelayCommand ScanRevitMaterialsCommand { get; }
         public RelayCommand CreateSelectedMaterialInRevitCommand { get; }
         public RelayCommand SyncMaterialsCommand { get; }
+        public RelayCommand<string> FilterMaterialGroupCommand { get; }
         public RelayCommand AddMaterialItemCommand { get; }
         public RelayCommand RemoveMaterialItemCommand { get; }
         public RelayCommand OpenColorPickerCommand { get; }
@@ -549,6 +575,10 @@ namespace InfraBIM.CulvertTool.ViewModels
             ScanRevitMaterialsCommand = new RelayCommand(ScanRevitMaterials);
             CreateSelectedMaterialInRevitCommand = new RelayCommand(CreateSelectedMaterialInRevit);
             SyncMaterialsCommand = new RelayCommand(SyncMaterialsFromAssemblyComponents);
+            FilterMaterialGroupCommand = new RelayCommand<string>(group =>
+            {
+                SelectedMaterialGroupFilter = group ?? "All";
+            });
             AddMaterialItemCommand = new RelayCommand(AddNewMaterialItem);
             RemoveMaterialItemCommand = new RelayCommand(RemoveSelectedMaterialItem);
             OpenColorPickerCommand = new RelayCommand(OpenColorPicker);
@@ -972,13 +1002,34 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         private void SyncAllAssemblyComponents()
         {
+            foreach (var c in AssemblyComponents)
+            {
+                c.PropertyChanged -= OnAssemblyComponentPropertyChanged;
+            }
+
             AssemblyComponents.Clear();
             foreach (var c in BarrelComponents) AssemblyComponents.Add(c);
             foreach (var c in OutletComponents) AssemblyComponents.Add(c);
             foreach (var c in ManholeComponents) AssemblyComponents.Add(c);
 
+            foreach (var c in AssemblyComponents)
+            {
+                c.PropertyChanged += OnAssemblyComponentPropertyChanged;
+            }
+
             RefreshActiveAssignedFamiliesForTab02();
             SyncMaterialsFromAssemblyComponents();
+        }
+
+        private void OnAssemblyComponentPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(CulvertComponentItem.CategoryType) ||
+                e.PropertyName == nameof(CulvertComponentItem.SelectedSymbol) ||
+                e.PropertyName == nameof(CulvertComponentItem.IsActive))
+            {
+                RefreshActiveAssignedFamiliesForTab02();
+                SyncMaterialsFromAssemblyComponents();
+            }
         }
 
         public void RefreshActiveAssignedFamiliesForTab02()
@@ -1079,31 +1130,81 @@ namespace InfraBIM.CulvertTool.ViewModels
         #endregion
 
         #region Tab 04 Material Methods
-        public void SyncMaterialsFromAssemblyComponents()
+        public void ApplyMaterialGroupFilter()
         {
-            var existing = ComponentMaterials.ToDictionary(m => m.CategoryType, m => m);
-            ComponentMaterials.Clear();
+            FilteredComponentMaterials.Clear();
+            string filter = _selectedMaterialGroupFilter ?? "All";
 
-            foreach (var comp in AssemblyComponents)
+            foreach (var item in ComponentMaterials)
             {
-                if (string.IsNullOrWhiteSpace(comp.CategoryType)) continue;
-
-                if (existing.TryGetValue(comp.CategoryType, out var oldItem))
+                if (filter == "All")
                 {
-                    oldItem.FamilyDisplayName = comp.SelectedSymbol?.DisplayName ?? "(Chưa chọn Family)";
-                    oldItem.IsActive = comp.IsActive;
-                    ComponentMaterials.Add(oldItem);
+                    FilteredComponentMaterials.Add(item);
                 }
-                else
+                else if (filter == "Barrel" && (item.GroupType == "Thân cống" || item.GroupType?.Contains("Thân") == true))
                 {
-                    var newItem = CreateDefaultMaterialItem(comp.CategoryType, comp.SelectedSymbol?.DisplayName ?? "(Chưa chọn Family)", comp.IsActive);
-                    ComponentMaterials.Add(newItem);
+                    FilteredComponentMaterials.Add(item);
+                }
+                else if (filter == "Outlet" && (item.GroupType == "Cửa xả & Sân gia cố" || item.GroupType?.Contains("Cửa") == true || item.GroupType?.Contains("Sân") == true))
+                {
+                    FilteredComponentMaterials.Add(item);
+                }
+                else if (filter == "Manhole" && (item.GroupType == "Hố ga (Hộp nối)" || item.GroupType?.Contains("Hố") == true || item.GroupType?.Contains("Hộp") == true))
+                {
+                    FilteredComponentMaterials.Add(item);
                 }
             }
 
-            if (SelectedMaterialItem == null || !ComponentMaterials.Contains(SelectedMaterialItem))
+            if (SelectedMaterialItem == null || !FilteredComponentMaterials.Contains(SelectedMaterialItem))
             {
-                SelectedMaterialItem = ComponentMaterials.FirstOrDefault();
+                SelectedMaterialItem = FilteredComponentMaterials.FirstOrDefault();
+            }
+        }
+
+        public void SyncMaterialsFromAssemblyComponents()
+        {
+            if (ComponentMaterials.Count == AssemblyComponents.Count && ComponentMaterials.Count > 0)
+            {
+                for (int i = 0; i < AssemblyComponents.Count; i++)
+                {
+                    var comp = AssemblyComponents[i];
+                    var mat = ComponentMaterials[i];
+                    mat.GroupType = comp.GroupType;
+                    mat.CategoryType = comp.CategoryType;
+                    mat.FamilyDisplayName = comp.SelectedSymbol?.DisplayName ?? "(Chưa chọn Family)";
+                    mat.IsActive = comp.IsActive;
+                }
+            }
+            else
+            {
+                var existing = ComponentMaterials.ToDictionary(m => m.CategoryType, m => m);
+                ComponentMaterials.Clear();
+
+                foreach (var comp in AssemblyComponents)
+                {
+                    if (string.IsNullOrWhiteSpace(comp.CategoryType)) continue;
+
+                    if (existing.TryGetValue(comp.CategoryType, out var oldItem))
+                    {
+                        oldItem.GroupType = comp.GroupType;
+                        oldItem.FamilyDisplayName = comp.SelectedSymbol?.DisplayName ?? "(Chưa chọn Family)";
+                        oldItem.IsActive = comp.IsActive;
+                        ComponentMaterials.Add(oldItem);
+                    }
+                    else
+                    {
+                        var newItem = CreateDefaultMaterialItem(comp.CategoryType, comp.SelectedSymbol?.DisplayName ?? "(Chưa chọn Family)", comp.IsActive);
+                        newItem.GroupType = comp.GroupType;
+                        ComponentMaterials.Add(newItem);
+                    }
+                }
+            }
+
+            ApplyMaterialGroupFilter();
+
+            if (SelectedMaterialItem == null || !FilteredComponentMaterials.Contains(SelectedMaterialItem))
+            {
+                SelectedMaterialItem = FilteredComponentMaterials.FirstOrDefault();
             }
         }
 
@@ -1297,6 +1398,13 @@ namespace InfraBIM.CulvertTool.ViewModels
             var newItem = new CulvertMaterialItem
             {
                 IsActive = true,
+                GroupType = _selectedMaterialGroupFilter switch
+                {
+                    "Barrel" => "Thân cống",
+                    "Outlet" => "Cửa xả & Sân gia cố",
+                    "Manhole" => "Hố ga (Hộp nối)",
+                    _ => "Thân cống"
+                },
                 CategoryType = "Cấu kiện tùy chọn",
                 FamilyDisplayName = "(Tùy biến)",
                 MaterialName = "BTCT_M300_Mới",
@@ -1313,6 +1421,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             };
             UpdateMaterialStatusNote(newItem);
             ComponentMaterials.Add(newItem);
+            ApplyMaterialGroupFilter();
             SelectedMaterialItem = newItem;
         }
 
@@ -1320,8 +1429,10 @@ namespace InfraBIM.CulvertTool.ViewModels
         {
             if (SelectedMaterialItem != null)
             {
-                ComponentMaterials.Remove(SelectedMaterialItem);
-                SelectedMaterialItem = ComponentMaterials.FirstOrDefault();
+                var item = SelectedMaterialItem;
+                ComponentMaterials.Remove(item);
+                ApplyMaterialGroupFilter();
+                SelectedMaterialItem = FilteredComponentMaterials.FirstOrDefault();
             }
         }
 
