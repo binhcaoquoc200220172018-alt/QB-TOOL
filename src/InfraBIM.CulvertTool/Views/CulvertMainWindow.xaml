@@ -733,28 +733,110 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Thanh chọn Family đã gán ở Tab 01 & Nút quét tham số -->
+                            <!-- Thanh chọn Cụm cấu kiện (Tab 01) & Family đã gán & Nút quét tham số -->
                             <Grid Grid.Row="0" Margin="0,0,0,6">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
-                                <Grid Grid.Row="0" Margin="0,0,0,4">
+                                <!-- 1. THANH LỌC CỤM CẤU KIỆN (THÂN CỐNG - CỬA XẢ - HỐ GA) TƯƠNG ỨNG TAB 01 -->
+                                <Border Grid.Row="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,5">
+                                    <DockPanel LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Cụm cấu kiện:" VerticalAlignment="Center" Foreground="{StaticResource CyanLight}" FontWeight="Bold" Margin="0,0,8,0"/>
+
+                                            <Button Content="🧱 Thân cống" Command="{Binding FilterTab02GroupCommand}" CommandParameter="Barrel" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedTab02GroupFilter}" Value="Barrel">
+                                                                <Setter Property="Background" Value="#0284C7"/>
+                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+
+                                            <Button Content="🌊 Cửa xả &amp; Sân gia cố" Command="{Binding FilterTab02GroupCommand}" CommandParameter="Outlet" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedTab02GroupFilter}" Value="Outlet">
+                                                                <Setter Property="Background" Value="#0284C7"/>
+                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+
+                                            <Button Content="🕳️ Hố ga (Hộp nối)" Command="{Binding FilterTab02GroupCommand}" CommandParameter="Manhole" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedTab02GroupFilter}" Value="Manhole">
+                                                                <Setter Property="Background" Value="#0284C7"/>
+                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+
+                                            <Button Content="📁 Tất cả" Command="{Binding FilterTab02GroupCommand}" CommandParameter="All" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedTab02GroupFilter}" Value="All">
+                                                                <Setter Property="Background" Value="#0284C7"/>
+                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </StackPanel>
+
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Đang xem: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                            <TextBlock Text="{Binding SelectedTab02GroupName}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11"/>
+                                            <TextBlock Text=" (" Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                            <TextBlock Text="{Binding FilteredAssignedFamiliesForTab02.Count}" Foreground="{StaticResource TextWhite}" FontWeight="Bold" FontSize="11"/>
+                                            <TextBlock Text=" family)" Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+
+                                <!-- 2. DROPDOWN CHỌN FAMILY CỦA CỤM ĐÃ CHỌN -->
+                                <Grid Grid.Row="1" Margin="0,0,0,4">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock Text="Family cấu kiện (Tab 01):" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ActiveAssignedFamiliesForTab02}" SelectedItem="{Binding SelectedComponentForTab02}">
+                                    <TextBlock Text="Family cấu kiện:" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding FilteredAssignedFamiliesForTab02}" SelectedItem="{Binding SelectedComponentForTab02}">
                                         <ComboBox.ItemTemplate>
                                             <DataTemplate>
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="[" Foreground="{StaticResource MintLight}" FontWeight="Bold"/>
-                                                    <TextBlock Text="{Binding CategoryType}" Foreground="{StaticResource MintLight}" FontWeight="Bold"/>
-                                                    <TextBlock Text="] " Foreground="{StaticResource MintLight}" FontWeight="Bold"/>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Border Background="#1E3A8A" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="3" Padding="4,1" Margin="0,0,5,0">
+                                                        <TextBlock Text="{Binding GroupType}" Foreground="{StaticResource MintLight}" FontSize="10.5" FontWeight="SemiBold"/>
+                                                    </Border>
+                                                    <TextBlock Text="[" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
+                                                    <TextBlock Text="{Binding CategoryType}" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
+                                                    <TextBlock Text="] " Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
                                                     <TextBlock Text="{Binding SelectedSymbol.DisplayName}" Foreground="#FFFFFF"/>
                                                 </StackPanel>
                                             </DataTemplate>
@@ -763,8 +845,8 @@
                                     <Button Grid.Column="2" Content="🔄 Quét tham số Family" Command="{Binding ScanFamilyParamsCommand}" Margin="6,0,0,0" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
                                 </Grid>
 
-                                <!-- Bộ lọc tham số -->
-                                <Grid Grid.Row="1" Margin="0,4,0,2">
+                                <!-- 3. BỘ LỌC THAM SỐ (DIMENSIONS / OTHER) -->
+                                <Grid Grid.Row="2" Margin="0,4,0,2">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="Bộ lọc tham số:" Foreground="{StaticResource TextMuted}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                         <CheckBox Content="Kích thước (Dimensions)" 

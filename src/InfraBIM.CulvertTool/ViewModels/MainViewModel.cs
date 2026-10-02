@@ -285,8 +285,32 @@ namespace InfraBIM.CulvertTool.ViewModels
         }
         #endregion
 
-        #region Properties - Tab 02 Parameter Mapping (Per Family)
+        #region Properties - Tab 02 Parameter Mapping (Per Family & Per Group)
         public ObservableCollection<CulvertComponentItem> ActiveAssignedFamiliesForTab02 { get; } = new();
+        public ObservableCollection<CulvertComponentItem> FilteredAssignedFamiliesForTab02 { get; } = new();
+
+        private string _selectedTab02GroupFilter = "Barrel";
+        public string SelectedTab02GroupFilter
+        {
+            get => _selectedTab02GroupFilter;
+            set
+            {
+                if (SetProperty(ref _selectedTab02GroupFilter, value))
+                {
+                    OnPropertyChanged(nameof(SelectedTab02GroupName));
+                }
+            }
+        }
+
+        public string SelectedTab02GroupName => _selectedTab02GroupFilter switch
+        {
+            "Barrel" => "🧱 Thân cống",
+            "Outlet" => "🌊 Cửa xả & Sân gia cố",
+            "Manhole" => "🕳️ Hố ga (Hộp nối)",
+            _ => "📁 Tất cả"
+        };
+
+        public RelayCommand<string> FilterTab02GroupCommand { get; }
 
         private CulvertComponentItem? _selectedComponentForTab02;
         public CulvertComponentItem? SelectedComponentForTab02
@@ -552,6 +576,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             CreateSampleExcelCommand = new RelayCommand(CreateSampleExcel);
             ReloadExcelCommand = new RelayCommand(ReloadExcelData);
             ScanFamilyParamsCommand = new RelayCommand(ScanCurrentSelectedFamilyParameters);
+            FilterTab02GroupCommand = new RelayCommand<string>(FilterTab02Group);
             BatchApplyCommand = new RelayCommand(ApplyBatchValue);
             ValidateCommand = new RelayCommand(RunValidation);
             ExecutePlacementCommand = new RelayCommand(ExecutePlacement);
@@ -762,7 +787,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả",
+                GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Tường đầu",
                 SelectedSymbol = FindSymbol("TNN_CUA XA", "TUONG DAU") ?? FindSymbol("TNN_CUA XA"),
                 OffsetZ = 0.0,
@@ -771,7 +796,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả",
+                GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Tường cánh",
                 SelectedSymbol = FindSymbol("TNN_CUA XA", "TUONG CANH") ?? FindSymbol("TNN_CUA XA"),
                 OffsetZ = 0.0,
@@ -780,7 +805,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả",
+                GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Sân cống",
                 SelectedSymbol = FindSymbol("TNN_CUA XA", "SAN CONG") ?? FindSymbol("TNN_CUA XA"),
                 OffsetZ = 0.0,
@@ -789,7 +814,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả",
+                GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Bê tông lót",
                 SelectedSymbol = FindSymbol("TNN_CUA XA", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
                 OffsetZ = -0.10,
@@ -798,7 +823,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả",
+                GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - CPDD / Đá dăm",
                 SelectedSymbol = FindSymbol("TNN_CUA XA", "CPDD") ?? FindSymbol("DA DAM"),
                 OffsetZ = -0.20,
@@ -808,7 +833,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả",
+                GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Sân gia cố - Tấm sân",
                 SelectedSymbol = FindSymbol("TNN_SAN GIA CO_CUA XA", "SAN GIA CO") ?? FindSymbol("TNN_SAN GIA CO"),
                 OffsetZ = 0.0,
@@ -817,7 +842,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả",
+                GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Sân gia cố - Bê tông lót",
                 SelectedSymbol = FindSymbol("TNN_SAN GIA CO_CUA XA", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
                 OffsetZ = -0.10,
@@ -832,7 +857,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             ManholeComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Hố ga",
+                GroupType = "Hố ga (Hộp nối)",
                 CategoryType = "Thân hố ga",
                 SelectedSymbol = FindSymbol("TNM_HG_DO TAI CHO") ?? FindSymbol("TNM_HG_DUC SAN") ?? FindSymbol("TNM_HG"),
                 OffsetZ = 0.0,
@@ -841,7 +866,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             ManholeComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Hố ga",
+                GroupType = "Hố ga (Hộp nối)",
                 CategoryType = "Cổ giếng",
                 SelectedSymbol = FindSymbol("TNM_HG_CO GIENG") ?? FindSymbol("CO GIENG"),
                 OffsetZ = 0.50,
@@ -850,7 +875,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             ManholeComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Hố ga",
+                GroupType = "Hố ga (Hộp nối)",
                 CategoryType = "Khuôn hầm",
                 SelectedSymbol = FindSymbol("TNM_HG_KHUON HAM") ?? FindSymbol("KHUON HAM"),
                 OffsetZ = 0.80,
@@ -859,7 +884,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             ManholeComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Hố ga",
+                GroupType = "Hố ga (Hộp nối)",
                 CategoryType = "Nắp đan",
                 SelectedSymbol = FindSymbol("TNM_HG_NAP DAN") ?? FindSymbol("NAP DAN"),
                 OffsetZ = 0.90,
@@ -868,7 +893,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             ManholeComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Hố ga",
+                GroupType = "Hố ga (Hộp nối)",
                 CategoryType = "Bê tông lót hố ga",
                 SelectedSymbol = FindSymbol("TNM_HG_BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
                 OffsetZ = -0.20,
@@ -1063,9 +1088,49 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
         }
 
-        public void RefreshActiveAssignedFamiliesForTab02()
+        public void FilterTab02Group(string? filter)
+        {
+            SelectedTab02GroupFilter = filter ?? "All";
+            ApplyTab02FamilyFilter();
+        }
+
+        public void ApplyTab02FamilyFilter()
         {
             var oldSelected = SelectedComponentForTab02;
+            FilteredAssignedFamiliesForTab02.Clear();
+
+            string f = SelectedTab02GroupFilter ?? "All";
+
+            foreach (var comp in ActiveAssignedFamiliesForTab02)
+            {
+                bool isBarrel = comp.GroupType == "Thân cống" || comp.GroupType?.Contains("Thân") == true || BarrelComponents.Contains(comp);
+                bool isOutlet = comp.GroupType == "Cửa xả & Sân gia cố" || comp.GroupType?.Contains("Cửa") == true || comp.GroupType?.Contains("Sân") == true || OutletComponents.Contains(comp);
+                bool isManhole = comp.GroupType == "Hố ga (Hộp nối)" || comp.GroupType?.Contains("Hố") == true || comp.GroupType?.Contains("Hộp") == true || ManholeComponents.Contains(comp);
+
+                bool pass = false;
+                if (f == "All") pass = true;
+                else if (f == "Barrel" && isBarrel) pass = true;
+                else if (f == "Outlet" && isOutlet) pass = true;
+                else if (f == "Manhole" && isManhole) pass = true;
+
+                if (pass)
+                {
+                    FilteredAssignedFamiliesForTab02.Add(comp);
+                }
+            }
+
+            if (oldSelected != null && FilteredAssignedFamiliesForTab02.Contains(oldSelected))
+            {
+                SelectedComponentForTab02 = oldSelected;
+            }
+            else
+            {
+                SelectedComponentForTab02 = FilteredAssignedFamiliesForTab02.FirstOrDefault();
+            }
+        }
+
+        public void RefreshActiveAssignedFamiliesForTab02()
+        {
             ActiveAssignedFamiliesForTab02.Clear();
 
             foreach (var comp in AssemblyComponents)
@@ -1076,14 +1141,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 }
             }
 
-            if (oldSelected != null && ActiveAssignedFamiliesForTab02.Contains(oldSelected))
-            {
-                SelectedComponentForTab02 = oldSelected;
-            }
-            else
-            {
-                SelectedComponentForTab02 = ActiveAssignedFamiliesForTab02.FirstOrDefault();
-            }
+            ApplyTab02FamilyFilter();
         }
         #endregion
 
