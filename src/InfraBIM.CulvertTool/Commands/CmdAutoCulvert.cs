@@ -20,6 +20,9 @@ namespace InfraBIM.CulvertTool.Commands
             {
                 var uiApp = commandData.Application;
 
+                // Tự động chẩn đoán hệ tọa độ và đối tượng cống ra file desktop
+                ModelDiagnosticService.RunDiagnostic(uiApp);
+
                 // Nếu cửa sổ đang mở thì focus vào
                 if (_currentWindow != null && _currentWindow.IsLoaded)
                 {

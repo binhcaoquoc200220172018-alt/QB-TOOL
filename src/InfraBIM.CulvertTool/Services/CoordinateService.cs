@@ -28,8 +28,8 @@ namespace InfraBIM.CulvertTool.Services
             double dy = ptInput.Y - pos.NorthSouth;
             double dz = ptInput.Z - pos.Elevation;
 
-            double internalX = dx * Math.Cos(angle) + dy * Math.Sin(angle);
-            double internalY = -dx * Math.Sin(angle) + dy * Math.Cos(angle);
+            double internalX = dx * Math.Cos(angle) - dy * Math.Sin(angle);
+            double internalY = dx * Math.Sin(angle) + dy * Math.Cos(angle);
             double internalZ = dz;
 
             return new XYZ(internalX, internalY, internalZ);
@@ -52,9 +52,9 @@ namespace InfraBIM.CulvertTool.Services
             ProjectPosition pos = doc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero);
             double angle = pos.Angle;
 
-            // Xoay ngược lại
-            double dx = internalPt.X * Math.Cos(angle) - internalPt.Y * Math.Sin(angle);
-            double dy = internalPt.X * Math.Sin(angle) + internalPt.Y * Math.Cos(angle);
+            // Xoay ngược lại (nghịch đảo của ma trận xoay góc angle)
+            double dx = internalPt.X * Math.Cos(angle) + internalPt.Y * Math.Sin(angle);
+            double dy = -internalPt.X * Math.Sin(angle) + internalPt.Y * Math.Cos(angle);
             double dz = internalPt.Z;
 
             double easting = dx + pos.EastWest;

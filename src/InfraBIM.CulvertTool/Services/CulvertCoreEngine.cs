@@ -303,14 +303,7 @@ namespace InfraBIM.CulvertTool.Services
                 double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
                 XYZ ptPlace = ptBase + new XYZ(0, 0, offFeetZ);
 
-                // Nếu là Sân gia cố thì đặt lùi ra phía ngoài thêm 1.5m
-                string cat = (comp.CategoryType ?? "").ToUpperInvariant();
-                if (cat.Contains("GIA CỐ") || cat.Contains("GIA CO") || cat.Contains("SGC"))
-                {
-                    double sgcOffsetFeet = UnitUtils.ConvertToInternalUnits(1.5, UnitTypeId.Meters);
-                    ptPlace -= uDir * sgcOffsetFeet;
-                }
-
+                // Sân gia cố và Cửa xả dùng chung gốc tọa độ (0,0) đã được căn chuẩn trong Family Revit
                 FamilyInstance inst = doc.Create.NewFamilyInstance(ptPlace, sym, StructuralType.NonStructural);
                 ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptPlace, ptPlace + XYZ.BasisZ), rotAngle);
 
@@ -354,8 +347,17 @@ namespace InfraBIM.CulvertTool.Services
             else if (data.SoHopNoi == 1)
             {
                 // TH2.1: Có 1 hộp nối
-                double distHN1Feet = UnitUtils.ConvertToInternalUnits(data.KC_HN1, UnitTypeId.Meters);
-                double b1Feet = UnitUtils.ConvertToInternalUnits(data.B_HT1 > 0.1 ? data.B_HT1 : 1.50, UnitTypeId.Meters);
+                double b1M = data.B_HT1 > 0.1 ? data.B_HT1 : 1.50;
+                double distHN1M = data.KC_HN1;
+                // Nếu khoảng cách hố ga quá nhỏ (< nửa bề rộng hố ga), tự động bảo vệ theo cự ly thiết kế
+                if (distHN1M <= (b1M / 2.0) + 0.2)
+                {
+                    double totalLenM = UnitUtils.ConvertFromInternalUnits(totalLengthFeet, UnitTypeId.Meters);
+                    distHN1M = totalLenM > 12.0 ? 5.18 : Math.Max(2.0, b1M + 1.0);
+                }
+
+                double distHN1Feet = UnitUtils.ConvertToInternalUnits(distHN1M, UnitTypeId.Meters);
+                double b1Feet = UnitUtils.ConvertToInternalUnits(b1M, UnitTypeId.Meters);
                 XYZ pHN1 = p1 + u * distHN1Feet;
 
                 if (string.IsNullOrEmpty(branchSuffix))
@@ -364,21 +366,37 @@ namespace InfraBIM.CulvertTool.Services
                 }
 
                 // Đoạn 1: P1 -> Hộp 1
-                double len1 = distHN1Feet - (b1Feet / 2.0);
+                double len1 = Math.Max(0.0, distHN1Feet - (b1Feet / 2.0));
                 int dotCount1 = LayAdaptiveSegmentsV2(doc, barrelComponents, p1, len1, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings);
 
                 // Đoạn 2: Hộp 1 -> P2
                 XYZ pStart2 = pHN1 + u * (b1Feet / 2.0);
-                double len2 = totalLengthFeet - distHN1Feet - (b1Feet / 2.0);
+                double len2 = Math.Max(0.0, totalLengthFeet - distHN1Feet - (b1Feet / 2.0));
                 LayAdaptiveSegmentsV2(doc, barrelComponents, pStart2, len2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount1 + 1, branchSuffix, materialSettings);
             }
             else // data.SoHopNoi >= 2
             {
                 // TH2.2: Có 2 hộp nối
-                double distHN1Feet = UnitUtils.ConvertToInternalUnits(data.KC_HN1, UnitTypeId.Meters);
-                double distHN2Feet = UnitUtils.ConvertToInternalUnits(data.KC_HN2, UnitTypeId.Meters);
-                double b1Feet = UnitUtils.ConvertToInternalUnits(data.B_HT1 > 0.1 ? data.B_HT1 : 1.50, UnitTypeId.Meters);
-                double b2Feet = UnitUtils.ConvertToInternalUnits(data.B_HT2 > 0.1 ? data.B_HT2 : 1.50, UnitTypeId.Meters);
+                double b1M = data.B_HT1 > 0.1 ? data.B_HT1 : 1.50;
+                double b2M = data.B_HT2 > 0.1 ? data.B_HT2 : 1.50;
+                double distHN1M = data.KC_HN1;
+                double distHN2M = data.KC_HN2;
+
+                // Nếu khoảng cách hố ga quá nhỏ (< nửa bề rộng hố ga), tự động bảo vệ theo cự ly thiết kế
+                double totalLenM = UnitUtils.ConvertFromInternalUnits(totalLengthFeet, UnitTypeId.Meters);
+                if (distHN1M <= (b1M / 2.0) + 0.2)
+                {
+                    distHN1M = totalLenM > 12.0 ? 5.18 : Math.Max(2.0, b1M + 1.0);
+                }
+                if (distHN2M <= (b2M / 2.0) + 0.2)
+                {
+                    distHN2M = totalLenM > 12.0 ? 5.01 : Math.Max(2.0, b2M + 1.0);
+                }
+
+                double distHN1Feet = UnitUtils.ConvertToInternalUnits(distHN1M, UnitTypeId.Meters);
+                double distHN2Feet = UnitUtils.ConvertToInternalUnits(distHN2M, UnitTypeId.Meters);
+                double b1Feet = UnitUtils.ConvertToInternalUnits(b1M, UnitTypeId.Meters);
+                double b2Feet = UnitUtils.ConvertToInternalUnits(b2M, UnitTypeId.Meters);
 
                 XYZ pHN1 = p1 + u * distHN1Feet;
                 XYZ pHN2 = p2 - u * distHN2Feet;
@@ -390,17 +408,17 @@ namespace InfraBIM.CulvertTool.Services
                 }
 
                 // Đoạn 1: P1 -> Hộp 1
-                double len1 = distHN1Feet - (b1Feet / 2.0);
+                double len1 = Math.Max(0.0, distHN1Feet - (b1Feet / 2.0));
                 int dotCount1 = LayAdaptiveSegmentsV2(doc, barrelComponents, p1, len1, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings);
 
                 // Đoạn 2: Hộp 1 -> Hộp 2
                 XYZ pStart2 = pHN1 + u * (b1Feet / 2.0);
-                double len2 = (pHN2 - pHN1).GetLength() - ((b1Feet + b2Feet) / 2.0);
+                double len2 = Math.Max(0.0, (pHN2 - pHN1).GetLength() - ((b1Feet + b2Feet) / 2.0));
                 int dotCount2 = LayAdaptiveSegmentsV2(doc, barrelComponents, pStart2, len2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings);
 
                 // Đoạn 3: Hộp 2 -> P2
                 XYZ pStart3 = pHN2 + u * (b2Feet / 2.0);
-                double len3 = distHN2Feet - (b2Feet / 2.0);
+                double len3 = Math.Max(0.0, distHN2Feet - (b2Feet / 2.0));
                 LayAdaptiveSegmentsV2(doc, barrelComponents, pStart3, len3, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount2 + 1, branchSuffix, materialSettings);
             }
         }

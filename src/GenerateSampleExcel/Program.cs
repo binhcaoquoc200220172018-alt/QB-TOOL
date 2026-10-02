@@ -19,6 +19,11 @@ namespace GenerateSampleExcel
 
             if (args.Length > 0)
             {
+                if (args[0] == "fix-excel")
+                {
+                    FixExcelData();
+                    return;
+                }
                 if (args[0] == "crop-profile")
                 {
                     CropProfileNumbers();
@@ -88,10 +93,7 @@ namespace GenerateSampleExcel
                         string val = ws.Cell(r, c).GetFormattedString().Trim();
                         rowVals.Add(val);
                     }
-                    if (rowVals.Any(v => !string.IsNullOrEmpty(v)))
-                    {
-                        Console.WriteLine($"R{r:D2}: " + string.Join(" | ", rowVals.Take(15)));
-                    }
+                        Console.WriteLine($"R{r:D2}: " + string.Join(" | ", rowVals));
                 }
             }
         }
@@ -1225,16 +1227,48 @@ namespace GenerateSampleExcel
 
         static void InspectLapGhep(string baseDir)
         {
-            string dwgPath = Path.Combine(baseDir, @"CAD\Cap Bim\03. CONG HOP LAP GHEP.dwg");
-            Console.WriteLine($"=== REVIEW FILE: {Path.GetFileName(dwgPath)} ===");
-
-            if (!File.Exists(dwgPath))
+            string famDir = @"C:\Users\ADMIN\Desktop\HTKT_TNN_DUONG VEN BIEN PHU YEN\REVIT_FAMILY RAI CONG NGANG";
+            foreach (var rfa in Directory.GetFiles(famDir, "*.rfa", SearchOption.AllDirectories))
             {
-                Console.WriteLine($"[ERROR] Không tìm thấy file: {dwgPath}");
-                return;
+                Console.WriteLine($"\n=== FAMILY: {Path.GetFileName(rfa)} ===");
+                ScanBinaryRfaStrings(rfa);
             }
+        }
 
-            ScanBinaryDwgStrings(dwgPath);
+        static void ScanBinaryRfaStrings(string filePath)
+        {
+            string fn = Path.GetFileName(filePath);
+            if (!fn.Contains("THAN CONG") && !fn.Contains("CUA XA")) return;
+
+            Console.WriteLine($"\n=== CHI TIẾT FAMILY: {fn} ===");
+            byte[] bytes = File.ReadAllBytes(filePath);
+            var list = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < bytes.Length - 4; i += 2)
+            {
+                int len = 0;
+                while (i + len + 1 < bytes.Length)
+                {
+                    char c = (char)(bytes[i + len] | (bytes[i + len + 1] << 8));
+                    if ((c >= 32 && c <= 126) || (c >= 0x00C0 && c <= 0x1EF9))
+                    {
+                        len += 2;
+                    }
+                    else break;
+                }
+                if (len >= 4)
+                {
+                    string s = System.Text.Encoding.Unicode.GetString(bytes, i, len).Trim();
+                    if (s.Length >= 2 && (s.Contains("Front") || s.Contains("Back") || s.Contains("Left") || s.Contains("Right") || s.Contains("Center") || s.Contains("Length") || s.Contains("Width") || s.Contains("Height") || s.Contains("Chieu") || s.Contains("Chiều") || s.Contains("Rộng") || s.Contains("Cao") || s.Contains("Dài") || s.Contains("Dai") || s.Contains("L_") || s.Contains("B_") || s.Contains("H_") || s.Contains("b_") || s.Contains("h_") || s.Contains("l_") || s.Contains("Goc") || s.Contains("Angle") || s.Contains("Xoay")))
+                    {
+                        list.Add(s);
+                    }
+                    i += len;
+                }
+            }
+            foreach (var s in list.Distinct().Take(40))
+            {
+                Console.WriteLine("  -- " + s);
+            }
         }
 
         static void ExtractTextsFromAcadDoc(dynamic doc)
@@ -1406,6 +1440,29 @@ namespace GenerateSampleExcel
             {
                 Console.WriteLine("  -- " + item);
             }
+        }
+
+        static void FixExcelData()
+        {
+            string path = @"C:\Users\ADMIN\Desktop\HTKT_TNN_DUONG VEN BIEN PHU YEN\CAD\Cap Bim\LAY TOA DO\DU_LIEU_CONG_NAP_TOOL.xlsx";
+            if (!File.Exists(path))
+            {
+                Console.WriteLine("[ERR] Không tìm thấy file: " + path);
+                return;
+            }
+
+            using var wb = new XLWorkbook(path);
+            var ws = wb.Worksheet(1);
+            // Dòng 2 (STT 1): KC_HN1 = 5.18m, KC_HN2 = 5.01m
+            ws.Cell(2, 17).Value = 5.18; // Cột 17 là KC_HN1 (do có thêm cột CauKien)
+            ws.Cell(2, 18).Value = 5.01; // Cột 18 là KC_HN2
+            
+            // Dòng 3 (STT 2): KC_HN1 = 5.18m, KC_HN2 = 5.01m
+            ws.Cell(3, 17).Value = 5.18;
+            ws.Cell(3, 18).Value = 5.01;
+
+            wb.Save();
+            Console.WriteLine("[SUCCESS] Đã cập nhật KC_HN1=5.18m và KC_HN2=5.01m vào file: " + path);
         }
     }
 }
