@@ -1476,39 +1476,128 @@ namespace GenerateSampleExcel
             string[] rfaFiles = Directory.GetFiles(famDir, "*.rfa", SearchOption.AllDirectories);
             Console.WriteLine($"[INSPECT] Tìm thấy {rfaFiles.Length} file Family RFA:");
 
-            foreach (var rfa in rfaFiles)
+            var sbReport = new System.Text.StringBuilder();
+            sbReport.AppendLine("# BÁO CÁO REVIEW CHI TIẾT 18 FAMILY CỐNG TRONG REVIT");
+            sbReport.AppendLine($"*Thời gian thực hiện: {DateTime.Now:yyyy-MM-dd HH:mm:ss}*");
+            sbReport.AppendLine($"*Thư mục: `{famDir}`*\n");
+
+            int idx = 0;
+            foreach (var rfa in rfaFiles.OrderBy(f => f))
             {
+                idx++;
                 string fn = Path.GetFileName(rfa);
-                Console.WriteLine($"\n==========================================");
-                Console.WriteLine($"FAMILY: {fn}");
-                Console.WriteLine($"Đường dẫn: {rfa}");
+                string relDir = Path.GetDirectoryName(rfa)!.Replace(famDir, "").TrimStart('\\');
+                Console.WriteLine($"\n[{idx}/18] Processing: {fn} ({relDir})");
 
-                byte[] bytes = File.ReadAllBytes(rfa);
-                // Tìm kiếm chuỗi Unicode
-                var uniStrings = ExtractStrings(bytes, true);
-                var utf8Strings = ExtractStrings(bytes, false);
-                var allStrings = uniStrings.Concat(utf8Strings).Distinct().ToList();
+                sbReport.AppendLine($"## {idx}. `{fn}`");
+                sbReport.AppendLine($"- **Thư mục phân nhóm:** `{relDir}`");
+                sbReport.AppendLine($"- **Dung lượng:** {new FileInfo(rfa).Length / 1024.0:F1} KB");
 
-                var dims = allStrings.Where(s => 
-                    s.StartsWith("L_") || s.StartsWith("B_") || s.StartsWith("H_") ||
-                    s.Contains("Length") || s.Contains("Width") || s.Contains("Height") ||
-                    s.Contains("Chieu") || s.Contains("Cao") || s.Contains("Rong") || s.Contains("Day") ||
-                    s.Contains("DOT") || s.Contains("CUA") || s.Contains("SAN") || s.Contains("GA") ||
-                    s.Contains("Front") || s.Contains("Back") || s.Contains("Left") || s.Contains("Right")
-                ).Distinct().Take(30).ToList();
-
-                Console.WriteLine($"   Các tham số / nhãn hình học ({dims.Count}):");
-                foreach (var d in dims)
+                byte[] bytes;
+                using (var fs = new FileStream(rfa, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
-                    Console.WriteLine($"      - {d}");
+                    bytes = new byte[fs.Length];
+                    fs.Read(bytes, 0, bytes.Length);
                 }
+                string utf8 = System.Text.Encoding.UTF8.GetString(bytes);
+
+                // Tìm XML block
+                int start = utf8.IndexOf("<A:family");
+                int end = utf8.IndexOf("</A:family>");
+                if (start >= 0 && end > start)
+                {
+                    string xml = utf8.Substring(start, end - start + 11);
+                    ParseFamilyXml(xml, sbReport);
+                }
+                else
+                {
+                    sbReport.AppendLine("- *Không tìm thấy khối `<A:family>` XML trực tiếp, phân tích chuỗi nhãn:*");
+                    var rawStrings = ExtractStrings(bytes, true).Concat(ExtractStrings(bytes, false)).Distinct().ToList();
+                    var interesting = rawStrings.Where(s => 
+                        s.StartsWith("L_") || s.StartsWith("B_") || s.StartsWith("H_") || s.StartsWith("D_") ||
+                        s.Contains("Length") || s.Contains("Width") || s.Contains("Height") ||
+                        s.Contains("Chieu") || s.Contains("Cao") || s.Contains("Rong") || s.Contains("Day") ||
+                        s.Contains("THAN") || s.Contains("CUA") || s.Contains("SAN") || s.Contains("GA") ||
+                        s.Contains("Front") || s.Contains("Back") || s.Contains("Left") || s.Contains("Right")
+                    ).Distinct().Take(20).ToList();
+
+                    foreach (var s in interesting)
+                    {
+                        sbReport.AppendLine($"  - `{s}`");
+                    }
+                }
+                sbReport.AppendLine();
+            }
+
+            string outPath = @"C:\Users\ADMIN\Desktop\REVIEW_CHI_TIET_FAMILY_REVIT.md";
+            File.WriteAllText(outPath, sbReport.ToString(), System.Text.Encoding.UTF8);
+            Console.WriteLine($"\n[SUCCESS] Đã xuất báo cáo chi tiết ra file: {outPath}");
+        }
+
+        static void ParseFamilyXml(string xml, System.Text.StringBuilder sb)
+        {
+            try
+            {
+                // Tìm các part / type
+                var partMatches = System.Text.RegularExpressions.Regex.Matches(xml, @"<A:part[^>]*>(.*?)</A:part>", System.Text.RegularExpressions.RegexOptions.Singleline);
+                sb.AppendLine($"- **Số lượng Type (Biến thể) phát hiện:** {partMatches.Count}");
+
+                int pIdx = 0;
+                foreach (System.Text.RegularExpressions.Match pMatch in partMatches)
+                {
+                    pIdx++;
+                    string pXml = pMatch.Groups[1].Value;
+                    var titleMatch = System.Text.RegularExpressions.Regex.Match(pXml, @"<title>(.*?)</title>");
+                    string title = titleMatch.Success ? titleMatch.Groups[1].Value : $"Type {pIdx}";
+
+                    sb.AppendLine($"\n### Type {pIdx}: `{title}`");
+
+                    // Tìm các parameter trong part
+                    var paramMatches = System.Text.RegularExpressions.Regex.Matches(pXml, @"<([A-Za-z0-9_]+)([^>]*)>(.*?)</\1>");
+                    var pList = new List<string>();
+
+                    foreach (System.Text.RegularExpressions.Match pm in paramMatches)
+                    {
+                        string pTag = pm.Groups[1].Value;
+                        if (pTag == "title") continue;
+                        string attrs = pm.Groups[2].Value;
+                        string val = pm.Groups[3].Value;
+
+                        string dispName = "";
+                        var dispMatch = System.Text.RegularExpressions.Regex.Match(attrs, @"displayName=""([^""]*)""");
+                        if (dispMatch.Success) dispName = dispMatch.Groups[1].Value;
+                        else dispName = pTag;
+
+                        string pType = "";
+                        var typeMatch = System.Text.RegularExpressions.Regex.Match(attrs, @"typeOfParameter=""([^""]*)""");
+                        if (typeMatch.Success) pType = typeMatch.Groups[1].Value;
+
+                        string units = "";
+                        var unitMatch = System.Text.RegularExpressions.Regex.Match(attrs, @"units=""([^""]*)""");
+                        if (unitMatch.Success) units = " " + unitMatch.Groups[1].Value;
+
+                        pList.Add($"- `{dispName}`: **{val}{units}** *(kiểu: {pType})*");
+                    }
+
+                    if (pList.Count > 0)
+                    {
+                        foreach (var pl in pList) sb.AppendLine(pl);
+                    }
+                    else
+                    {
+                        sb.AppendLine("- *(Không có parameter nào được ghi đè trong Type này)*");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"- *Lỗi phân tích XML: {ex.Message}*");
             }
         }
 
         static List<string> ExtractStrings(byte[] bytes, bool isUnicode)
         {
             var res = new List<string>();
-            var enc = isUnicode ? System.Text.Encoding.Unicode : System.Text.Encoding.UTF8;
             int step = isUnicode ? 2 : 1;
             var sb = new System.Text.StringBuilder();
 
