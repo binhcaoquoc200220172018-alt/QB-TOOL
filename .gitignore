@@ -21,3 +21,5 @@ inspect_culvert.txt
 # Revit backups
 *.00*.rfa
 *.00*.rvt
+
+.agents/

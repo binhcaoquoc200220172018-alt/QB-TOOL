@@ -119,12 +119,139 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
+        private static FamilyInstance CreateInstanceSafe(Document doc, XYZ pt, FamilySymbol sym)
+        {
+            ActivateSymbol(sym);
+            try
+            {
+                return doc.Create.NewFamilyInstance(pt, sym, StructuralType.NonStructural);
+            }
+            catch
+            {
+                // Fallback nếu Family là Work-Plane Based hoặc Level-Hosted (ví dụ HOP NOI CONG DOC)
+                Level? level = new FilteredElementCollector(doc)
+                    .OfClass(typeof(Level))
+                    .Cast<Level>()
+                    .OrderBy(l => Math.Abs(l.Elevation - pt.Z))
+                    .FirstOrDefault();
+
+                if (level != null)
+                {
+                    var inst = doc.Create.NewFamilyInstance(pt, sym, level, StructuralType.NonStructural);
+                    Parameter pElev = inst.get_Parameter(BuiltInParameter.INSTANCE_FREE_HOST_OFFSET_PARAM);
+                    if (pElev != null && !pElev.IsReadOnly)
+                    {
+                        pElev.Set(pt.Z - level.Elevation);
+                    }
+                    return inst;
+                }
+                throw;
+            }
+        }
+
+        private static FamilyInstance? CreateAdaptiveInstanceSafe(Document doc, FamilySymbol sym, IList<XYZ> points)
+        {
+            if (sym == null || points == null || points.Count == 0) return null;
+            ActivateSymbol(sym);
+
+            if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
+            {
+                FamilyInstance inst = AdaptiveComponentInstanceUtils.CreateAdaptiveComponentInstance(doc, sym);
+                IList<ElementId> placePointIds = AdaptiveComponentInstanceUtils.GetInstancePlacementPointElementRefIds(inst);
+                for (int i = 0; i < Math.Min(points.Count, placePointIds.Count); i++)
+                {
+                    if (doc.GetElement(placePointIds[i]) is ReferencePoint refPt)
+                    {
+                        refPt.Position = points[i];
+                    }
+                }
+                return inst;
+            }
+            else
+            {
+                XYZ midPt = points[0];
+                if (points.Count > 1)
+                {
+                    midPt = (points[0] + points[1]) * 0.5;
+                }
+                return CreateInstanceSafe(doc, midPt, sym);
+            }
+        }
+
+        private static void SetOutletVisibilitySafe(FamilyInstance inst, string catType)
+        {
+            string upper = catType.ToUpperInvariant();
+            if (upper.Contains("TƯỜNG ĐẦU") || upper.Contains("TUONG DAU"))
+            {
+                SetParamYesNo(inst, "CX_TUONG DAU", 1);
+                SetParamYesNo(inst, "TD_BE TONG LOT", 1);
+                SetParamYesNo(inst, "TD_DA DAM DEM", 1);
+                SetParamYesNo(inst, "CX_TUONG CANH", 0);
+                SetParamYesNo(inst, "CX_SAN CONG", 0);
+                SetParamYesNo(inst, "CX_BE TONG LOT", 0);
+                SetParamYesNo(inst, "CX_DA DAM DEM", 0);
+            }
+            else if (upper.Contains("TƯỜNG CÁNH") || upper.Contains("TUONG CANH"))
+            {
+                SetParamYesNo(inst, "CX_TUONG CANH", 1);
+                SetParamYesNo(inst, "CX_TUONG DAU", 0);
+                SetParamYesNo(inst, "CX_SAN CONG", 0);
+                SetParamYesNo(inst, "CX_BE TONG LOT", 0);
+                SetParamYesNo(inst, "CX_DA DAM DEM", 0);
+            }
+            else if (upper.Contains("SÂN CỐNG") || upper.Contains("SAN CONG"))
+            {
+                SetParamYesNo(inst, "CX_SAN CONG", 1);
+                SetParamYesNo(inst, "CX_TUONG DAU", 0);
+                SetParamYesNo(inst, "CX_TUONG CANH", 0);
+                SetParamYesNo(inst, "CX_BE TONG LOT", 0);
+                SetParamYesNo(inst, "CX_DA DAM DEM", 0);
+            }
+            else if (upper.Contains("BÊ TÔNG LÓT") || upper.Contains("BE TONG LOT"))
+            {
+                SetParamYesNo(inst, "CX_BE TONG LOT", 1);
+                SetParamYesNo(inst, "CX_TUONG DAU", 0);
+                SetParamYesNo(inst, "CX_TUONG CANH", 0);
+                SetParamYesNo(inst, "CX_SAN CONG", 0);
+                SetParamYesNo(inst, "CX_DA DAM DEM", 0);
+                SetParamYesNo(inst, "CX_SGC_BTL_SH", 1);
+                SetParamYesNo(inst, "CX_SGC_SH", 0);
+                SetParamYesNo(inst, "CX_SGC_DD_SH", 0);
+            }
+            else if (upper.Contains("ĐÁ DĂM") || upper.Contains("DA DAM"))
+            {
+                SetParamYesNo(inst, "CX_DA DAM DEM", 1);
+                SetParamYesNo(inst, "CX_TUONG DAU", 0);
+                SetParamYesNo(inst, "CX_TUONG CANH", 0);
+                SetParamYesNo(inst, "CX_SAN CONG", 0);
+                SetParamYesNo(inst, "CX_BE TONG LOT", 0);
+                SetParamYesNo(inst, "CX_SGC_DD_SH", 1);
+                SetParamYesNo(inst, "CX_SGC_SH", 0);
+                SetParamYesNo(inst, "CX_SGC_BTL_SH", 0);
+            }
+            else if (upper.Contains("SÂN GIA CỐ") || upper.Contains("SAN GIA CO"))
+            {
+                SetParamYesNo(inst, "CX_SGC_SH", 1);
+                SetParamYesNo(inst, "CX_SGC_BTL_SH", 0);
+                SetParamYesNo(inst, "CX_SGC_DD_SH", 0);
+            }
+        }
+
+        private static void SetParamYesNo(FamilyInstance inst, string paramName, int value)
+        {
+            var p = inst.LookupParameter(paramName);
+            if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Integer)
+            {
+                p.Set(value);
+            }
+        }
+
         private static IList<CulvertComponentItem> ResolveComponentsForCulvert(
             Document doc,
             IList<CulvertComponentItem> baseComponents,
             CulvertRowData row)
         {
-            if (baseComponents == null || baseComponents.Count == 0) return baseComponents;
+            if (baseComponents == null || baseComponents.Count == 0) return baseComponents ?? new List<CulvertComponentItem>();
 
             var list = new List<CulvertComponentItem>();
             var allSymbols = new FilteredElementCollector(doc)
@@ -133,8 +260,8 @@ namespace InfraBIM.CulvertTool.Services
                 .ToList();
 
             string loaiCong = row.LoaiCong ?? "";
+            string cauKien = row.CauKien ?? "";
             string ghiChu = row.GhiChu ?? "";
-            string combinedLC = $"{loaiCong} {ghiChu}".Trim();
 
             foreach (var baseComp in baseComponents)
             {
@@ -150,7 +277,7 @@ namespace InfraBIM.CulvertTool.Services
 
                 if (copy.IsActive)
                 {
-                    var matchSym = ResolveFamilyForCulvert(allSymbols, combinedLC, row.KhauDo, copy.CategoryType ?? "");
+                    var matchSym = ResolveFamilyForCulvert(allSymbols, loaiCong, cauKien, ghiChu, row.SoCua, row.KhauDo, copy.CategoryType ?? "");
                     if (matchSym != null)
                     {
                         copy.SelectedSymbol = new FamilySymbolWrapper(matchSym);
@@ -164,94 +291,115 @@ namespace InfraBIM.CulvertTool.Services
             return list;
         }
 
-
         private static FamilySymbol? ResolveFamilyForCulvert(
             IEnumerable<FamilySymbol>? symbols,
             string loaiCong,
+            string cauKien,
+            string ghiChu,
+            int soCua,
             string khauDo,
             string partHint)
         {
             if (symbols == null) return null;
 
-            string lcUpper = (loaiCong ?? "").Trim().ToUpperInvariant();
+            string lcUpper = $"{loaiCong} {cauKien} {ghiChu}".Trim().ToUpperInvariant();
             string kdUpper = (khauDo ?? "").Trim().ToUpperInvariant();
             string hintUpper = (partHint ?? "").Trim().ToUpperInvariant();
 
-            bool isTron = lcUpper.Contains("TRON") || lcUpper.Contains("TRÒN") || lcUpper.Contains("PIPE") || lcUpper.Contains("CT");
-            bool isHop = lcUpper.Contains("HOP") || lcUpper.Contains("HỘP") || lcUpper.Contains("BOX") || lcUpper.Contains("CH");
+            bool isDoTaiCho = soCua > 1 || lcUpper.Contains("ĐỔ TẠI CHỖ") || lcUpper.Contains("DO TAI CHO");
+
+            var candidates = new List<(FamilySymbol Symbol, int Score)>();
 
             foreach (var sym in symbols)
             {
                 string fam = sym.FamilyName.ToUpperInvariant();
                 string name = sym.Name.ToUpperInvariant();
                 string full = $"{fam} {name}";
+                int score = 0;
 
-                // 1. Phù hợp phân loại cống tròn / cống hộp
-                bool matchType = true;
-                if (isTron)
+                // 1. Phân loại cấu kiện (partHint)
+                if (hintUpper.Contains("ĐÁ DĂM") || hintUpper.Contains("DA DAM") || hintUpper.Contains("CPDD"))
                 {
-                    matchType = full.Contains("TRON") || full.Contains("TRÒN") || full.Contains("_CT_") || full.StartsWith("CT_") || full.Contains("TNN_CT") || full.Contains("TNM_CT");
+                    if (!full.Contains("DA DAM") && !full.Contains("ĐÁ DĂM") && !full.Contains("CPDD")) continue;
+                    score += 50;
+                    if (isDoTaiCho && (full.Contains("2X3X2") || full.Contains("DO TAI CHO"))) score += 30;
+                    else if (!isDoTaiCho && !full.Contains("2X3X2")) score += 30;
                 }
-                else if (isHop)
+                else if (hintUpper.Contains("BTL") || hintUpper.Contains("LÓT") || hintUpper.Contains("LOT") || hintUpper.Contains("ĐỆM") || hintUpper.Contains("DEM"))
                 {
-                    matchType = full.Contains("HOP") || full.Contains("HỘP") || full.Contains("_CH_") || full.StartsWith("CH_") || full.Contains("TNN_CH") || full.Contains("BOX");
+                    if (!full.Contains("BE TONG LOT") && !full.Contains("BTL") && !full.Contains("LOT") && !full.Contains("DEM CONG")) continue;
+                    score += 50;
+                    if (isDoTaiCho && (full.Contains("2X3X2") || full.Contains("DEM CONG"))) score += 30;
+                    else if (!isDoTaiCho && !full.Contains("2X3X2")) score += 30;
+                }
+                else if (hintUpper.Contains("THÂN") || hintUpper.Contains("THAN") || hintUpper.Contains("ĐỐT") || hintUpper.Contains("DOT"))
+                {
+                    if (!full.Contains("THAN CONG") && !full.Contains("THÂN CỐNG") && !full.Contains("CONG HOP")) continue;
+                    if (full.Contains("LOT") || full.Contains("DEM") || full.Contains("BTL") || full.Contains("SAN") || full.Contains("CUA XA")) continue;
+                    score += 50;
+                    if (isDoTaiCho && (full.Contains("2X3X2") || full.Contains("DO TAI CHO"))) score += 40;
+                    else if (!isDoTaiCho && !full.Contains("2X3X2")) score += 40;
+                }
+                else if (hintUpper.Contains("CỬA XẢ") || hintUpper.Contains("CUA XA") || hintUpper.Contains("SÂN GIA CỐ") || hintUpper.Contains("SAN GIA CO"))
+                {
+                    if (hintUpper.Contains("GIA CỐ") || hintUpper.Contains("GIA CO"))
+                    {
+                        if (!full.Contains("SAN GIA CO") && !full.Contains("SGC")) continue;
+                        score += 50;
+                        if (hintUpper.Contains("LÓT") || hintUpper.Contains("LOT"))
+                        {
+                            if (full.Contains("LOT") || full.Contains("BE TONG LOT") || full.Contains("BTL")) score += 20;
+                        }
+                        else
+                        {
+                            if ((full.Contains("SAN GIA CO") || full.Contains("SGC")) && !full.Contains("LOT")) score += 20;
+                        }
+                    }
+                    else // Cửa xả chính (TNN_CX_SAN CONG)
+                    {
+                        if (!full.Contains("TNN_CX") && !full.Contains("CUA XA") && !full.Contains("SAN CONG")) continue;
+                        score += 40;
+                        if (hintUpper.Contains("TƯỜNG ĐẦU") || hintUpper.Contains("TUONG DAU"))
+                        {
+                            if (full.Contains("TUONG DAU") || name.Contains("TUONG DAU")) score += 30;
+                        }
+                        else if (hintUpper.Contains("TƯỜNG CÁNH") || hintUpper.Contains("TUONG CANH"))
+                        {
+                            if (full.Contains("TUONG CANH") || name.Contains("TUONG CANH")) score += 30;
+                        }
+                        else if (hintUpper.Contains("SÂN CỐNG") || hintUpper.Contains("SAN CONG"))
+                        {
+                            if (name.Contains("SAN CONG")) score += 30;
+                        }
+                        else if (hintUpper.Contains("BÊ TÔNG LÓT") || hintUpper.Contains("BE TONG LOT"))
+                        {
+                            if (name.Contains("BE TONG LOT") || name.Contains("BTL")) score += 30;
+                        }
+                        else if (hintUpper.Contains("ĐÁ DĂM") || hintUpper.Contains("DA DAM"))
+                        {
+                            if (name.Contains("DA DAM") || name.Contains("CPDD")) score += 30;
+                        }
+                    }
+                }
+                else if (hintUpper.Contains("HỘP NỐI") || hintUpper.Contains("HOP NOI") || hintUpper.Contains("HỐ GA") || hintUpper.Contains("HO GA"))
+                {
+                    if (!full.Contains("HOP NOI") && !full.Contains("HỘP NỐI") && !full.Contains("HO GA") && !full.Contains("HỐ GA")) continue;
+                    score += 50;
                 }
 
-                if (!matchType) continue;
-
-                // 2. Phù hợp loại cấu kiện (partHint)
-                bool matchPart = true;
-                if (hintUpper.Contains("BTL") || hintUpper.Contains("LÓT") || hintUpper.Contains("LOT"))
-                {
-                    matchPart = full.Contains("BE TONG LOT") || full.Contains("BÊ TÔNG LÓT") || full.Contains("BTL") || full.Contains("LOT");
-                }
-                else if (hintUpper.Contains("ĐỐT") || hintUpper.Contains("DOT") || hintUpper.Contains("THÂN") || hintUpper.Contains("THAN"))
-                {
-                    matchPart = (full.Contains("THAN CONG") || full.Contains("THÂN CỐNG") || full.Contains("DOT CONG") || full.Contains("ĐỐT CỐNG") || full.Contains("CONG HOP"))
-                                && !full.Contains("LOT") && !full.Contains("BTL") && !full.Contains("CUA XA") && !full.Contains("SAN GIA CO");
-                }
-                else if (hintUpper.Contains("SÂN") || hintUpper.Contains("SAN") || hintUpper.Contains("CỬA") || hintUpper.Contains("CUA"))
-                {
-                    matchPart = full.Contains("CUA XA") || full.Contains("CỬA XẢ") || full.Contains("SAN CONG") || full.Contains("SÂN CỐNG") || full.Contains("SAN GIA CO");
-                }
-                else if (hintUpper.Contains("HỘP") || hintUpper.Contains("HOP") || hintUpper.Contains("HỐ") || hintUpper.Contains("HO"))
-                {
-                    matchPart = full.Contains("HO THU") || full.Contains("HỐ THU") || full.Contains("HOP NOI") || full.Contains("HỘP NỐI") || full.Contains("HO GA") || full.Contains("HỐ GA");
-                }
-
-                if (!matchPart) continue;
-
-                // 3. Phù hợp khẩu độ hình học (D800, D1000, D1200, 1.5x1.5...)
-                bool matchKhauDo = false;
+                // 2. Khớp khẩu độ hình học (KhauDo, vd: 1.5x1.5, 2x3x2...)
                 if (!string.IsNullOrEmpty(kdUpper))
                 {
-                    if (full.Contains(kdUpper))
-                    {
-                        matchKhauDo = true;
-                    }
-                    else if (kdUpper.StartsWith("D"))
-                    {
-                        string num = kdUpper.Substring(1); // D1000 -> 1000
-                        if (num.Length >= 3 && full.Contains(num)) matchKhauDo = true;
-                    }
-                    else if (kdUpper.All(char.IsDigit) && kdUpper.Length >= 3)
-                    {
-                        if (full.Contains($"D{kdUpper}") || full.Contains(kdUpper)) matchKhauDo = true;
-                    }
-                    else if (kdUpper.Contains("X") || kdUpper.Contains("*"))
-                    {
-                        string cleanKd = kdUpper.Replace("*", "X").Replace(" ", "");
-                        string cleanFull = full.Replace("*", "X").Replace(" ", "");
-                        if (cleanFull.Contains(cleanKd)) matchKhauDo = true;
-                    }
+                    string cleanKd = kdUpper.Replace("*", "X").Replace(" ", "");
+                    string cleanFull = full.Replace("*", "X").Replace(" ", "");
+                    if (cleanFull.Contains(cleanKd)) score += 25;
                 }
-                if (matchKhauDo)
-                {
-                    return sym;
-                }
+
+                candidates.Add((sym, score));
             }
 
-            return null;
+            var best = candidates.OrderByDescending(c => c.Score).FirstOrDefault();
+            return best.Score > 0 ? best.Symbol : null;
         }
 
         /// <summary>
@@ -298,48 +446,18 @@ namespace InfraBIM.CulvertTool.Services
             // - Thượng lưu (P1): Đón nước ngược dòng từ taluy vào cống theo -u -> Facing = -u -> quay góc (rotAngle + PI/2)
             double rotOutletTL = rotAngle + Math.PI / 2.0;
             double rotOutletHL = rotAngle - Math.PI / 2.0;
-            PlaceOutletAssembly(doc, p1, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, materialSettings);
-            PlaceOutletAssembly(doc, p2, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, materialSettings);
+            PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, materialSettings);
+            PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, materialSettings);
 
-            // 3. Phân biệt Cống tròn đôi và Cống 1 tim
-            string lcNorm = (data.LoaiCong ?? "").ToUpperInvariant();
-            string gcNorm = (data.GhiChu ?? "").ToUpperInvariant();
-            bool isTronNorm = lcNorm.Contains("TRON") || lcNorm.Contains("TRÒN") || lcNorm.Contains("CT") || gcNorm.Contains("TRÒN") || gcNorm.Contains("TRON");
-            bool isCongTronDoi = (data.SoCua >= 2 && isTronNorm) || (isTronNorm && (lcNorm.Contains("ĐÔI") || lcNorm.Contains("DOI") || gcNorm.Contains("ĐÔI") || gcNorm.Contains("DOI")));
-
-            // Góc xoay chuẩn cho Thân cống và Hố ga (dọc theo trục Facing +Y)
-            double rotBarrel = rotAngle - Math.PI / 2.0;
-
-            if (isCongTronDoi)
-            {
-                // CỐNG TRÒN ĐÔI: Tách thành 2 trục song song cách nhau D_tim
-                XYZ uPerp = new XYZ(-u.Y, u.X, 0);
-                double dTimM = data.KhoangCachTim > 0.1 ? data.KhoangCachTim : (defaultKhoangCachTim > 0.1 ? defaultKhoangCachTim : 2.0);
-                double dHalfFeet = UnitUtils.ConvertToInternalUnits(dTimM / 2.0, UnitTypeId.Meters);
-
-                // Nhánh Trái
-                XYZ p1Left = p1 - uPerp * dHalfFeet;
-                XYZ p2Left = p2 - uPerp * dHalfFeet;
-                BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
-                    p1Left, p2Left, u, rotBarrel, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "T", materialSettings);
-
-                // Nhánh Phải
-                XYZ p1Right = p1 + uPerp * dHalfFeet;
-                XYZ p2Right = p2 + uPerp * dHalfFeet;
-                BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
-                    p1Right, p2Right, u, rotBarrel, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "P", materialSettings);
-            }
-            else
-            {
-                // 1 Tim trung tâm
-                BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
-                    p1, p2, u, rotBarrel, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings);
-            }
+            // 3. Rải thân cống và hộp nối theo tim cống trung tâm (xoay theo rotAngle của tim cống)
+            BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
+                p1, p2, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings);
         }
 
         private static void PlaceOutletAssembly(
             Document doc,
             XYZ ptBase,
+            XYZ uCulvert,
             double rotAngle,
             IList<CulvertComponentItem> outletComponents,
             BimInfoConfig bimConfig,
@@ -351,7 +469,19 @@ namespace InfraBIM.CulvertTool.Services
         {
             if (outletComponents == null || outletComponents.Count == 0) return;
 
-            XYZ uDir = new XYZ(Math.Cos(rotAngle), Math.Sin(rotAngle), 0);
+            // Hướng vector trải dài của cửa xả / sân cống ra phía ngoài
+            XYZ uOut = isUpstream
+                ? -new XYZ(uCulvert.X, uCulvert.Y, 0).Normalize()
+                : new XYZ(uCulvert.X, uCulvert.Y, 0).Normalize();
+
+            // Vector ngang vuông góc với hướng thoát nước (ngang mặt cắt cống)
+            XYZ vTrans = new XYZ(-uOut.Y, uOut.X, 0).Normalize();
+
+            // Chiều dài thiết kế của Sân cống (TNN_CX_SAN CONG)
+            double lSanCongFeet = UnitUtils.ConvertToInternalUnits(1.35, UnitTypeId.Meters);
+
+            XYZ ptSC1 = ptBase;
+            XYZ ptSC2 = ptBase + uOut * lSanCongFeet;
 
             foreach (var comp in outletComponents)
             {
@@ -360,16 +490,70 @@ namespace InfraBIM.CulvertTool.Services
                 var sym = comp.SelectedSymbol.Symbol;
                 ActivateSymbol(sym);
 
-                double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
-                XYZ ptPlace = ptBase + new XYZ(0, 0, offFeetZ);
+                string catUpper = (comp.CategoryType ?? "").ToUpperInvariant();
+                bool isSGC = catUpper.Contains("SÂN GIA CỐ") || catUpper.Contains("SAN GIA CO") || catUpper.Contains("SGC");
 
-                // Sân gia cố và Cửa xả dùng chung gốc tọa độ (0,0) đã được căn chuẩn trong Family Revit
-                FamilyInstance inst = doc.Create.NewFamilyInstance(ptPlace, sym, StructuralType.NonStructural);
-                ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptPlace, ptPlace + XYZ.BasisZ), rotAngle);
+                XYZ pA;
+                XYZ pB;
+
+                if (isSGC)
+                {
+                    // Family TNN_CX_SAN GIA CO có 2 điểm Adaptive đặt ngang theo bề rộng B (mặc định 7.22m)
+                    double bSgcM = 7.22;
+                    var pBParam = sym.LookupParameter("CH_SGC_B") ?? sym.LookupParameter("B");
+                    if (pBParam != null && pBParam.StorageType == StorageType.Double && pBParam.AsDouble() > 0.1)
+                    {
+                        bSgcM = UnitUtils.ConvertFromInternalUnits(pBParam.AsDouble(), UnitTypeId.Meters);
+                    }
+                    double halfBFeet = UnitUtils.ConvertToInternalUnits(bSgcM / 2.0, UnitTypeId.Meters);
+
+                    // Điểm 1 bên phải, Điểm 2 bên trái để slab hướng xuôi dòng theo +uOut
+                    pA = ptSC2 - vTrans * halfBFeet;
+                    pB = ptSC2 + vTrans * halfBFeet;
+                }
+                else
+                {
+                    // Sân cống TNN_CX_SAN CONG có 2 điểm Adaptive đặt dọc theo trục tim cống (0 -> 1.35m)
+                    pA = ptSC1;
+                    pB = ptSC2;
+                }
+
+                double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
+                XYZ offZ = new XYZ(0, 0, offFeetZ);
+                XYZ pA_off = pA + offZ;
+                XYZ pB_off = pB + offZ;
+
+                FamilyInstance? inst = null;
+                if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
+                {
+                    inst = CreateAdaptiveInstanceSafe(doc, sym, new[] { pA_off, pB_off });
+                }
+                else
+                {
+                    inst = CreateInstanceSafe(doc, pA_off, sym);
+                    ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(pA_off, pA_off + XYZ.BasisZ), rotAngle);
+                }
+
+                if (inst == null) continue;
+
+                // Chuẩn hóa góc xiên thiết kế CH_GX (không gán góc phương vị Azimuth của tuyến vào để tránh làm vẹo tường cánh)
+                var pGx = inst.LookupParameter("CH_GX");
+                if (pGx != null && !pGx.IsReadOnly && pGx.StorageType == StorageType.Double)
+                {
+                    pGx.Set(Math.PI / 2.0); // 90° cống vuông góc chuẩn
+                }
+                var pGxC = inst.LookupParameter("A_GOC XIENG") ?? inst.LookupParameter("CH_SGC_GX");
+                if (pGxC != null && !pGxC.IsReadOnly && pGxC.StorageType == StorageType.Double)
+                {
+                    pGxC.Set(0.0); // 0° góc xiên chuẩn
+                }
+
+                // Tự động điều khiển biến hiển thị Yes/No của cấu kiện
+                SetOutletVisibilitySafe(inst, comp.CategoryType ?? "");
 
                 string suffix = isUpstream ? "TL" : "HL";
                 string tenCK = $"{comp.CategoryType}_{suffix}";
-                BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "CỬA XẢ THƯỢNG LƯU" : "CỬA XẢ HẠ LƯU", null, null, ptPlace.X, ptPlace.Y, ptPlace.Z);
+                BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "CỬA XẢ THƯỢNG LƯU" : "CỬA XẢ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z);
                 BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, "Cửa xả");
                 BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Cửa xả");
                 TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "");
@@ -507,7 +691,7 @@ namespace InfraBIM.CulvertTool.Services
                 double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
                 XYZ ptComp = ptPlace + new XYZ(0, 0, offFeetZ);
 
-                FamilyInstance inst = doc.Create.NewFamilyInstance(ptComp, sym, StructuralType.NonStructural);
+                FamilyInstance inst = CreateInstanceSafe(doc, ptComp, sym);
                 ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptComp, ptComp + XYZ.BasisZ), rotAngle);
 
                 string tenCK = $"{comp.CategoryType}_{manholeIndex}";
@@ -553,7 +737,9 @@ namespace InfraBIM.CulvertTool.Services
                 if (lBien > 0.001)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, null, materialSettings);
+                    XYZ ptA = pStart + u * curDist;
+                    XYZ ptB = ptA + u * lBien;
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, null, materialSettings);
                     curDist += lBien + jointGap;
                 }
 
@@ -561,7 +747,9 @@ namespace InfraBIM.CulvertTool.Services
                 for (int i = 0; i < n; i++)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, null, materialSettings);
+                    XYZ ptA = pStart + u * curDist;
+                    XYZ ptB = ptA + u * lStd;
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, null, materialSettings);
                     curDist += lStd + jointGap;
                 }
 
@@ -569,7 +757,9 @@ namespace InfraBIM.CulvertTool.Services
                 if (lBien > 0.001)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, zCuoiM, materialSettings);
+                    XYZ ptA = pStart + u * curDist;
+                    XYZ ptB = ptA + u * lBien;
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, zCuoiM, materialSettings);
                 }
             }
             else // OneWay
@@ -582,14 +772,18 @@ namespace InfraBIM.CulvertTool.Services
                 for (int i = 0; i < n; i++)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (i == 0) ? zDauM : null, null, materialSettings);
+                    XYZ ptA = pStart + u * curDist;
+                    XYZ ptB = ptA + u * lStd;
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (i == 0) ? zDauM : null, null, materialSettings);
                     curDist += lStd + jointGap;
                 }
 
                 if (lDu > 0.001)
                 {
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    PlaceBarrelComponents(doc, barrelComponents, pStart + u * curDist, lDu, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (n == 0) ? zDauM : null, zCuoiM, materialSettings);
+                    XYZ ptA = pStart + u * curDist;
+                    XYZ ptB = ptA + u * lDu;
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lDu, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (n == 0) ? zDauM : null, zCuoiM, materialSettings);
                 }
             }
 
@@ -609,7 +803,8 @@ namespace InfraBIM.CulvertTool.Services
         private static void PlaceBarrelComponents(
             Document doc,
             IList<CulvertComponentItem> barrelComponents,
-            XYZ pt,
+            XYZ ptStart,
+            XYZ ptEnd,
             double lenFeet,
             double angle,
             BimInfoConfig bimConfig,
@@ -633,10 +828,23 @@ namespace InfraBIM.CulvertTool.Services
                 ActivateSymbol(sym);
 
                 double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
-                XYZ ptComp = pt + new XYZ(0, 0, offFeetZ);
+                XYZ offZ = new XYZ(0, 0, offFeetZ);
+                XYZ ptA = ptStart + offZ;
+                XYZ ptB = ptEnd + offZ;
 
-                FamilyInstance inst = doc.Create.NewFamilyInstance(ptComp, sym, StructuralType.NonStructural);
-                ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptComp, ptComp + XYZ.BasisZ), angle);
+                FamilyInstance? inst = null;
+                if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
+                {
+                    inst = CreateAdaptiveInstanceSafe(doc, sym, new[] { ptA, ptB });
+                }
+                else
+                {
+                    XYZ ptMid = (ptA + ptB) * 0.5;
+                    inst = CreateInstanceSafe(doc, ptMid, sym);
+                    ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptMid, ptMid + XYZ.BasisZ), angle);
+                }
+
+                if (inst == null) continue;
 
                 foreach (var pName in possibleLenParams)
                 {

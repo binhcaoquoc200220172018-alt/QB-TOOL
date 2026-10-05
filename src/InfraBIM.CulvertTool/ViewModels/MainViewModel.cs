@@ -789,7 +789,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Tường đầu",
-                SelectedSymbol = FindSymbol("TNN_CUA XA", "TUONG DAU") ?? FindSymbol("TNN_CUA XA"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "TUONG DAU") ?? FindSymbol("TNN_CUA XA", "TUONG DAU") ?? FindSymbol("TUONG DAU"),
                 OffsetZ = 0.0,
                 Note = "Tường đầu cửa xả"
             });
@@ -798,7 +798,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Tường cánh",
-                SelectedSymbol = FindSymbol("TNN_CUA XA", "TUONG CANH") ?? FindSymbol("TNN_CUA XA"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "TUONG CANH") ?? FindSymbol("TNN_CUA XA", "TUONG CANH") ?? FindSymbol("TUONG CANH"),
                 OffsetZ = 0.0,
                 Note = "Tường cánh cửa xả"
             });
@@ -807,7 +807,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Sân cống",
-                SelectedSymbol = FindSymbol("TNN_CUA XA", "SAN CONG") ?? FindSymbol("TNN_CUA XA"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "SAN CONG") ?? FindSymbol("TNN_CUA XA", "SAN CONG") ?? FindSymbol("SAN CONG"),
                 OffsetZ = 0.0,
                 Note = "Sân cống cửa xả"
             });
@@ -816,18 +816,18 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Bê tông lót",
-                SelectedSymbol = FindSymbol("TNN_CUA XA", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
-                OffsetZ = -0.10,
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "BE TONG LOT") ?? FindSymbol("TNN_CUA XA", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                OffsetZ = 0.0,
                 Note = "Bê tông lót cửa xả"
             });
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
-                CategoryType = "Cửa xả - CPDD / Đá dăm",
-                SelectedSymbol = FindSymbol("TNN_CUA XA", "CPDD") ?? FindSymbol("DA DAM"),
-                OffsetZ = -0.20,
-                Note = "Lớp CPDD / đá dăm đệm cửa xả"
+                CategoryType = "Cửa xả - Đá dăm đệm",
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "DA DAM DEM") ?? FindSymbol("TNN_CUA XA", "CPDD") ?? FindSymbol("DA DAM"),
+                OffsetZ = 0.0,
+                Note = "Lớp đá dăm đệm cửa xả"
             });
 
             OutletComponents.Add(new CulvertComponentItem
@@ -835,7 +835,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Sân gia cố - Tấm sân",
-                SelectedSymbol = FindSymbol("TNN_SAN GIA CO_CUA XA", "SAN GIA CO") ?? FindSymbol("TNN_SAN GIA CO"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN GIA CO", "SAN GIA CO") ?? FindSymbol("TNN_SAN GIA CO", "SAN GIA CO") ?? FindSymbol("SAN GIA CO"),
                 OffsetZ = 0.0,
                 Note = "Tấm sân gia cố nối dài"
             });
@@ -844,8 +844,8 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Sân gia cố - Bê tông lót",
-                SelectedSymbol = FindSymbol("TNN_SAN GIA CO_CUA XA", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
-                OffsetZ = -0.10,
+                SelectedSymbol = FindSymbol("TNN_CX_SAN GIA CO", "BE TONG LOT") ?? FindSymbol("TNN_SAN GIA CO", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                OffsetZ = 0.0,
                 Note = "Bê tông lót sân gia cố"
             });
         }
@@ -854,51 +854,67 @@ namespace InfraBIM.CulvertTool.ViewModels
         {
             if (ManholeComponents.Count > 0) return;
 
-            ManholeComponents.Add(new CulvertComponentItem
+            var hopNoiSym = FindSymbol("HOP NOI CONG DOC") ?? FindSymbol("HOP NOI");
+            if (hopNoiSym != null)
             {
-                IsActive = true,
-                GroupType = "Hố ga (Hộp nối)",
-                CategoryType = "Thân hố ga",
-                SelectedSymbol = FindSymbol("TNM_HG_DO TAI CHO") ?? FindSymbol("TNM_HG_DUC SAN") ?? FindSymbol("TNM_HG"),
-                OffsetZ = 0.0,
-                Note = "Thân buồng thu hố ga (hộp nối)"
-            });
-            ManholeComponents.Add(new CulvertComponentItem
+                ManholeComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Hố ga (Hộp nối)",
+                    CategoryType = "Hộp nối cống dọc",
+                    SelectedSymbol = hopNoiSym,
+                    OffsetZ = 0.0,
+                    Note = "Hộp nối cống dọc thoát nước"
+                });
+            }
+            else
             {
-                IsActive = true,
-                GroupType = "Hố ga (Hộp nối)",
-                CategoryType = "Cổ giếng",
-                SelectedSymbol = FindSymbol("TNM_HG_CO GIENG") ?? FindSymbol("CO GIENG"),
-                OffsetZ = 0.50,
-                Note = "Cổ giếng hố ga"
-            });
-            ManholeComponents.Add(new CulvertComponentItem
-            {
-                IsActive = true,
-                GroupType = "Hố ga (Hộp nối)",
-                CategoryType = "Khuôn hầm",
-                SelectedSymbol = FindSymbol("TNM_HG_KHUON HAM") ?? FindSymbol("KHUON HAM"),
-                OffsetZ = 0.80,
-                Note = "Khuôn đỡ nắp hầm ga"
-            });
-            ManholeComponents.Add(new CulvertComponentItem
-            {
-                IsActive = true,
-                GroupType = "Hố ga (Hộp nối)",
-                CategoryType = "Nắp đan",
-                SelectedSymbol = FindSymbol("TNM_HG_NAP DAN") ?? FindSymbol("NAP DAN"),
-                OffsetZ = 0.90,
-                Note = "Tấm đan nắp đậy hố ga"
-            });
-            ManholeComponents.Add(new CulvertComponentItem
-            {
-                IsActive = true,
-                GroupType = "Hố ga (Hộp nối)",
-                CategoryType = "Bê tông lót hố ga",
-                SelectedSymbol = FindSymbol("TNM_HG_BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
-                OffsetZ = -0.20,
-                Note = "Bê tông lót đáy hố ga"
-            });
+                ManholeComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Hố ga (Hộp nối)",
+                    CategoryType = "Thân hố ga",
+                    SelectedSymbol = FindSymbol("TNM_HG_DO TAI CHO") ?? FindSymbol("TNM_HG_DUC SAN") ?? FindSymbol("TNM_HG"),
+                    OffsetZ = 0.0,
+                    Note = "Thân buồng thu hố ga (hộp nối)"
+                });
+                ManholeComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Hố ga (Hộp nối)",
+                    CategoryType = "Cổ giếng",
+                    SelectedSymbol = FindSymbol("TNM_HG_CO GIENG") ?? FindSymbol("CO GIENG"),
+                    OffsetZ = 0.50,
+                    Note = "Cổ giếng hố ga"
+                });
+                ManholeComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Hố ga (Hộp nối)",
+                    CategoryType = "Khuôn hầm",
+                    SelectedSymbol = FindSymbol("TNM_HG_KHUON HAM") ?? FindSymbol("KHUON HAM"),
+                    OffsetZ = 0.80,
+                    Note = "Khuôn đỡ nắp hầm ga"
+                });
+                ManholeComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Hố ga (Hộp nối)",
+                    CategoryType = "Nắp đan",
+                    SelectedSymbol = FindSymbol("TNM_HG_NAP DAN") ?? FindSymbol("NAP DAN"),
+                    OffsetZ = 0.90,
+                    Note = "Tấm đan nắp đậy hố ga"
+                });
+                ManholeComponents.Add(new CulvertComponentItem
+                {
+                    IsActive = true,
+                    GroupType = "Hố ga (Hộp nối)",
+                    CategoryType = "Bê tông lót hố ga",
+                    SelectedSymbol = FindSymbol("TNM_HG_BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                    OffsetZ = -0.20,
+                    Note = "Bê tông lót đáy hố ga"
+                });
+            }
         }
 
         #region Dynamic Component Assembly Methods
@@ -931,92 +947,30 @@ namespace InfraBIM.CulvertTool.ViewModels
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Thân cống hộp đổ tại chỗ",
-                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
+                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
                     OffsetZ = 0.0,
-                    Note = "Đốt thân cống hộp đổ tại chỗ"
+                    Note = "Đốt thân cống hộp đổ tại chỗ (2x3x2)"
                 });
                 BarrelComponents.Add(new CulvertComponentItem
                 {
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Bê tông lót thân cống",
-                    SelectedSymbol = FindSymbol("TNN_BE TONG LOT_THAN CONG") ?? FindSymbol("BE TONG LOT"),
+                    SelectedSymbol = FindSymbol("TNN_CH_DEM CONG_2x3x2") ?? FindSymbol("TNN_CH_BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
                     OffsetZ = -0.10,
-                    Note = "Lớp bê tông lót thân cống"
+                    Note = "Lớp đệm / bê tông lót thân cống đổ tại chỗ"
                 });
                 BarrelComponents.Add(new CulvertComponentItem
                 {
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Đá dăm đệm thân cống",
-                    SelectedSymbol = FindSymbol("TNN_DA DAM DEM_THAN CONG") ?? FindSymbol("DA DAM"),
+                    SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM_2x3x2") ?? FindSymbol("TNN_CH_DA DAM DEM") ?? FindSymbol("DA DAM"),
                     OffsetZ = -0.20,
-                    Note = "Lớp đá dăm đệm thân cống"
+                    Note = "Lớp đá dăm đệm thân cống đổ tại chỗ"
                 });
             }
-            else if (type.Contains("TRÒN") || type.Contains("TRON"))
-            {
-                IsCastInPlaceMode = false;
-                IsDoubleCulvertMode = type.Contains("ĐÔI") || type.Contains("DOI");
-                L_Std = 1.0;
-                Khe_Ho = 0.00;
-
-                BarrelComponents.Add(new CulvertComponentItem
-                {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Thân cống tròn",
-                    SelectedSymbol = FindSymbol("TNN_CT_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
-                    OffsetZ = 0.0,
-                    Note = "Đốt ống cống tròn đúc sẵn"
-                });
-                BarrelComponents.Add(new CulvertComponentItem
-                {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Móng trên cống tròn",
-                    SelectedSymbol = FindSymbol("TNN_CT_MONG TREN") ?? AllAvailableFamilies.FirstOrDefault(),
-                    OffsetZ = -0.05,
-                    Note = "Móng trên cống tròn"
-                });
-                BarrelComponents.Add(new CulvertComponentItem
-                {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Gối cống tròn",
-                    SelectedSymbol = FindSymbol("TNN_CT_GOI CONG") ?? AllAvailableFamilies.FirstOrDefault(),
-                    OffsetZ = -0.15,
-                    Note = "Gối đỡ cống tròn"
-                });
-                BarrelComponents.Add(new CulvertComponentItem
-                {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Vữa xi măng mối nối",
-                    SelectedSymbol = FindSymbol("TNM_CT_VUA XI MANG") ?? AllAvailableFamilies.FirstOrDefault(),
-                    OffsetZ = -0.12,
-                    Note = "Lớp vữa xi măng chèn mối nối"
-                });
-                BarrelComponents.Add(new CulvertComponentItem
-                {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Bê tông lót thân cống",
-                    SelectedSymbol = FindSymbol("TNN_BE TONG LOT_THAN CONG") ?? FindSymbol("BE TONG LOT"),
-                    OffsetZ = -0.30,
-                    Note = "Bê tông lót móng cống tròn"
-                });
-                BarrelComponents.Add(new CulvertComponentItem
-                {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Đá dăm đệm thân cống",
-                    SelectedSymbol = FindSymbol("TNN_DA DAM DEM_THAN CONG") ?? FindSymbol("DA DAM"),
-                    OffsetZ = -0.40,
-                    Note = "Đá dăm đệm cống tròn"
-                });
-            }
-            else
+            else // CỐNG HỘP ĐÚC SẴN (Mặc định)
             {
                 IsCastInPlaceMode = false;
                 IsDoubleCulvertMode = false;
@@ -1028,7 +982,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Thân cống hộp đúc sẵn",
-                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
+                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG", "1.5x1.5") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
                     OffsetZ = 0.0,
                     Note = "Đốt thân cống hộp đúc sẵn"
                 });
@@ -1037,18 +991,18 @@ namespace InfraBIM.CulvertTool.ViewModels
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Bê tông lót thân cống",
-                    SelectedSymbol = FindSymbol("TNN_BE TONG LOT_THAN CONG") ?? FindSymbol("BE TONG LOT"),
+                    SelectedSymbol = FindSymbol("TNN_CH_BE TONG LOT") ?? FindSymbol("TNN_BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
                     OffsetZ = -0.10,
-                    Note = "Lớp bê tông lót thân cống"
+                    Note = "Lớp bê tông lót thân cống đúc sẵn"
                 });
                 BarrelComponents.Add(new CulvertComponentItem
                 {
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Đá dăm đệm thân cống",
-                    SelectedSymbol = FindSymbol("TNN_DA DAM DEM_THAN CONG") ?? FindSymbol("DA DAM"),
+                    SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM") ?? FindSymbol("TNN_DA DAM DEM") ?? FindSymbol("DA DAM"),
                     OffsetZ = -0.20,
-                    Note = "Lớp đá dăm đệm thân cống"
+                    Note = "Lớp đá dăm đệm thân cống đúc sẵn"
                 });
             }
 

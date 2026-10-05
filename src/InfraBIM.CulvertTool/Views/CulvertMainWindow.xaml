@@ -1,4 +1,4 @@
-<Window x:Class="InfraBIM.CulvertTool.Views.CulvertMainWindow"
+﻿<Window x:Class="InfraBIM.CulvertTool.Views.CulvertMainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -482,35 +482,6 @@
                                                 </Button.Style>
                                             </Button>
 
-                                            <Button Content="🔵 Tròn Đúc Sẵn (Đơn)" Command="{Binding ApplyAssemblyTemplateCommand}" CommandParameter="CỐNG TRÒN ĐÚC SẴN (ĐƠN)" Margin="0,0,3,0">
-                                                <Button.Style>
-                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding SelectedCulvertTemplateType}" Value="CỐNG TRÒN ĐÚC SẴN (ĐƠN)">
-                                                                <Setter Property="Background" Value="#0284C7"/>
-                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                                <Setter Property="FontWeight" Value="Bold"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
-
-                                            <Button Content="🔵 Tròn Đúc Sẵn (Đôi)" Command="{Binding ApplyAssemblyTemplateCommand}" CommandParameter="CỐNG TRÒN ĐÚC SẴN (ĐÔI)" Margin="0,0,3,0">
-                                                <Button.Style>
-                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding SelectedCulvertTemplateType}" Value="CỐNG TRÒN ĐÚC SẴN (ĐÔI)">
-                                                                <Setter Property="Background" Value="#0284C7"/>
-                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                                <Setter Property="FontWeight" Value="Bold"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
 
                                             <Button Content="🏗️ Hộp Đổ Tại Chỗ" Command="{Binding ApplyAssemblyTemplateCommand}" CommandParameter="CỐNG HỘP ĐỔ TẠI CHỖ">
                                                 <Button.Style>
@@ -657,14 +628,6 @@
                                 <TextBlock Text="Phương thức rải đốt:" Margin="0,3,0,2" Foreground="{StaticResource TextMuted}"/>
                                 <ComboBox ItemsSource="{Binding ArrayModes}" SelectedIndex="{Binding SelectedArrayModeIndex}"/>
 
-                                <!-- Ô CHỈ XUẤT HIỆN KHI CHỌN CỐNG TRÒN ĐÔI: KHOẢNG CÁCH GIỮA 2 TIM CỐNG D_TIM -->
-                                <Border Background="#16325C" BorderBrush="#38BDF8" BorderThickness="1.5" CornerRadius="4" Padding="6,5" Margin="0,8,0,0"
-                                        Visibility="{Binding IsDoubleCulvertMode, Converter={StaticResource BoolToVis}}">
-                                    <StackPanel>
-                                        <TextBlock Text="Khoảng cách 2 tim D_tim (m):" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11.5"/>
-                                        <TextBox Text="{Binding KhoangCachTimDefault_Text, UpdateSourceTrigger=PropertyChanged}" FontWeight="Bold" Foreground="{StaticResource CyanPrimary}" Margin="0,3,0,0"/>
-                                    </StackPanel>
-                                </Border>
                             </StackPanel>
                         </GroupBox>
                     </Grid>
@@ -951,294 +914,9 @@
             </TabItem>
 
             <!-- ============================================== -->
-            <!-- TAB 03: XEM TRƯỚC HÌNH HỌC (PREVIEW 2D/3D)     -->
+            <!-- TAB 03: VẬT LIỆU CẤU KIỆN (TẠO, TÊN & GÁN MÀU) -->
             <!-- ============================================== -->
-            <TabItem Header="03 XEM TRƯỚC HÌNH HỌC (PREVIEW 2D/3D)">
-                <Grid Margin="4">
-                    <Grid.ColumnDefinitions>
-                        <!-- Cột 1: Danh sách cống & Bộ lọc -->
-                        <ColumnDefinition Width="2.8*"/>
-                        <!-- Cột 2: Khung bản vẽ mô phỏng 2D/3D & Thẻ thông số -->
-                        <ColumnDefinition Width="4.2*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <!-- KHU VỰC 1: DANH SÁCH CỐNG & TÌM KIẾM -->
-                    <GroupBox Header="1. DANH SÁCH CỐNG EXCEL" Grid.Column="0">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-
-                            <!-- Hàng 1: Tìm kiếm theo lý trình hoặc STT -->
-                            <Grid Grid.Row="0" Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0" Text="{Binding PreviewSearchText, UpdateSourceTrigger=PropertyChanged}" Padding="5,3" ToolTip="Nhập Lý trình (vd: Km10) hoặc STT để tìm cống"/>
-                                <Button Grid.Column="1" Content="🔍 Tìm" Command="{Binding RefreshPreviewCommand}" Margin="4,0,0,0" Padding="8,3" BorderBrush="{StaticResource CyanDark}"/>
-                            </Grid>
-
-                            <!-- Hàng 2: DataGrid danh sách cống để nhấp chọn -->
-                            <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredPreviewCulvertRows}" SelectedItem="{Binding SelectedCulvertRowForPreview}"
-                                      AutoGenerateColumns="False"
-                                      CanUserAddRows="False"
-                                      CanUserResizeColumns="True"
-                                      IsReadOnly="True"
-                                      SelectionMode="Single"
-                                      HorizontalScrollBarVisibility="Auto"
-                                      VerticalScrollBarVisibility="Auto"
-                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                      ScrollViewer.CanContentScroll="True">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" Width="38" MinWidth="35"/>
-                                    <DataGridTextColumn Header="Lý trình" Binding="{Binding LyTrinh}" Width="92" MinWidth="80" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
-                                    <DataGridTextColumn Header="Loại" Binding="{Binding LoaiCong}" Width="65" MinWidth="55"/>
-                                    <DataGridTextColumn Header="Khẩu độ" Binding="{Binding KhauDo}" Width="75" MinWidth="65"/>
-                                    <DataGridTextColumn Header="L (m)" Binding="{Binding ChieuDai, StringFormat={}{0:0.00}}" Width="55" MinWidth="50"/>
-                                    <DataGridTextColumn Header="Z1 (TL)" Binding="{Binding Z1, StringFormat={}{0:0.000}}" Width="65" MinWidth="55" Foreground="{StaticResource TextLight}"/>
-                                    <DataGridTextColumn Header="Z2 (HL)" Binding="{Binding Z2, StringFormat={}{0:0.000}}" Width="65" MinWidth="55" Foreground="{StaticResource TextLight}"/>
-                                    <DataGridTextColumn Header="ΔZ (m)" Binding="{Binding DeltaZ, StringFormat={}{0:0.000}}" Width="60" MinWidth="50" Foreground="#FACC15"/>
-                                    <DataGridTextColumn Header="i_tính (%)" Binding="{Binding DoDocTinhToan, StringFormat={}{0:0.00}}" Width="65" MinWidth="55" Foreground="{StaticResource MintLight}"/>
-                                    <DataGridTextColumn Header="i_TK (%)" Binding="{Binding DoDoc, StringFormat={}{0:0.00}}" Width="60" MinWidth="50" Foreground="{StaticResource TextMuted}"/>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Grid>
-                    </GroupBox>
-
-                    <!-- KHU VỰC 2: KHUNG BẢN VẼ MÔ PHỎNG CHI TIẾT & THẺ THÔNG SỐ -->
-                    <GroupBox Header="2. BẢN VẼ MÔ PHỎNG CHI TIẾT CỐNG (MẶT CẮT DỌC &amp; MẶT BẰNG KÈM KÍCH THƯỚC)" Grid.Column="1">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <!-- Thanh công cụ chọn chế độ xem & zoom -->
-                                <RowDefinition Height="Auto"/>
-                                <!-- Khung vẽ Canvas vector -->
-                                <RowDefinition Height="*"/>
-                                <!-- Thẻ tổng kết thông số & kiểm tra nhanh -->
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <!-- Toolbar: Chế độ xem & Điều khiển Zoom -->
-                            <Border Grid.Row="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,5">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <!-- Nút chuyển chế độ xem: Mặt cắt dọc / Mặt bằng / 3D -->
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                        <Button Content="📏 Mặt Cắt Dọc (Profile)" Command="{Binding SetPreviewModeCommand}" CommandParameter="Profile"
-                                                Padding="10,4" Margin="0,0,4,0" Background="{StaticResource CyanDark}" Foreground="#FFF" FontWeight="Bold" FontSize="11.5"/>
-                                        <Button Content="📐 Mặt Bằng (Plan)" Command="{Binding SetPreviewModeCommand}" CommandParameter="Plan"
-                                                Padding="10,4" Margin="0,0,4,0" FontSize="11.5"/>
-                                        <Button Content="🧊 Phối Cảnh 3D" Command="{Binding SetPreviewModeCommand}" CommandParameter="3D"
-                                                Padding="10,4" Margin="0,0,6,0" FontSize="11.5"/>
-                                    </StackPanel>
-
-                                    <!-- Tóm tắt cống đang xem -->
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0">
-                                        <TextBlock Text="Cống đang xem: " Foreground="{StaticResource TextMuted}" FontSize="12"/>
-                                        <TextBlock Text="{Binding CurrentPreviewGeometry.LyTrinh, FallbackValue='(Chưa chọn cống)'}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="12" Margin="0,0,6,0"/>
-                                        <TextBlock Text="{Binding CurrentPreviewGeometry.LoaiCong}" Foreground="{StaticResource CyanLight}" FontWeight="SemiBold" FontSize="12" Margin="0,0,4,0"/>
-                                        <TextBlock Text=" - " Foreground="{StaticResource TextMuted}"/>
-                                        <TextBlock Text="{Binding CurrentPreviewGeometry.KhauDo}" Foreground="{StaticResource TextLight}" FontSize="12"/>
-                                    </StackPanel>
-
-                                    <!-- Nút Zoom & Fit View -->
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                        <Button Content="🔍+" Command="{Binding ZoomInPreviewCommand}" Width="32" Padding="0,3" Margin="0,0,3,0" ToolTip="Phóng to bản vẽ"/>
-                                        <Button Content="🔍-" Command="{Binding ZoomOutPreviewCommand}" Width="32" Padding="0,3" Margin="0,0,3,0" ToolTip="Thu nhỏ bản vẽ"/>
-                                        <Button Content="🎯 Fit View" Command="{Binding FitPreviewCommand}" Padding="8,3" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="SemiBold" ToolTip="Xem vừa khít toàn bộ cống"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-
-                            <!-- Khung Canvas Đồ Họa Vector Trực Quan (Interactive Drawing) -->
-                            <Border Grid.Row="1" Background="#0A1120" BorderBrush="#1E293B" BorderThickness="1.5" CornerRadius="4" ClipToBounds="True">
-                                <local:CulvertPreviewCanvas x:Name="PreviewCanvasControl"
-                                                            GeometryData="{Binding CurrentPreviewGeometry}"
-                                                            ViewMode="{Binding PreviewMode}"/>
-                            </Border>
-
-                            <!-- Thẻ Tổng kết Kiểm tra Cao độ & Hình học Nhanh (Dưới đáy) -->
-                            <Border Grid.Row="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1.5" CornerRadius="6" Padding="10,8" Margin="0,6,0,0">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <!-- Cột 1: Cao độ đáy Invert -->
-                                        <ColumnDefinition Width="1.15*"/>
-                                        <!-- Cột 2: Cao độ đỉnh & BTL -->
-                                        <ColumnDefinition Width="1.25*"/>
-                                        <!-- Cột 3: Độ dốc thủy lực -->
-                                        <ColumnDefinition Width="1.2*"/>
-                                        <!-- Cột 4: Phân bố đốt cống -->
-                                        <ColumnDefinition Width="1.15*"/>
-                                        <!-- Cột 5: Kết luận & Kiểm định -->
-                                        <ColumnDefinition Width="1.5*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <!-- CỘT 1: CAO ĐỘ ĐÁY (INVERT) -->
-                                    <Border Grid.Column="0" BorderBrush="{StaticResource NavyBorder}" BorderThickness="0,0,1,0" Padding="0,0,8,0" Margin="0,0,8,0">
-                                        <StackPanel>
-                                            <TextBlock Text="🔻 ĐÁY CỐNG (INVERT)" Foreground="{StaticResource CyanLight}" FontWeight="Bold" FontSize="11"/>
-                                            <Grid Margin="0,4,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                </Grid.RowDefinitions>
-
-                                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Đáy TL (Z1):" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CurrentPreviewGeometry.Z1, StringFormat='{}{0:0.000} m'}" Foreground="{StaticResource TextWhite}" FontWeight="SemiBold" FontSize="11.5" HorizontalAlignment="Right"/>
-
-                                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Đáy HL (Z2):" Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,2,0,0"/>
-                                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CurrentPreviewGeometry.Z2, StringFormat='{}{0:0.000} m'}" Foreground="{StaticResource TextWhite}" FontWeight="SemiBold" FontSize="11.5" HorizontalAlignment="Right" Margin="0,2,0,0"/>
-
-                                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Chênh cao (ΔZ):" Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,2,0,0"/>
-                                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CurrentPreviewGeometry.DeltaH, StringFormat='{}{0:0.000} m'}" Foreground="#FACC15" FontWeight="Bold" FontSize="12" HorizontalAlignment="Right" Margin="0,2,0,0"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- CỘT 2: CAO ĐỘ ĐỈNH & MÓNG BTL -->
-                                    <Border Grid.Column="1" BorderBrush="{StaticResource NavyBorder}" BorderThickness="0,0,1,0" Padding="0,0,8,0" Margin="0,0,8,0">
-                                        <StackPanel>
-                                            <TextBlock Text="🔝 ĐỈNH CỐNG &amp; BTL" Foreground="{StaticResource CyanLight}" FontWeight="Bold" FontSize="11"/>
-                                            <Grid Margin="0,4,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                </Grid.RowDefinitions>
-
-                                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Đỉnh TL (Z_top1):" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CurrentPreviewGeometry.Z_Top1, StringFormat='{}{0:0.000} m'}" Foreground="{StaticResource CyanPrimary}" FontWeight="SemiBold" FontSize="11.5" HorizontalAlignment="Right"/>
-
-                                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Đỉnh HL (Z_top2):" Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,2,0,0"/>
-                                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CurrentPreviewGeometry.Z_Top2, StringFormat='{}{0:0.000} m'}" Foreground="{StaticResource CyanPrimary}" FontWeight="SemiBold" FontSize="11.5" HorizontalAlignment="Right" Margin="0,2,0,0"/>
-
-                                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Đáy BTL (Z_btl):" Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,2,0,0"/>
-                                                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,2,0,0">
-                                                    <TextBlock Text="{Binding CurrentPreviewGeometry.Z_Bot_BTL1, StringFormat={}{0:0.00}}" Foreground="{StaticResource TextLight}" FontSize="11"/>
-                                                    <TextBlock Text=" ➔ " Foreground="{StaticResource TextMuted}" FontSize="10.5"/>
-                                                    <TextBlock Text="{Binding CurrentPreviewGeometry.Z_Bot_BTL2, StringFormat={}{0:0.00}}" Foreground="{StaticResource TextLight}" FontSize="11"/>
-                                                    <TextBlock Text=" m" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                </StackPanel>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- CỘT 3: ĐỘ DỐC THỦY LỰC -->
-                                    <Border Grid.Column="2" BorderBrush="{StaticResource NavyBorder}" BorderThickness="0,0,1,0" Padding="0,0,8,0" Margin="0,0,8,0">
-                                        <StackPanel>
-                                            <TextBlock Text="💧 ĐỘ DỐC THỦY LỰC" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11"/>
-                                            <Grid Margin="0,4,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                </Grid.RowDefinitions>
-
-                                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Độ dốc tính toán:" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CurrentPreviewGeometry.CalculatedSlopePercent, StringFormat='{}{0:0.00} %'}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="12" HorizontalAlignment="Right"/>
-
-                                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Độ dốc thiết kế:" Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,2,0,0"/>
-                                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CurrentPreviewGeometry.DoDocPercent, StringFormat='{}{0:0.00} %'}" Foreground="{StaticResource TextLight}" FontWeight="SemiBold" FontSize="11.5" HorizontalAlignment="Right" Margin="0,2,0,0"/>
-
-                                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Sai lệch (Δi):" Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,2,0,0"/>
-                                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CurrentPreviewGeometry.SlopeDiffPercent, StringFormat='{}{0:0.000} %'}" Foreground="{StaticResource TextWhite}" FontSize="11.5" HorizontalAlignment="Right" Margin="0,2,0,0"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- CỘT 4: PHÂN BỐ ĐỐT CỐNG -->
-                                    <Border Grid.Column="3" BorderBrush="{StaticResource NavyBorder}" BorderThickness="0,0,1,0" Padding="0,0,8,0" Margin="0,0,8,0">
-                                        <StackPanel>
-                                            <TextBlock Text="🧱 RẢI ĐỐT HÌNH HỌC" Foreground="{StaticResource CyanLight}" FontWeight="Bold" FontSize="11"/>
-                                            <StackPanel Margin="0,4,0,0">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="Chiều dài: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                    <TextBlock Text="{Binding CurrentPreviewGeometry.TotalLengthM, StringFormat='{}{0:0.00} m'}" Foreground="{StaticResource TextWhite}" FontWeight="Bold" FontSize="11.5"/>
-                                                </StackPanel>
-                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                                    <TextBlock Text="Đốt chuẩn: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                    <TextBlock Text="{Binding CurrentPreviewGeometry.StandardCount}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11.5"/>
-                                                    <TextBlock Text=" đốt (" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                    <TextBlock Text="{Binding CurrentPreviewGeometry.L_Std, StringFormat={}{0:0.00}}" Foreground="{StaticResource TextLight}" FontSize="11"/>
-                                                    <TextBlock Text="m)" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                </StackPanel>
-                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                                    <TextBlock Text="Đốt bù: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                    <TextBlock Text="{Binding CurrentPreviewGeometry.CompensatingCount}" Foreground="#FACC15" FontWeight="Bold" FontSize="11.5"/>
-                                                    <TextBlock Text=" đốt (" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                    <TextBlock Text="{Binding CurrentPreviewGeometry.CompensatingLengthM, StringFormat={}{0:0.00}}" Foreground="#FACC15" FontSize="11"/>
-                                                    <TextBlock Text="m)" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                                </StackPanel>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- CỘT 5: KẾT LUẬN & KIỂM ĐỊNH -->
-                                    <StackPanel Grid.Column="4" VerticalAlignment="Center">
-                                        <TextBlock Text="🛡️ KIỂM ĐỊNH CAO ĐỘ:" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                        <Border CornerRadius="4" Padding="6,3" Margin="0,3,0,0" HorizontalAlignment="Left">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="#064E3B"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding CurrentPreviewGeometry.IsReverseSlope}" Value="True">
-                                                            <Setter Property="Background" Value="#7F1D1D"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding CurrentPreviewGeometry.IsFlatSlope}" Value="True">
-                                                            <Setter Property="Background" Value="#713F12"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
-                                            <TextBlock Text="{Binding CurrentPreviewGeometry.ElevationStatus}" FontWeight="Bold" FontSize="12">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Foreground" Value="{StaticResource MintLight}"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding CurrentPreviewGeometry.IsReverseSlope}" Value="True">
-                                                                <Setter Property="Foreground" Value="#FCA5A5"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding CurrentPreviewGeometry.IsFlatSlope}" Value="True">
-                                                                <Setter Property="Foreground" Value="#FDE047"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </Border>
-                                        <TextBlock Text="{Binding CurrentPreviewGeometry.ElevationNote}" Foreground="{StaticResource TextMuted}" FontSize="10.5" TextWrapping="Wrap" Margin="0,3,0,0"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                        </Grid>
-                    </GroupBox>
-                </Grid>
-            </TabItem>
-
-            <!-- ============================================== -->
-            <!-- TAB 04: VẬT LIỆU CẤU KIỆN (TẠO, TÊN & GÁN MÀU) -->
-            <!-- ============================================== -->
-            <TabItem Header="04 VẬT LIỆU CẤU KIỆN">
+            <TabItem Header="03 VẬT LIỆU CẤU KIỆN">
                 <Grid Margin="4">
                     <Grid.ColumnDefinitions>
                         <!-- Cột 1: Bảng gán vật liệu cấu kiện -->
@@ -1498,9 +1176,9 @@
             </TabItem>
 
             <!-- ============================================== -->
-            <!-- TAB 05: GÁN THÔNG TIN BIM (TÙY BIẾN ĐỘNG)      -->
+            <!-- TAB 04: GÁN THÔNG TIN BIM (TÙY BIẾN ĐỘNG)      -->
             <!-- ============================================== -->
-            <TabItem Header="05 GÁN THÔNG TIN BIM">
+            <TabItem Header="04 GÁN THÔNG TIN BIM">
                 <Grid Margin="4">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -1603,9 +1281,9 @@
             </TabItem>
 
             <!-- ============================================== -->
-            <!-- TAB 06: KẾT QUẢ KIỂM TRA & THỰC HIỆN            -->
+            <!-- TAB 05: KẾT QUẢ KIỂM TRA & THỰC HIỆN            -->
             <!-- ============================================== -->
-            <TabItem Header="06 KẾT QUẢ KIỂM TRA &amp; THỰC HIỆN">
+            <TabItem Header="05 KẾT QUẢ KIỂM TRA &amp; THỰC HIỆN">
                 <Grid Margin="4">
                     <Grid.RowDefinitions>
                         <!-- 4 Thẻ trạng thái đỉnh -->

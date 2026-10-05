@@ -21,12 +21,7 @@ namespace InfraBIM.CulvertTool.Views
 
             ViewModel.RequestPreviewAction = action =>
             {
-                Dispatcher.Invoke(() =>
-                {
-                    if (action == "Fit") PreviewCanvasControl?.FitView();
-                    else if (action == "ZoomIn") PreviewCanvasControl?.ZoomIn();
-                    else if (action == "ZoomOut") PreviewCanvasControl?.ZoomOut();
-                });
+                // Tab Preview 2D/3D đã được loại bỏ theo yêu cầu
             };
         }
 
