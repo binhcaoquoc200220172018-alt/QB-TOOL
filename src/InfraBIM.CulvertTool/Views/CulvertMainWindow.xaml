@@ -20,6 +20,7 @@
 
         <!-- BẢNG MÀU CHUYÊN NGHIỆP: XANH ĐẬM (NAVY), XANH LƠ (CYAN), XANH LÁ NHẠT (MINT) -->
         <SolidColorBrush x:Key="NavyBg" Color="#0A1120"/>
+        <SolidColorBrush x:Key="NavyDark" Color="#0B132B"/>
         <SolidColorBrush x:Key="NavyCard" Color="#132035"/>
         <SolidColorBrush x:Key="NavyCardInner" Color="#182A44"/>
         <SolidColorBrush x:Key="NavyBorder" Color="#223959"/>
