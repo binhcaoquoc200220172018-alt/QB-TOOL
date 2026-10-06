@@ -29,40 +29,18 @@ namespace InfraBIM.CulvertTool.Views
             }
         }
 
-        private bool Is3DMode => ViewModel?.PreviewMode == PreviewViewMode.Isometric3D;
+        private void ZoomInInternal() => Viewport3DControl.ZoomIn();
+        private void ZoomOutInternal() => Viewport3DControl.ZoomOut();
+        private void FitViewInternal() => Viewport3DControl.FitView();
 
-        private void ZoomInInternal()
-        {
-            if (Is3DMode) Viewport3DControl.ZoomIn();
-            else Canvas2D.ZoomIn();
-        }
+        private void SetIso_Click(object sender, RoutedEventArgs e) => Viewport3DControl.SetViewIsometric();
+        private void SetFront_Click(object sender, RoutedEventArgs e) => Viewport3DControl.SetViewFront();
+        private void SetTop_Click(object sender, RoutedEventArgs e) => Viewport3DControl.SetViewTop();
+        private void SetRight_Click(object sender, RoutedEventArgs e) => Viewport3DControl.SetViewRight();
 
-        private void ZoomOutInternal()
-        {
-            if (Is3DMode) Viewport3DControl.ZoomOut();
-            else Canvas2D.ZoomOut();
-        }
-
-        private void FitViewInternal()
-        {
-            if (Is3DMode) Viewport3DControl.FitView();
-            else Canvas2D.FitView();
-        }
-
-        private void ZoomIn_Click(object sender, RoutedEventArgs e)
-        {
-            ZoomInInternal();
-        }
-
-        private void ZoomOut_Click(object sender, RoutedEventArgs e)
-        {
-            ZoomOutInternal();
-        }
-
-        private void FitView_Click(object sender, RoutedEventArgs e)
-        {
-            FitViewInternal();
-        }
+        private void ZoomIn_Click(object sender, RoutedEventArgs e) => ZoomInInternal();
+        private void ZoomOut_Click(object sender, RoutedEventArgs e) => ZoomOutInternal();
+        private void FitView_Click(object sender, RoutedEventArgs e) => FitViewInternal();
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {

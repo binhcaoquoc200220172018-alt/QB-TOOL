@@ -128,7 +128,7 @@ namespace InfraBIM.CulvertTool.Services
                     var geom = inst.get_Geometry(opt);
                     if (geom == null) continue;
 
-                    Brush brush = GetBrushForFamily(inst.Symbol?.FamilyName ?? "");
+                    Brush brush = GetBrushForFamily(inst.Symbol?.FamilyName ?? "", inst.Symbol?.Name ?? "");
                     ExtractSolidsRecursive(geom, p1, cosRot, sinRot, brush, result);
                 }
 
@@ -161,21 +161,21 @@ namespace InfraBIM.CulvertTool.Services
             return pt.DistanceTo(proj);
         }
 
-        private static Brush GetBrushForFamily(string fn)
+        private static Brush GetBrushForFamily(string fn, string typeName)
         {
-            string upper = fn.ToUpperInvariant();
+            string upper = $"{fn} {typeName}".ToUpperInvariant();
             if (upper.Contains("THAN CONG") || upper.Contains("THÂN CỐNG") || upper.Contains("THAN_CONG") || upper.Contains("DOT") || upper.Contains("ĐỐT"))
                 return new SolidColorBrush(System.Windows.Media.Color.FromRgb(63, 68, 78)); // Bê tông xám than đậm (#3F444E) như Hình 2
             if (upper.Contains("HOP NOI") || upper.Contains("HỘP NỐI") || upper.Contains("HO GA") || upper.Contains("HỐ GA") || upper.Contains("HN"))
                 return new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
-            if (upper.Contains("CUA XA") || upper.Contains("CỬA XẢ") || upper.Contains("CX"))
-                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
-            if (upper.Contains("SAN GIA CO") || upper.Contains("SÂN GIA CỐ") || upper.Contains("SGC"))
-                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
-            if (upper.Contains("BT LOT") || upper.Contains("BTL") || upper.Contains("BE TONG LOT"))
+            if (upper.Contains("BE TONG LOT") || upper.Contains("BTL") || upper.Contains("BT LOT"))
                 return new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184)); // Bê tông lót (#94A3B8)
             if (upper.Contains("DA DAM") || upper.Contains("DDD") || upper.Contains("ĐÁ DĂM"))
                 return new SolidColorBrush(System.Windows.Media.Color.FromRgb(202, 138, 4));  // Đá dăm đệm (#CA8A04)
+            if (upper.Contains("CUA XA") || upper.Contains("CỬA XẢ") || upper.Contains("CX") || upper.Contains("SAN CONG") || upper.Contains("TUONG DAU") || upper.Contains("TUONG CANH"))
+                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
+            if (upper.Contains("SAN GIA CO") || upper.Contains("SÂN GIA CỐ") || upper.Contains("SGC"))
+                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
             return new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184));
         }
 

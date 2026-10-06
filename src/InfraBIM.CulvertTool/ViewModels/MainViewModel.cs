@@ -492,7 +492,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             set => SetProperty(ref _currentPreviewGeometry, value);
         }
 
-        private PreviewViewMode _previewMode = PreviewViewMode.Profile2D;
+        private PreviewViewMode _previewMode = PreviewViewMode.Isometric3D;
         public PreviewViewMode PreviewMode
         {
             get => _previewMode;

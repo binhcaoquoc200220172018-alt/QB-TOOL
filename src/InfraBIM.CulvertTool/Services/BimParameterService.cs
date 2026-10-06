@@ -127,10 +127,18 @@ namespace InfraBIM.CulvertTool.Services
                 }
                 if (p == null || p.IsReadOnly) continue;
 
-                // Nếu là Type Parameter mà giá trị không thay đổi hoặc không có ánh xạ Excel, không ghi đè tránh regenerate type lỗi
+                // TUYỆT ĐỐI KHÔNG ghi đè tham số ẩn/hiện dạng TYPE của Cửa xả & Sân gia cố
+                // Vì mỗi Type (TNN_CX_TUONG DAU, TNN_CX_SAN CONG, TNN_CX_TUONG CANH...) đã được Family định nghĩa sẵn đúng cấu kiện.
+                // Việc ghi đè Type param sẽ gây xung đột hình học trong Revit và phát sinh lỗi "Can't make type TNN_CX_SAN CONG".
                 bool hasExplicitMapping = !string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến";
-                bool isCustomized = !string.Equals(m.CustomValue, m.DefaultValue, StringComparison.OrdinalIgnoreCase);
-                if (isTypeParam && !hasExplicitMapping && !isCustomized) continue;
+                if (isTypeParam)
+                {
+                    if (m.IsVisibility || pNameUpper.StartsWith("CX_") || pNameUpper.StartsWith("TD_") || pNameUpper.StartsWith("SGC_"))
+                        continue;
+
+                    if (!hasExplicitMapping)
+                        continue;
+                }
 
                 // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, sau đó lấy giá trị tùy chỉnh riêng của cống
                 string valStr = data.GetParamOverride(m.InternalName, m.CustomValue);

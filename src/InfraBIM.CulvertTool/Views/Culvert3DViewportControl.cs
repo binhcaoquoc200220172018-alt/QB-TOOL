@@ -581,23 +581,36 @@ namespace InfraBIM.CulvertTool.Views
             // B. Hạ lưu (P2, X = totalL)
             BuildInletOutlet3D(_rootModelGroup, totalL, -Drop(totalL), wOut, bH, tSlab, tWall, isUpstream: false);
 
-            // 5. VẼ SÂN GIA CỐ 3M & DẦM CHÂN KHAY MÀU XANH #0284C7 NHƯ HÌNH 2
+            // 5. VẼ SÂN GIA CỐ 3M & DẦM CHÂN KHAY KÈM LỚP BÊ TÔNG LÓT (ĐỦ CÁC CẤU KIỆN SÂN GIA CỐ)
             double sgcLen = 3.0;
             double sgcW = wOut + 2.2;
             double sgcThick = 0.20;
+            double sgcBtlThick = 0.10;
             double toeDepth = 0.60;
             double toeThick = 0.35;
 
             // A. Thượng lưu (từ X = -2.0m nối tiếp ra -5.0m)
+            // Cấu kiện 1: Bản sân gia cố
             AddSolidBoxMesh(_rootModelGroup, -2.0 - sgcLen, -tSlab - sgcThick, -sgcW / 2.0, -2.0, -tSlab, sgcW / 2.0, MatReinforcedApron);
             // Dầm chân khay thượng lưu cắm sâu xuống đất ở mép ngoài cùng
             AddSolidBoxMesh(_rootModelGroup, -2.0 - sgcLen - toeThick, -tSlab - sgcThick - toeDepth, -sgcW / 2.0, -2.0 - sgcLen, -tSlab, sgcW / 2.0, MatToeBeam);
+            // Cấu kiện 2: Bê tông lót sân gia cố (BTL SGC) dày 100mm
+            if (_showBedding)
+            {
+                AddSolidBoxMesh(_rootModelGroup, -2.0 - sgcLen - toeThick, -tSlab - sgcThick - sgcBtlThick, -sgcW / 2.0 - 0.10, -2.0, -tSlab - sgcThick, sgcW / 2.0 + 0.10, MatBTL);
+            }
 
             // B. Hạ lưu (từ X = totalL + 2.0m nối tiếp ra totalL + 5.0m)
             double yHl = -Drop(totalL);
+            // Cấu kiện 1: Bản sân gia cố
             AddSolidBoxMesh(_rootModelGroup, totalL + 2.0, yHl - tSlab - sgcThick, -sgcW / 2.0, totalL + 2.0 + sgcLen, yHl - tSlab, sgcW / 2.0, MatReinforcedApron);
             // Dầm chân khay hạ lưu cắm sâu xuống đất ở mép ngoài cùng
             AddSolidBoxMesh(_rootModelGroup, totalL + 2.0 + sgcLen, yHl - tSlab - sgcThick - toeDepth, -sgcW / 2.0, totalL + 2.0 + sgcLen + toeThick, yHl - tSlab, sgcW / 2.0, MatToeBeam);
+            // Cấu kiện 2: Bê tông lót sân gia cố hạ lưu (BTL SGC) dày 100mm
+            if (_showBedding)
+            {
+                AddSolidBoxMesh(_rootModelGroup, totalL + 2.0, yHl - tSlab - sgcThick - sgcBtlThick, -sgcW / 2.0 - 0.10, totalL + 2.0 + sgcLen + toeThick, yHl - tSlab - sgcThick, sgcW / 2.0 + 0.10, MatBTL);
+            }
 
             // 6. VẼ BÊ TÔNG LÓT & ĐÁ DĂM ĐỆM (NGẮT QUÃNG CHUẨN XÁC TẠI HỘP NỐI)
             if (_showBedding)
@@ -617,10 +630,10 @@ namespace InfraBIM.CulvertTool.Views
             double xApron1 = isUpstream ? xCenter : xCenter + apronLen;
             double apronW = wOut + 0.6;
 
-            // 1. Bản đáy sân cống (Apron Slab) màu xanh (#0284C7)
+            // 1. Bản đáy sân cống (Apron Slab - Cấu kiện 1) màu xanh (#0284C7)
             AddSolidBoxMesh(group, xApron0, yCenter - tSlab, -apronW / 2.0, xApron1, yCenter, apronW / 2.0, MatHeadwall);
 
-            // 2. Tường đầu (Headwall) dạng cổng portal khoét rỗng cho lòng cống đi qua màu xanh (#0284C7)
+            // 2. Tường đầu (Headwall - Cấu kiện 2) dạng cổng portal khoét rỗng cho lòng cống đi qua màu xanh (#0284C7)
             double hwThick = 0.40;
             double xHw0 = isUpstream ? xCenter - hwThick : xCenter;
             double xHw1 = isUpstream ? xCenter : xCenter + hwThick;
@@ -634,7 +647,7 @@ namespace InfraBIM.CulvertTool.Views
             // Dầm đỉnh portal (Lintel)
             AddSolidBoxMesh(group, xHw0, yCenter + bH, -wOut / 2.0 - postW, xHw1, hwTopY, wOut / 2.0 + postW, MatHeadwall);
 
-            // 3. Hai tường cánh tam giác vát dốc 45° (Triangular Flared Wingwalls) màu xanh (#0284C7)
+            // 3. Hai tường cánh tam giác vát dốc 45° (Triangular Flared Wingwalls - Cấu kiện 3) màu xanh (#0284C7)
             double wingLen = 2.0;
             double wingFlare = 1.25;
             double wingThick = 0.25;
@@ -650,6 +663,20 @@ namespace InfraBIM.CulvertTool.Views
             Point3D wTR_bot_inner = new Point3D(xCenter, yCenter, wOut / 2.0 + postW);
             Point3D wTR_bot_outer = new Point3D(xCenter + (dir * wingLen), yCenter, wOut / 2.0 + postW + wingFlare);
             AddTriangularWingWall(group, wTR_bot_inner, wTR_bot_outer, wTR_top, new Vector3D(0, 0, -wingThick), MatHeadwall);
+
+            // 4. Bê tông lót sân cống (Apron BTL - Cấu kiện 4) dày 100mm nằm dưới bản đáy sân cống
+            double btlThick = 0.10;
+            double btlW = apronW + 0.20;
+            double xBtl0 = isUpstream ? xApron0 - 0.10 : xApron0;
+            double xBtl1 = isUpstream ? xApron1 : xApron1 + 0.10;
+            AddSolidBoxMesh(group, xBtl0, yCenter - tSlab - btlThick, -btlW / 2.0, xBtl1, yCenter - tSlab, btlW / 2.0, MatBTL);
+
+            // 5. Đá dăm đệm sân cống (Apron DDD - Cấu kiện 5) dày 150mm nằm dưới lớp BTL
+            double stoneThick = 0.15;
+            double stoneW = apronW + 0.40;
+            double xStone0 = isUpstream ? xApron0 - 0.20 : xApron0;
+            double xStone1 = isUpstream ? xApron1 : xApron1 + 0.20;
+            AddSolidBoxMesh(group, xStone0, yCenter - tSlab - btlThick - stoneThick, -stoneW / 2.0, xStone1, yCenter - tSlab - btlThick, stoneW / 2.0, MatCrushedStone);
         }
 
         private static void BuildBeddingLayers(Model3DGroup group, CulvertPreviewGeometry geom, double totalL, double wOut, double tSlab, Func<double, double> dropFunc)

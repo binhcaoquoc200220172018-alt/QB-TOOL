@@ -49,25 +49,7 @@
             </Style.Triggers>
         </Style>
 
-        <Style x:Key="ModeProfileBtn" TargetType="Button" BasedOn="{StaticResource ModeToggleBtn}">
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding PreviewMode}" Value="{x:Static models:PreviewViewMode.Profile2D}">
-                    <Setter Property="Background" Value="#0284C7"/>
-                    <Setter Property="BorderBrush" Value="#38BDF8"/>
-                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
 
-        <Style x:Key="ModePlanBtn" TargetType="Button" BasedOn="{StaticResource ModeToggleBtn}">
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding PreviewMode}" Value="{x:Static models:PreviewViewMode.Plan2D}">
-                    <Setter Property="Background" Value="#0284C7"/>
-                    <Setter Property="BorderBrush" Value="#38BDF8"/>
-                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
 
         <Style x:Key="ToolIconBtn" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource NavyCardInner}"/>
@@ -118,21 +100,14 @@
                     </ComboBox>
                 </StackPanel>
 
-                <!-- Nút chuyển chế độ xem (3D Isometric, 2D Profile, 2D Plan) -->
+                <!-- Điều khiển góc nhìn 3D trực quan chuẩn Revit -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Chế độ xem:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBlock Text="Góc nhìn 3D:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0"/>
 
-                    <Button Content="🧊 PHỐI CẢNH 3D" 
-                            Command="{Binding SetPreviewModeCommand}" CommandParameter="Isometric3D"
-                            Style="{StaticResource Mode3DBtn}"/>
-
-                    <Button Content="📐 MẶT CẮT DỌC (PROFILE)" 
-                            Command="{Binding SetPreviewModeCommand}" CommandParameter="Profile2D"
-                            Style="{StaticResource ModeProfileBtn}"/>
-
-                    <Button Content="🗺️ MẶT BẰNG (PLAN)" 
-                            Command="{Binding SetPreviewModeCommand}" CommandParameter="Plan2D"
-                            Style="{StaticResource ModePlanBtn}"/>
+                    <Button Content="🧊 3D ISO" Click="SetIso_Click" ToolTip="Phối cảnh Isometric 3D chuẩn" Style="{StaticResource Mode3DBtn}"/>
+                    <Button Content="🏠 ĐỨNG" Click="SetFront_Click" ToolTip="Mặt đứng chiếu ngang (Front View)" Style="{StaticResource ModeToggleBtn}"/>
+                    <Button Content="📐 BẰNG" Click="SetTop_Click" ToolTip="Mặt bằng nhìn từ trên xuống (Top View)" Style="{StaticResource ModeToggleBtn}"/>
+                    <Button Content="⬛ BÊN" Click="SetRight_Click" ToolTip="Mặt cắt bên cống (Right View)" Style="{StaticResource ModeToggleBtn}"/>
 
                     <!-- Điều khiển Zoom / Pan / Fit -->
                     <Border Width="1" Background="{StaticResource NavyBorder}" Margin="6,2,10,2"/>
@@ -145,40 +120,10 @@
             </DockPanel>
         </Border>
 
-        <!-- MAIN 3D / 2D CANVAS AREA -->
+        <!-- MAIN 3D VIEWPORT KHÔNG GIAN TOÀN PHẦN GIỐNG REVIT 3D VIEW -->
         <Border Grid.Row="1" Background="#060A14" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="6" ClipToBounds="True">
-            <Grid>
-                <!-- REAL 3D VIEWPORT WITH ORBIT 360, HOLLOW BOXES, REINFORCED APRON, MANHOLES, BEDDING -->
-                <local:Culvert3DViewportControl x:Name="Viewport3DControl"
-                                                GeometryData="{Binding CurrentPreviewGeometry}">
-                    <local:Culvert3DViewportControl.Style>
-                        <Style TargetType="local:Culvert3DViewportControl">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding PreviewMode}" Value="{x:Static models:PreviewViewMode.Isometric3D}">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </local:Culvert3DViewportControl.Style>
-                </local:Culvert3DViewportControl>
-
-                <!-- 2D PROFILE / PLAN CANVAS (MẶT CẮT DỌC VÀ MẶT BẰNG KÈM KÍCH THƯỚC CAD & CAO ĐỘ) -->
-                <local:CulvertPreviewCanvas x:Name="Canvas2D"
-                                            GeometryData="{Binding CurrentPreviewGeometry}" 
-                                            ViewMode="{Binding PreviewMode}">
-                    <local:CulvertPreviewCanvas.Style>
-                        <Style TargetType="local:CulvertPreviewCanvas">
-                            <Setter Property="Visibility" Value="Visible"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding PreviewMode}" Value="{x:Static models:PreviewViewMode.Isometric3D}">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </local:CulvertPreviewCanvas.Style>
-                </local:CulvertPreviewCanvas>
-            </Grid>
+            <local:Culvert3DViewportControl x:Name="Viewport3DControl"
+                                            GeometryData="{Binding CurrentPreviewGeometry}"/>
         </Border>
 
         <!-- BOTTOM HUD & ELEVATION SUMMARY CARD -->
