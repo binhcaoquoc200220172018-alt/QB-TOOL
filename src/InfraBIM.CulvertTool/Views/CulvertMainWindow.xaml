@@ -960,14 +960,14 @@
                                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                                       ScrollViewer.CanContentScroll="True">
                                 <DataGrid.Columns>
-                                    <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsSelected}" Width="50" MinWidth="45"/>
-                                    <DataGridTextColumn Header="Tên tham số (Parameter)" Binding="{Binding InternalName}" IsReadOnly="True" Width="180" MinWidth="150" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="Nhóm tham số" Binding="{Binding GroupName}" IsReadOnly="True" Width="160" MinWidth="140"/>
-                                    <DataGridTextColumn Header="Kiểu dữ liệu" Binding="{Binding DataType}" IsReadOnly="True" Width="120" MinWidth="110"/>
-                                    <DataGridTextColumn Header="Mặc định Family" Binding="{Binding DefaultValue}" IsReadOnly="True" Width="120" MinWidth="105"/>
-                                    <DataGridTextColumn Header="Giá trị tùy chỉnh (Sửa)" Binding="{Binding CustomValue}" Width="150" MinWidth="130" Foreground="{StaticResource MintLight}"/>
-                                    <DataGridTextColumn Header="Ánh xạ cột Excel" Binding="{Binding MappedField}" Width="130" MinWidth="110"/>
-                                    <DataGridTextColumn Header="Phân loại" Binding="{Binding InstanceTypeBadge}" IsReadOnly="True" Width="140" MinWidth="120"/>
+                                    <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsSelected}" Width="45" MinWidth="40"/>
+                                    <DataGridTextColumn Header="Tên tham số (Parameter)" Binding="{Binding InternalName}" IsReadOnly="True" Width="250" MinWidth="180" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Nhóm tham số" Binding="{Binding GroupName}" IsReadOnly="True" Width="125" MinWidth="95"/>
+                                    <DataGridTextColumn Header="Kiểu dữ liệu" Binding="{Binding DataType}" IsReadOnly="True" Width="120" MinWidth="105"/>
+                                    <DataGridTextColumn Header="Mặc định Family" Binding="{Binding DefaultValue}" IsReadOnly="True" Width="110" MinWidth="95"/>
+                                    <DataGridTextColumn Header="Giá trị tùy chỉnh (Sửa)" Binding="{Binding CustomValue}" Width="135" MinWidth="110" Foreground="{StaticResource MintLight}"/>
+                                    <DataGridTextColumn Header="Ánh xạ cột Excel" Binding="{Binding MappedField}" Width="120" MinWidth="100"/>
+                                    <DataGridTextColumn Header="Phân loại" Binding="{Binding InstanceTypeBadge}" IsReadOnly="True" Width="110" MinWidth="95"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>
@@ -1028,6 +1028,7 @@
                                 </Grid>
                             </Border>
 
+                            <!-- YÊU CẦU 4 (HÌNH 5): Thể hiện STT, Lý trình, Tên tham số, Giá trị tùy chỉnh -->
                             <DataGrid Grid.Row="2" ItemsSource="{Binding FilteredCulvertRows}"
                                       AutoGenerateColumns="False"
                                       CanUserAddRows="False"
@@ -1038,15 +1039,10 @@
                                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                                       ScrollViewer.CanContentScroll="True">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" IsReadOnly="True" Width="55" MinWidth="50"/>
-                                    <DataGridTextColumn Header="Lý trình" Binding="{Binding LyTrinh}" IsReadOnly="True" Width="110" MinWidth="100"/>
-                                    <DataGridTextColumn Header="Khẩu độ" Binding="{Binding KhauDo}" Width="100" MinWidth="90"/>
-                                    <DataGridTextColumn Header="Chiều dài (m)" Binding="{Binding ChieuDai, StringFormat={}{0:0.00}}" Width="105" MinWidth="95"/>
-                                    <DataGridTextColumn Header="Độ dốc (%)" Binding="{Binding DoDoc, StringFormat={}{0:0.00}}" Width="95" MinWidth="85"/>
-                                    <DataGridTextColumn Header="Số HN" Binding="{Binding SoHopNoi}" Width="65" MinWidth="55"/>
-                                    <DataGridTextColumn Header="KC_HN1 (m)" Binding="{Binding KC_HN1, StringFormat={}{0:0.00}}" Width="100" MinWidth="90"/>
-                                    <DataGridTextColumn Header="KC_HN2 (m)" Binding="{Binding KC_HN2, StringFormat={}{0:0.00}}" Width="100" MinWidth="90"/>
-                                    <DataGridTextColumn Header="Trạng thái" Binding="{Binding StatusNote}" IsReadOnly="True" Width="200" MinWidth="160"/>
+                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" IsReadOnly="True" Width="65" MinWidth="50" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="Lý trình" Binding="{Binding LyTrinh}" IsReadOnly="True" Width="130" MinWidth="100" FontWeight="SemiBold" Foreground="{StaticResource MintLight}"/>
+                                    <DataGridTextColumn Header="Tên tham số" Binding="{Binding ActiveParamName}" IsReadOnly="True" Width="200" MinWidth="150" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
+                                    <DataGridTextColumn Header="Giá trị tùy chỉnh" Binding="{Binding ActiveParamValue, UpdateSourceTrigger=PropertyChanged}" Width="*" MinWidth="140" FontWeight="Bold" Foreground="#FFFFFF"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>

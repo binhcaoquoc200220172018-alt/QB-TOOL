@@ -522,7 +522,13 @@ namespace InfraBIM.CulvertTool.ViewModels
         public ParameterMappingItem? SelectedParamForBatch
         {
             get => _selectedParamForBatch;
-            set => SetProperty(ref _selectedParamForBatch, value);
+            set
+            {
+                if (SetProperty(ref _selectedParamForBatch, value))
+                {
+                    UpdateBatchTableForSelectedParam();
+                }
+            }
         }
 
         private string _batchApplyValue = string.Empty;
@@ -1401,6 +1407,19 @@ namespace InfraBIM.CulvertTool.ViewModels
                 offsetZ_BTL: btlOffsetDot,
                 offsetZ_Cat: catOffset,
                 hasBtlDot: hasBtlDot);
+
+            // YÊU CẦU 1 (HÌNH 1 & 2): Lấy hình học thực từ Family Revit nếu mô hình đã xuất hoặc có trong Revit Document
+            if (CurrentPreviewGeometry != null && Doc != null)
+            {
+                try
+                {
+                    if (RevitCulvertMeshExtractor.TryExtractRevitGeometry(Doc, target, out var revitMeshes))
+                    {
+                        CurrentPreviewGeometry.RealRevitMeshes = revitMeshes;
+                    }
+                }
+                catch { }
+            }
         }
         #endregion
 
@@ -1795,10 +1814,14 @@ namespace InfraBIM.CulvertTool.ViewModels
                     else if (string.Equals(Tab02ParamCategoryFilter, "Other", StringComparison.OrdinalIgnoreCase))
                     {
                         if (!m.IsOther) continue;
+                        // YÊU CẦU 3 (HÌNH 4): Trong mục Other chỉ hiển thị kiểu dữ liệu Length và Yes/No thôi
+                        bool isLenOrYesNo = m.DataType.Contains("Length") || m.DataType.Contains("Yes/No");
+                        if (!isLenOrYesNo) continue;
                     }
                     else // "All" - hiển thị tất cả các tham số thuộc khung đỏ của người dùng (Dimensions hoặc Other)
                     {
                         if (!m.IsDimension && !m.IsOther) continue;
+                        if (m.IsOther && !m.DataType.Contains("Length") && !m.DataType.Contains("Yes/No")) continue;
                     }
 
                     // 2. Lọc theo Phân loại Type / Instance (nếu người dùng có tick chọn)
@@ -1820,6 +1843,24 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
 
             SelectedParamForBatch = FilteredParameterMappings.FirstOrDefault();
+            UpdateBatchTableForSelectedParam();
+        }
+
+        public void UpdateBatchTableForSelectedParam()
+        {
+            string pName = SelectedParamForBatch?.InternalName ?? string.Empty;
+            string defVal = SelectedParamForBatch?.CustomValue ?? string.Empty;
+            foreach (var r in AllCulvertRows)
+            {
+                r.ActiveParamName = pName;
+                r.ActiveParamValue = r.GetParamOverride(pName, defVal);
+            }
+            try
+            {
+                var view = System.Windows.Data.CollectionViewSource.GetDefaultView(FilteredCulvertRows);
+                view?.Refresh();
+            }
+            catch { }
         }
 
         private void ScanCurrentSelectedFamilyParameters()
@@ -1872,17 +1913,21 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
 
             SelectedParamForBatch.CustomValue = BatchApplyValue;
+            string pName = SelectedParamForBatch.InternalName;
 
             int count = 0;
             foreach (var r in AllCulvertRows)
             {
                 if (r.STT >= BatchFromSTT && r.STT <= BatchToSTT)
                 {
+                    r.SetParamOverride(pName, BatchApplyValue);
                     count++;
                 }
             }
 
-            MessageBox.Show($"Đã gán giá trị '{BatchApplyValue}' cho tham số '{SelectedParamForBatch.InternalName}' của Family '{SelectedParamForBatch.FamilyName}' (Phạm vi cống STT {BatchFromSTT} - {BatchToSTT}, {count} cống).", "Hoàn thành", MessageBoxButton.OK, MessageBoxImage.Information);
+            UpdateBatchTableForSelectedParam();
+
+            MessageBox.Show($"Đã gán giá trị '{BatchApplyValue}' cho tham số '{pName}' của Family '{SelectedParamForBatch.FamilyName}' (Phạm vi cống STT {BatchFromSTT} - {BatchToSTT}, {count} cống).", "Hoàn thành", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         #endregion
 

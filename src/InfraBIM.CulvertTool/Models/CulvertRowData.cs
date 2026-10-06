@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace InfraBIM.CulvertTool.Models
 {
@@ -108,6 +109,28 @@ namespace InfraBIM.CulvertTool.Models
         }
 
         public string ResolvedCulvertType => DetermineCulvertType();
+
+        // Quản lý giá trị tùy chỉnh tham số cho từng cống (Yêu cầu 4)
+        public string ActiveParamName { get; set; } = string.Empty;
+        public string ActiveParamValue { get; set; } = string.Empty;
+        public Dictionary<string, string> ParameterOverrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public string GetParamOverride(string? paramName, string defaultValue)
+        {
+            if (!string.IsNullOrEmpty(paramName) && ParameterOverrides.TryGetValue(paramName, out var val))
+            {
+                return val;
+            }
+            return defaultValue;
+        }
+
+        public void SetParamOverride(string? paramName, string val)
+        {
+            if (string.IsNullOrEmpty(paramName)) return;
+            ParameterOverrides[paramName] = val;
+            ActiveParamName = paramName;
+            ActiveParamValue = val;
+        }
 
         // Trạng thái kiểm tra (Validation)
         public bool IsSelected { get; set; } = true;

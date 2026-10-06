@@ -132,8 +132,8 @@ namespace InfraBIM.CulvertTool.Services
                 bool isCustomized = !string.Equals(m.CustomValue, m.DefaultValue, StringComparison.OrdinalIgnoreCase);
                 if (isTypeParam && !hasExplicitMapping && !isCustomized) continue;
 
-                // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, nếu không thì lấy CustomValue
-                string valStr = m.CustomValue;
+                // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, sau đó lấy giá trị tùy chỉnh riêng của cống
+                string valStr = data.GetParamOverride(m.InternalName, m.CustomValue);
                 if (hasExplicitMapping)
                 {
                     if (m.MappedField == "KhauDo") valStr = data.KhauDo;

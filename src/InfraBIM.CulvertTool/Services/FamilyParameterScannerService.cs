@@ -235,6 +235,27 @@ namespace InfraBIM.CulvertTool.Services
                         string gLower = groupName.ToLowerInvariant();
                         string nLower = name.ToLowerInvariant();
 
+                        // YÊU CẦU 2: Bỏ hoàn toàn A_GÓC XOAY
+                        if (nLower.Contains("a_goc") || nLower.Contains("a_góc")) continue;
+
+                        // YÊU CẦU 2 (HÌNH 3): Nếu là Family Đá dăm đệm, tuyệt đối không thêm B_BTL, H_BTL
+                        string famNameUpper = (sym.FamilyName ?? "").ToUpperInvariant();
+                        if (famNameUpper.Contains("DA DAM") || famNameUpper.Contains("DEM CONG"))
+                        {
+                            if (name.StartsWith("B_BTL", StringComparison.OrdinalIgnoreCase) ||
+                                name.StartsWith("H_BTL", StringComparison.OrdinalIgnoreCase))
+                                continue;
+                        }
+
+                        // YÊU CẦU 1: Bỏ qua tuyệt đối các biến công thức hình học nội bộ
+                        if (nLower.StartsWith("a1") || nLower.StartsWith("a2") || nLower.StartsWith("a3") ||
+                            nLower.StartsWith("a4") || nLower.StartsWith("a5") || nLower.StartsWith("a6") ||
+                            nLower.StartsWith("a7") || nLower.StartsWith("angle'") || nLower.Contains("'"))
+                            continue;
+
+                        bool isLength = dataTypeStr.Contains("Length") || fp.StorageType == StorageType.Double;
+                        bool isYesNo = dataTypeStr.Contains("Yes/No") || isBoolYesNo;
+
                         if (gLower.Contains("dimen") || gLower.Contains("kích thước") || gLower.Contains("geom"))
                         {
                             groupName = "Dimensions (Kích thước)";
@@ -242,29 +263,33 @@ namespace InfraBIM.CulvertTool.Services
                         }
                         else if (gLower.Contains("other") || gLower.Contains("khác") || gLower.Contains("general"))
                         {
-                            groupName = "Other (Khác)";
-                            isOther = true;
+                            // YÊU CẦU 3 (HÌNH 4): Trong mục Other CHỈ HIỂN THỊ KIỂU DỮ LIỆU LENGTH VÀ YES/NO THÔI!
+                            if (isLength || isYesNo)
+                            {
+                                groupName = "Other (Khác)";
+                                isOther = true;
+                                if (isYesNo) isVis = true;
+                            }
+                            else
+                            {
+                                continue; // Loại bỏ hoàn toàn String, Double, ElementId, Integer...
+                            }
                         }
-                        else if (isBoolYesNo || gLower.Contains("visib") || gLower.Contains("hiển thị") || gLower.Contains("đồ họa") ||
-                                 nLower.Contains("_sh") || nLower.Contains("sh_") || nLower.Contains("co vai ke") || nLower.Contains("co_vai_ke") ||
-                                 nLower.Contains("an hien") || nLower.Contains("ẩn hiện"))
+                        else if (isYesNo && (nLower.Contains("_sh") || nLower.Contains("sh_") || nLower.Contains("co vai ke") || nLower.Contains("co_vai_ke") || nLower.Contains("an hien") || nLower.Contains("ẩn hiện")))
                         {
                             groupName = "Other (Khác)";
                             isOther = true;
                             isVis = true;
                         }
+                        else if (name.StartsWith("CH_") && (nLower.Contains("_h") || nLower.Contains("_b") || nLower.Contains("_w") || nLower.Contains("_l") || nLower.Contains("_t")))
+                        {
+                            groupName = "Dimensions (Kích thước)";
+                            isDim = true;
+                        }
                         else
                         {
-                            if (name.StartsWith("CH_") || nLower.Contains("_h") || nLower.Contains("_b") || nLower.Contains("_w") || nLower.Contains("_l") || nLower.Contains("_t"))
-                            {
-                                groupName = "Dimensions (Kích thước)";
-                                isDim = true;
-                            }
-                            else
-                            {
-                                groupName = "Other (Khác)";
-                                isOther = true;
-                            }
+                            // TUYỆT ĐỐI KHÔNG ép các trường hợp còn lại vào Other!
+                            continue;
                         }
 
                         processed.Add(name);
@@ -408,6 +433,20 @@ namespace InfraBIM.CulvertTool.Services
                 return null;
             }
 
+            // YÊU CẦU 2 (HÌNH 3): Nếu là Family Đá dăm đệm, tuyệt đối không thêm B_BTL, H_BTL
+            string famNameUpper = (sym.FamilyName ?? "").ToUpperInvariant();
+            if (famNameUpper.Contains("DA DAM") || famNameUpper.Contains("DEM CONG"))
+            {
+                if (name.StartsWith("B_BTL", StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith("H_BTL", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+            }
+
+            bool isLength = dataTypeStr.Contains("Length") || p.StorageType == StorageType.Double;
+            bool isYesNo = dataTypeStr.Contains("Yes/No") || isBoolYesNo;
+
             if (gLower.Contains("dimen") || gLower.Contains("kích thước") || gLower.Contains("geom"))
             {
                 groupName = "Dimensions (Kích thước)";
@@ -415,9 +454,17 @@ namespace InfraBIM.CulvertTool.Services
             }
             else if (gLower.Contains("other") || gLower.Contains("khác") || gLower.Contains("general"))
             {
-                groupName = "Other (Khác)";
-                isOther = true;
-                if (isBoolYesNo) isVis = true;
+                // YÊU CẦU 3 (HÌNH 4): Trong mục Other CHỈ HIỂN THỊ KIỂU DỮ LIỆU LENGTH VÀ YES/NO THÔI!
+                if (isLength || isYesNo)
+                {
+                    groupName = "Other (Khác)";
+                    isOther = true;
+                    if (isYesNo) isVis = true;
+                }
+                else
+                {
+                    return null; // Bỏ qua tất cả String, Double, ElementId, Integer...
+                }
             }
             else if (isBoolYesNo && (nLower.Contains("_sh") || nLower.Contains("sh_") || nLower.Contains("co vai ke") || nLower.Contains("co_vai_ke") || nLower.Contains("an hien") || nLower.Contains("ẩn hiện")))
             {
@@ -564,9 +611,19 @@ namespace InfraBIM.CulvertTool.Services
                 AddFallbackParam(list, processed, sym, categoryName, "CX_SGC_BTL_SH", "Other (Khác)", isDim: false, isInst: true, dataType: "Yes/No (Có/Không)", defVal: "Không", isVis: true);
                 AddFallbackParam(list, processed, sym, categoryName, "CX_SGC_DD_SH", "Other (Khác)", isDim: false, isInst: true, dataType: "Yes/No (Có/Không)", defVal: "Không", isVis: true);
             }
-            else if (famUpper.Contains("BE TONG LOT") || famUpper.Contains("BTL") || famUpper.Contains("DA DAM") || famUpper.Contains("DEM CONG"))
+            else if (famUpper.Contains("DA DAM") || famUpper.Contains("DEM CONG"))
             {
-                // YÊU CẦU 2: BỎ HOÀN TOÀN A_GOC XOAY (trong family đá dăm đệm và BTL đã có sẵn góc rồi)
+                // YÊU CẦU 2 (HÌNH 3): Family Đá dăm đệm thân cống (TNN_CH_DA DAM DEM)
+                // TUYỆT ĐỐI KHÔNG CÓ B_BTL và H_BTL! CHỈ CÓ B_DDD, H_DDD, H, L1, L2!
+                AddFallbackParam(list, processed, sym, categoryName, "B_DDD", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "2260.0");
+                AddFallbackParam(list, processed, sym, categoryName, "H_DDD", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "150.0");
+                AddFallbackParam(list, processed, sym, categoryName, "H", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "0.0");
+                AddFallbackParam(list, processed, sym, categoryName, "L1", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "0.0");
+                AddFallbackParam(list, processed, sym, categoryName, "L2", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "0.0");
+            }
+            else if (famUpper.Contains("BE TONG LOT") || famUpper.Contains("BTL") || famUpper.Contains("BT LOT"))
+            {
+                // Family Bê tông lót thân cống (TNN_CH_BT LOT) - CHỈ CÓ B_BTL, H_BTL
                 AddFallbackParam(list, processed, sym, categoryName, "B_BTL", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "2100.0");
                 AddFallbackParam(list, processed, sym, categoryName, "H_BTL", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "100.0");
             }

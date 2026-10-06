@@ -127,5 +127,8 @@ namespace InfraBIM.CulvertTool.Models
         public double BarrelWidthM { get; set; } = 1.5;
         public double BarrelHeightM { get; set; } = 1.5;
         public double WallThicknessM { get; set; } = 0.20;
+
+        // Hình học 3D thực tế trích xuất trực tiếp từ các FamilyInstance trong Revit Document
+        public List<(System.Windows.Media.Media3D.MeshGeometry3D Mesh, System.Windows.Media.Brush Brush)>? RealRevitMeshes { get; set; }
     }
 }
