@@ -1,0 +1,204 @@
+<Window x:Class="InfraBIM.CulvertTool.Views.Culvert3DPreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:models="clr-namespace:InfraBIM.CulvertTool.Models"
+        xmlns:vm="clr-namespace:InfraBIM.CulvertTool.ViewModels"
+        xmlns:local="clr-namespace:InfraBIM.CulvertTool.Views"
+        mc:Ignorable="d"
+        Title="🔍 KIỂM TRA MÔ HÌNH 3D CỐNG NGANG - REVIEW TRỰC QUAN TRƯỚC KHI CHẠY" 
+        Height="780" Width="1280"
+        MinHeight="600" MinWidth="960"
+        WindowStartupLocation="CenterScreen"
+        Background="#0A1120" Foreground="#F8FAFC"
+        FontFamily="Segoe UI" FontSize="13">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="NavyBg" Color="#0A1120"/>
+        <SolidColorBrush x:Key="NavyCard" Color="#132035"/>
+        <SolidColorBrush x:Key="NavyCardInner" Color="#182A44"/>
+        <SolidColorBrush x:Key="NavyBorder" Color="#223959"/>
+        <SolidColorBrush x:Key="CyanPrimary" Color="#38BDF8"/>
+        <SolidColorBrush x:Key="CyanLight" Color="#7DD3FC"/>
+        <SolidColorBrush x:Key="CyanDark" Color="#0284C7"/>
+        <SolidColorBrush x:Key="MintLight" Color="#86EFAC"/>
+        <SolidColorBrush x:Key="MintPrimary" Color="#4ADE80"/>
+        <SolidColorBrush x:Key="MintDark" Color="#16A34A"/>
+        <SolidColorBrush x:Key="TextWhite" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="TextMuted" Color="#94A3B8"/>
+
+        <Style x:Key="ModeToggleBtn" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource NavyCardInner}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextWhite}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource NavyBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <Style x:Key="ToolIconBtn" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource NavyCardInner}"/>
+            <Setter Property="Foreground" Value="{StaticResource CyanLight}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource NavyBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <!-- 1. Thanh công cụ phía trên: Chọn cống, chuyển chế độ 3D/2D, zoom, fit -->
+            <RowDefinition Height="Auto"/>
+            <!-- 2. Không gian vẽ 3D Preview Canvas chính -->
+            <RowDefinition Height="*"/>
+            <!-- 3. Bảng thẻ thông số cao độ & kiểm tra thủy lực phía dưới -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- TOP TOOLBAR -->
+        <Border Grid.Row="0" Background="{StaticResource NavyCard}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="6" Padding="10,6" Margin="0,0,0,8">
+            <DockPanel LastChildFill="False">
+                <!-- Chọn Cống theo STT / Lý trình -->
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="📍 Chọn cống kiểm tra:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox ItemsSource="{Binding AllCulvertRows}" 
+                              SelectedItem="{Binding SelectedCulvertRowForPreview}" 
+                              Width="340" Height="28" VerticalContentAlignment="Center"
+                              Background="{StaticResource NavyCardInner}" Foreground="#FFFFFF" BorderBrush="{StaticResource CyanDark}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Background="#0284C7" CornerRadius="3" Padding="4,1" Margin="0,0,6,0">
+                                        <TextBlock Text="{Binding STT, StringFormat='STT {0}'}" Foreground="#FFF" FontWeight="Bold" FontSize="11"/>
+                                    </Border>
+                                    <TextBlock Text="{Binding LyTrinh}" Foreground="{StaticResource MintLight}" FontWeight="SemiBold" Margin="0,0,6,0"/>
+                                    <TextBlock Text="-" Foreground="{StaticResource TextMuted}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="{Binding LoaiCong}" Foreground="#FFFFFF" Margin="0,0,6,0"/>
+                                    <TextBlock Text="{Binding KhauDo, StringFormat='({0})'}" Foreground="{StaticResource CyanLight}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="{Binding ChieuDai, StringFormat='L={0:N2}m'}" Foreground="{StaticResource TextMuted}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+
+                <!-- Nút chuyển chế độ xem (3D Isometric, 2D Profile, 2D Plan) -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Chế độ xem:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+                    <Button Content="🧊 PHỐI CẢNH 3D" 
+                            Command="{Binding SetPreviewModeCommand}" CommandParameter="Isometric3D"
+                            Style="{StaticResource ModeToggleBtn}" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFFFFF"/>
+
+                    <Button Content="📐 MẶT CẮT DỌC (PROFILE)" 
+                            Command="{Binding SetPreviewModeCommand}" CommandParameter="Profile2D"
+                            Style="{StaticResource ModeToggleBtn}"/>
+
+                    <Button Content="🗺️ MẶT BẰNG (PLAN)" 
+                            Command="{Binding SetPreviewModeCommand}" CommandParameter="Plan2D"
+                            Style="{StaticResource ModeToggleBtn}"/>
+
+                    <!-- Điều khiển Zoom / Pan / Fit -->
+                    <Border Width="1" Background="{StaticResource NavyBorder}" Margin="6,2,10,2"/>
+
+                    <Button Content="🔍+" Click="ZoomIn_Click" Command="{Binding ZoomInPreviewCommand}" ToolTip="Phóng to (hoặc lăn chuột lên)" Style="{StaticResource ToolIconBtn}"/>
+                    <Button Content="🔍-" Click="ZoomOut_Click" Command="{Binding ZoomOutPreviewCommand}" ToolTip="Thu nhỏ (hoặc lăn chuột xuống)" Style="{StaticResource ToolIconBtn}"/>
+                    <Button Content="🎯 Vừa khung" Click="FitView_Click" Command="{Binding FitPreviewCommand}" ToolTip="Thu phóng vừa khung hình (hoặc nhấn đúp chuột)" Style="{StaticResource ModeToggleBtn}"/>
+                    <Button Content="🔄 Làm mới" Command="{Binding RefreshPreviewCommand}" ToolTip="Tính toán và vẽ lại cống" Style="{StaticResource ModeToggleBtn}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- MAIN 3D / 2D CANVAS AREA -->
+        <Border Grid.Row="1" Background="#060A14" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="6" ClipToBounds="True">
+            <local:CulvertPreviewCanvas x:Name="Canvas3D"
+                                        GeometryData="{Binding CurrentPreviewGeometry}" 
+                                        ViewMode="{Binding PreviewMode}"/>
+        </Border>
+
+        <!-- BOTTOM HUD & ELEVATION SUMMARY CARD -->
+        <Border Grid.Row="2" Background="{StaticResource NavyCard}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,8,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <!-- Card 1: Cao độ & Thủy lực -->
+                    <ColumnDefinition Width="2.5*"/>
+                    <!-- Card 2: Hình học & Cấu kiện -->
+                    <ColumnDefinition Width="2.5*"/>
+                    <!-- Card 3: Kết luận & Đóng -->
+                    <ColumnDefinition Width="1.5*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- CARD 1: CAO ĐỘ THƯỢNG LƯU / HẠ LƯU / ĐỘ DỐC -->
+                <Border Grid.Column="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,6,0">
+                    <StackPanel>
+                        <TextBlock Text="📐 CAO ĐỘ &amp; ĐỘ DỐC THỦY LỰC" Foreground="{StaticResource CyanLight}" FontWeight="Bold" FontSize="12" Margin="0,0,0,4"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z1, StringFormat='Đáy Thượng lưu Z1: {0:N3} m'}" Foreground="{StaticResource MintLight}" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z_Top1, StringFormat='Đỉnh Thượng lưu Zt1: {0:N3} m'}" Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.DoDocPercent, StringFormat='Độ dốc thiết kế: {0:N2} %'}" Foreground="{StaticResource TextWhite}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z2, StringFormat='Đáy Hạ lưu Z2: {0:N3} m'}" Foreground="#FDE047" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z_Top2, StringFormat='Đỉnh Hạ lưu Zt2: {0:N3} m'}" Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.CalculatedSlopePercent, StringFormat='Độ dốc tính toán: {0:N2} %'}" Foreground="{StaticResource CyanLight}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- CARD 2: KÍCH THƯỚC HÌNH HỌC & CẤU KIỆN -->
+                <Border Grid.Column="1" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,6,0">
+                    <StackPanel>
+                        <TextBlock Text="🧱 KÍCH THƯỚC HÌNH HỌC &amp; CẤU KIỆN" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="12" Margin="0,0,0,4"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.TotalLengthM, StringFormat='Chiều dài cống L: {0:N2} m'}" Foreground="{StaticResource TextWhite}" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.KhauDo, StringFormat='Khẩu độ cống: {0}'}" Foreground="{StaticResource CyanLight}"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Segments.Count, StringFormat='Số đốt cống: {0} đốt'}" Foreground="{StaticResource MintLight}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Manholes.Count, StringFormat='Số hộp nối (hố ga): {0} hộp'}" Foreground="{StaticResource TextWhite}"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.DeltaH, StringFormat='Chênh cao đáy ΔH: {0:N3} m'}" Foreground="{StaticResource TextMuted}"/>
+                                <TextBlock Text="BTL &amp; Đá dăm: Đã ngắt tại hộp nối" Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- CARD 3: ĐÁNH GIÁ THỦY LỰC & NÚT ĐÓNG -->
+                <Border Grid.Column="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8,6">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0">
+                            <TextBlock Text="KẾT LUẬN THỦY LỰC:" Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                            <TextBlock Text="{Binding CurrentPreviewGeometry.ElevationStatus}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="13" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <Button Grid.Row="1" Content="✕ ĐÓNG REVIEW" Click="CloseButton_Click" 
+                                Background="{StaticResource NavyCard}" BorderBrush="{StaticResource CyanDark}" Foreground="#FFFFFF"
+                                FontWeight="Bold" Padding="12,5" Height="28"/>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

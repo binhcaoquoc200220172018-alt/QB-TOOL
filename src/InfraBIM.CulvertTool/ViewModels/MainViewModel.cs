@@ -341,6 +341,20 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
         }
 
+        // Tùy chọn lọc tham số Dimensions & Other theo Hình 1, 2, 3 anh đã khoanh đỏ
+        private string _tab02ParamCategoryFilter = "All"; // "All", "Dimensions", "Other"
+        public string Tab02ParamCategoryFilter
+        {
+            get => _tab02ParamCategoryFilter;
+            set
+            {
+                if (SetProperty(ref _tab02ParamCategoryFilter, value))
+                {
+                    FilterParameterMappings();
+                }
+            }
+        }
+
         // Tùy chọn lọc tham số Dimensions & Visibility & Other & All
         private bool _showDimensions = true;
         public bool ShowDimensions
@@ -624,7 +638,9 @@ namespace InfraBIM.CulvertTool.ViewModels
         public RelayCommand RemoveComponentCommand { get; }
         public RelayCommand<string> ApplyAssemblyTemplateCommand { get; }
 
-        // Commands for Tab 03 Preview
+        // Commands for Tab 03 Preview & 3D Review
+        public RelayCommand Open3DReviewCommand { get; }
+        public RelayCommand<string> SetTab02ParamCategoryFilterCommand { get; }
         public RelayCommand<string> SetPreviewModeCommand { get; }
         public RelayCommand FitPreviewCommand { get; }
         public RelayCommand ZoomInPreviewCommand { get; }
@@ -674,7 +690,15 @@ namespace InfraBIM.CulvertTool.ViewModels
             RemoveComponentCommand = new RelayCommand(RemoveSelectedComponent);
             ApplyAssemblyTemplateCommand = new RelayCommand<string>(ApplyAssemblyTemplate);
 
-            // Tab 03 Preview Commands
+            // Tab 03 Preview & 3D Review Commands
+            Open3DReviewCommand = new RelayCommand(Open3DReview);
+            SetTab02ParamCategoryFilterCommand = new RelayCommand<string>(filter =>
+            {
+                if (!string.IsNullOrEmpty(filter))
+                {
+                    Tab02ParamCategoryFilter = filter;
+                }
+            });
             SetPreviewModeCommand = new RelayCommand<string>(SetPreviewMode);
             FitPreviewCommand = new RelayCommand(() => RequestPreviewAction?.Invoke("Fit"));
             ZoomInPreviewCommand = new RelayCommand(() => RequestPreviewAction?.Invoke("ZoomIn"));
@@ -1288,12 +1312,34 @@ namespace InfraBIM.CulvertTool.ViewModels
         #region Tab 03 Preview Methods
         public void SetPreviewMode(string? mode)
         {
-            if (string.Equals(mode, "Plan", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(mode, "Plan", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Plan2D", StringComparison.OrdinalIgnoreCase))
                 PreviewMode = PreviewViewMode.Plan2D;
-            else if (string.Equals(mode, "3D", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(mode, "3D", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Isometric3D", StringComparison.OrdinalIgnoreCase))
                 PreviewMode = PreviewViewMode.Isometric3D;
             else
                 PreviewMode = PreviewViewMode.Profile2D;
+        }
+
+        public void Open3DReview()
+        {
+            if (SelectedCulvertRowForPreview == null)
+            {
+                SelectedCulvertRowForPreview = FilteredCulvertRows.FirstOrDefault() ?? AllCulvertRows.FirstOrDefault();
+            }
+            PreviewMode = PreviewViewMode.Isometric3D;
+            UpdatePreviewGeometry();
+
+            var reviewWindow = new Views.Culvert3DPreviewWindow(this);
+            try
+            {
+                if (Application.Current?.MainWindow != null && Application.Current.MainWindow.IsVisible)
+                {
+                    reviewWindow.Owner = Application.Current.MainWindow;
+                }
+            }
+            catch { }
+            reviewWindow.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            reviewWindow.ShowDialog();
         }
 
         public void FilterPreviewCulvertRows()
@@ -1741,29 +1787,23 @@ namespace InfraBIM.CulvertTool.ViewModels
 
                 if (matchFam || (string.IsNullOrEmpty(m.FamilyName) && matchCat))
                 {
-                    // 1. Lọc theo Phân loại Type / Instance (Hình 6)
-                    bool matchTypeOrInstance = false;
-                    if (ShowTypeParams && !m.IsInstance) matchTypeOrInstance = true;
-                    if (ShowInstanceParams && m.IsInstance) matchTypeOrInstance = true;
-                    if (!ShowTypeParams && !ShowInstanceParams) matchTypeOrInstance = true; // nếu bỏ tích cả 2 thì hiện toàn bộ
-
-                    if (!matchTypeOrInstance) continue;
-
-                    // 2. Lọc theo Nhóm tham số (Dimensions / Visibility / Other / Tất cả các nhóm)
-                    bool matchGroup = false;
-                    if (ShowAllGroups)
+                    // 1. Lọc theo Phân nhóm chuẩn Revit trong khung đỏ (Hình 1, 2, 3: Dimensions vs Other)
+                    if (string.Equals(Tab02ParamCategoryFilter, "Dimensions", StringComparison.OrdinalIgnoreCase))
                     {
-                        matchGroup = true;
+                        if (!m.IsDimension) continue;
                     }
-                    else
+                    else if (string.Equals(Tab02ParamCategoryFilter, "Other", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (ShowDimensions && m.IsDimension) matchGroup = true;
-                        if (ShowVisibility && m.IsVisibility) matchGroup = true;
-                        if (ShowOther && m.IsOther) matchGroup = true;
-                        if (!ShowDimensions && !ShowVisibility && !ShowOther) matchGroup = true; // nếu bỏ tích cả 3 thì hiện toàn bộ
+                        if (!m.IsOther) continue;
+                    }
+                    else // "All" - hiển thị tất cả các tham số thuộc khung đỏ của người dùng (Dimensions hoặc Other)
+                    {
+                        if (!m.IsDimension && !m.IsOther) continue;
                     }
 
-                    if (!matchGroup) continue;
+                    // 2. Lọc theo Phân loại Type / Instance (nếu người dùng có tick chọn)
+                    if (ShowTypeParams && !ShowInstanceParams && m.IsInstance) continue;
+                    if (!ShowTypeParams && ShowInstanceParams && !m.IsInstance) continue;
 
                     // 3. Lọc theo từ khóa tìm kiếm (nếu người dùng nhập)
                     if (!string.IsNullOrWhiteSpace(ParamSearchFilter))

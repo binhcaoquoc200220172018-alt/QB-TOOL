@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
@@ -646,16 +647,18 @@ namespace InfraBIM.CulvertTool.Views
             if (totalL <= 0.1) return;
 
             double cx = viewW / 2.0;
-            double cy = viewH / 2.0 + 30;
+            double cy = viewH / 2.0 + 35;
 
-            // Vector trục Isometric 3D: X trục dài (góc 25°), Y chiều cao (thẳng đứng), Z bề rộng (góc 155°)
+            // Vector trục Isometric 3D: X trục dài cống (góc 22°), Y thẳng đứng, Z bề rộng cống (góc 158°)
             double angX = 22.0 * Math.PI / 180.0;
             double angZ = 158.0 * Math.PI / 180.0;
 
-            double scale = Math.Min(viewW / (totalL * 1.5), 25.0);
+            double scale = Math.Min(viewW / (totalL * 1.6), 28.0);
+            scale = Math.Max(scale, 10.0);
+
             double lenPx = totalL * scale;
-            double wPx = geom.BarrelWidthM * scale * 1.8;
-            double hPx = geom.BarrelHeightM * scale * 1.8;
+            double wPx = (geom.BarrelWidthM > 0 ? geom.BarrelWidthM : 1.5) * scale * 1.8;
+            double hPx = (geom.BarrelHeightM > 0 ? geom.BarrelHeightM : 1.5) * scale * 1.8;
 
             Point Origin = new Point(cx - (lenPx * Math.Cos(angX) / 2.0) - (wPx * Math.Cos(angZ) / 2.0), cy);
 
@@ -666,42 +669,195 @@ namespace InfraBIM.CulvertTool.Views
                 return new Point(px, py);
             }
 
-            // 1. Khối bê tông lót nền 3D
-            Draw3DBox(dc, Project3D(-1.0, -0.2, -0.4), totalL + 2.0, 0.2, geom.BarrelWidthM + 0.8, scale, angX, angZ, BtlBrush, new Pen(new SolidColorBrush(Color.FromRgb(71, 85, 105)), 1.0));
+            double ElevDropAt(double xM)
+            {
+                if (totalL <= 0.01) return 0.0;
+                double frac = Math.Clamp(xM / totalL, 0.0, 1.0);
+                return frac * geom.DeltaH;
+            }
 
-            // 2. Thân cống từng đốt 3D
+            double bW = geom.BarrelWidthM > 0 ? geom.BarrelWidthM : 1.5;
+            double bH = geom.BarrelHeightM > 0 ? geom.BarrelHeightM : 1.5;
+
+            // 1. VẼ LỚP BÊ TÔNG LÓT & ĐÁ DĂM ĐỆM NỀN 3D (Ngắt quãng tại hộp nối)
+            var beddingSpans = new List<(double Start, double End)>();
+            if (geom.Manholes.Count == 0)
+            {
+                beddingSpans.Add((0.0, totalL));
+            }
+            else
+            {
+                double curX = 0.0;
+                foreach (var mh in geom.Manholes)
+                {
+                    double mhStart = Math.Max(0.0, mh.DistanceFromP1M - (mh.WidthM / 2.0));
+                    double mhEnd = Math.Min(totalL, mh.DistanceFromP1M + (mh.WidthM / 2.0));
+                    if (mhStart > curX)
+                    {
+                        beddingSpans.Add((curX, mhStart));
+                    }
+                    curX = mhEnd;
+                }
+                if (curX < totalL)
+                {
+                    beddingSpans.Add((curX, totalL));
+                }
+            }
+
+            foreach (var span in beddingSpans)
+            {
+                double sL = span.End - span.Start;
+                if (sL <= 0.05) continue;
+                double y0 = -ElevDropAt(span.Start) - 0.20;
+                double y1 = -ElevDropAt(span.End) - 0.20;
+
+                Point pt0 = Project3D(span.Start, y0, -0.2);
+                Point pt1 = Project3D(span.End, y1, -0.2);
+                Point pt2 = Project3D(span.End, y1, bW + 0.2);
+                Point pt3 = Project3D(span.Start, y0, bW + 0.2);
+
+                Point pt0_t = Project3D(span.Start, y0 + 0.20, -0.2);
+                Point pt1_t = Project3D(span.End, y1 + 0.20, -0.2);
+                Point pt2_t = Project3D(span.End, y1 + 0.20, bW + 0.2);
+                Point pt3_t = Project3D(span.Start, y0 + 0.20, bW + 0.2);
+
+                Draw3DPrism(dc, pt0, pt1, pt2, pt3, pt0_t, pt1_t, pt2_t, pt3_t, BtlBrush, new Pen(new SolidColorBrush(Color.FromRgb(71, 85, 105)), 1.0));
+            }
+
+            // 2. VẼ THÂN CỐNG TỪNG ĐỐT 3D THEO CAO ĐỘ THIẾT KẾ
             foreach (var seg in geom.Segments)
             {
                 Brush b = seg.IsStandard ? StdSegBrush : (seg.LengthM < geom.L_Min ? WarnSegBrush : CompSegBrush);
                 Pen p = seg.IsStandard ? StdSegPen : (seg.LengthM < geom.L_Min ? WarnSegPen : CompSegPen);
-                Point ptBase = Project3D(seg.StartDistanceM, 0, 0);
-                Draw3DBox(dc, ptBase, seg.LengthM, geom.BarrelHeightM, geom.BarrelWidthM, scale, angX, angZ, b, p);
+
+                double x0 = seg.StartDistanceM;
+                double x1 = seg.EndDistanceM;
+                double y0 = -ElevDropAt(x0);
+                double y1 = -ElevDropAt(x1);
+
+                Point pt0 = Project3D(x0, y0, 0);
+                Point pt1 = Project3D(x1, y1, 0);
+                Point pt2 = Project3D(x1, y1, bW);
+                Point pt3 = Project3D(x0, y0, bW);
+
+                Point pt0_t = Project3D(x0, y0 + bH, 0);
+                Point pt1_t = Project3D(x1, y1 + bH, 0);
+                Point pt2_t = Project3D(x1, y1 + bH, bW);
+                Point pt3_t = Project3D(x0, y0 + bH, bW);
+
+                Draw3DPrism(dc, pt0, pt1, pt2, pt3, pt0_t, pt1_t, pt2_t, pt3_t, b, p);
             }
 
-            // 3. Sân cống 2 đầu 3D
-            Draw3DBox(dc, Project3D(-1.5, 0, -0.3), 1.5, geom.BarrelHeightM + 0.4, geom.BarrelWidthM + 0.6, scale, angX, angZ, ApronBrush, ApronPen);
-            Draw3DBox(dc, Project3D(totalL, 0, -0.3), 1.5, geom.BarrelHeightM + 0.4, geom.BarrelWidthM + 0.6, scale, angX, angZ, ApronBrush, ApronPen);
+            // VẼ LỖ RỖNG CỐNG HỘP Ở ĐẦU THƯỢNG LƯU (HOLLOW OPENING NHƯ REVIT 3D)
+            double t = 0.18; // Bề dày thành cống
+            if (bW > 2 * t && bH > 2 * t)
+            {
+                Point h0 = Project3D(0, t, t);
+                Point h1 = Project3D(0, bH - t, t);
+                Point h2 = Project3D(0, bH - t, bW - t);
+                Point h3 = Project3D(0, t, bW - t);
 
-            DrawCenteredText(dc, $"PHỐI CẢNH 3D: CỐNG {geom.LoaiCong} ({geom.KhauDo}) - L = {totalL:N2}m", new Point(cx, cy + 80), 12, CyanTextBrush);
+                var hollowPath = new PathGeometry();
+                var hollowFig = new PathFigure { StartPoint = h0, IsClosed = true };
+                hollowFig.Segments.Add(new LineSegment(h1, true));
+                hollowFig.Segments.Add(new LineSegment(h2, true));
+                hollowFig.Segments.Add(new LineSegment(h3, true));
+                hollowPath.Figures.Add(hollowFig);
+
+                dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(240, 10, 15, 26)), new Pen(new SolidColorBrush(Color.FromRgb(56, 189, 248)), 1.0), hollowPath);
+            }
+
+            // 3. VẼ HỘP NỐI (HỐ GA) 3D NẾU CÓ
+            foreach (var mh in geom.Manholes)
+            {
+                double xMh0 = mh.DistanceFromP1M - (mh.WidthM / 2.0);
+                double xMh1 = mh.DistanceFromP1M + (mh.WidthM / 2.0);
+                double yMh = -ElevDropAt(mh.DistanceFromP1M);
+                double mhH = bH + 0.45; // Hố ga nhô cao hơn thân cống
+
+                Point pt0 = Project3D(xMh0, yMh - 0.20, -0.3);
+                Point pt1 = Project3D(xMh1, yMh - 0.20, -0.3);
+                Point pt2 = Project3D(xMh1, yMh - 0.20, bW + 0.3);
+                Point pt3 = Project3D(xMh0, yMh - 0.20, bW + 0.3);
+
+                Point pt0_t = Project3D(xMh0, yMh + mhH, -0.3);
+                Point pt1_t = Project3D(xMh1, yMh + mhH, -0.3);
+                Point pt2_t = Project3D(xMh1, yMh + mhH, bW + 0.3);
+                Point pt3_t = Project3D(xMh0, yMh + mhH, bW + 0.3);
+
+                Draw3DPrism(dc, pt0, pt1, pt2, pt3, pt0_t, pt1_t, pt2_t, pt3_t, ManholeBrush, ManholePen);
+
+                // Nắp đan hố ga phía trên
+                Point cap0 = Project3D(xMh0 + 0.1, yMh + mhH, -0.2);
+                Point cap1 = Project3D(xMh1 - 0.1, yMh + mhH, -0.2);
+                Point cap2 = Project3D(xMh1 - 0.1, yMh + mhH, bW + 0.2);
+                Point cap3 = Project3D(xMh0 + 0.1, yMh + mhH, bW + 0.2);
+                var capPath = new PathGeometry();
+                var capFig = new PathFigure { StartPoint = cap0, IsClosed = true };
+                capFig.Segments.Add(new LineSegment(cap1, true));
+                capFig.Segments.Add(new LineSegment(cap2, true));
+                capFig.Segments.Add(new LineSegment(cap3, true));
+                capPath.Figures.Add(capFig);
+                dc.DrawGeometry(new SolidColorBrush(Color.FromRgb(100, 116, 139)), new Pen(new SolidColorBrush(Color.FromRgb(226, 232, 240)), 1.2), capPath);
+            }
+
+            // 4. VẼ CỬA XẢ 2 ĐẦU (TƯỜNG ĐẦU, TƯỜNG CÁNH & SÂN CỐNG 3D)
+            Point ap0_TL = Project3D(-1.35, 0, -0.4);
+            Point ap1_TL = Project3D(0, 0, -0.4);
+            Point ap2_TL = Project3D(0, 0, bW + 0.4);
+            Point ap3_TL = Project3D(-1.35, 0, bW + 0.4);
+            Point ap0_TL_t = Project3D(-1.35, bH + 0.4, -0.4);
+            Point ap1_TL_t = Project3D(0, bH + 0.4, -0.4);
+            Point ap2_TL_t = Project3D(0, bH + 0.4, bW + 0.4);
+            Point ap3_TL_t = Project3D(-1.35, bH + 0.4, bW + 0.4);
+            Draw3DPrism(dc, ap0_TL, ap1_TL, ap2_TL, ap3_TL, ap0_TL_t, ap1_TL_t, ap2_TL_t, ap3_TL_t, ApronBrush, ApronPen);
+
+            double yHL = -ElevDropAt(totalL);
+            Point ap0_HL = Project3D(totalL, yHL, -0.4);
+            Point ap1_HL = Project3D(totalL + 1.35, yHL, -0.4);
+            Point ap2_HL = Project3D(totalL + 1.35, yHL, bW + 0.4);
+            Point ap3_HL = Project3D(totalL, yHL, bW + 0.4);
+            Point ap0_HL_t = Project3D(totalL, yHL + bH + 0.4, -0.4);
+            Point ap1_HL_t = Project3D(totalL + 1.35, yHL + bH + 0.4, -0.4);
+            Point ap2_HL_t = Project3D(totalL + 1.35, yHL + bH + 0.4, bW + 0.4);
+            Point ap3_HL_t = Project3D(totalL, yHL + bH + 0.4, bW + 0.4);
+            Draw3DPrism(dc, ap0_HL, ap1_HL, ap2_HL, ap3_HL, ap0_HL_t, ap1_HL_t, ap2_HL_t, ap3_HL_t, ApronBrush, ApronPen);
+
+            // 5. VẼ SÂN GIA CỐ 3M NỐI TIẾP RA DẦM CHÂN KHAY
+            Point sgc0_TL = Project3D(-4.35, -0.1, -0.5);
+            Point sgc1_TL = Project3D(-1.35, -0.1, -0.5);
+            Point sgc2_TL = Project3D(-1.35, -0.1, bW + 0.5);
+            Point sgc3_TL = Project3D(-4.35, -0.1, bW + 0.5);
+            Point sgc0_TL_t = Project3D(-4.35, 0.2, -0.5);
+            Point sgc1_TL_t = Project3D(-1.35, 0.2, -0.5);
+            Point sgc2_TL_t = Project3D(-1.35, 0.2, bW + 0.5);
+            Point sgc3_TL_t = Project3D(-4.35, 0.2, bW + 0.5);
+            Draw3DPrism(dc, sgc0_TL, sgc1_TL, sgc2_TL, sgc3_TL, sgc0_TL_t, sgc1_TL_t, sgc2_TL_t, sgc3_TL_t, new SolidColorBrush(Color.FromArgb(160, 30, 58, 138)), new Pen(new SolidColorBrush(Color.FromRgb(96, 165, 250)), 1.0));
+
+            Point sgc0_HL = Project3D(totalL + 1.35, yHL - 0.1, -0.5);
+            Point sgc1_HL = Project3D(totalL + 4.35, yHL - 0.1, -0.5);
+            Point sgc2_HL = Project3D(totalL + 4.35, yHL - 0.1, bW + 0.5);
+            Point sgc3_HL = Project3D(totalL + 1.35, yHL - 0.1, bW + 0.5);
+            Point sgc0_HL_t = Project3D(totalL + 1.35, yHL + 0.2, -0.5);
+            Point sgc1_HL_t = Project3D(totalL + 4.35, yHL + 0.2, -0.5);
+            Point sgc2_HL_t = Project3D(totalL + 4.35, yHL + 0.2, bW + 0.5);
+            Point sgc3_HL_t = Project3D(totalL + 1.35, yHL + 0.2, bW + 0.5);
+            Draw3DPrism(dc, sgc0_HL, sgc1_HL, sgc2_HL, sgc3_HL, sgc0_HL_t, sgc1_HL_t, sgc2_HL_t, sgc3_HL_t, new SolidColorBrush(Color.FromArgb(160, 30, 58, 138)), new Pen(new SolidColorBrush(Color.FromRgb(96, 165, 250)), 1.0));
+
+            // 6. GHI CHÚ CAO ĐỘ VÀ THÔNG SỐ 3D TRỰC QUAN
+            Point tagTL = Project3D(0, bH + 0.8, bW / 2.0);
+            Point tagHL = Project3D(totalL, yHL + bH + 0.8, bW / 2.0);
+            DrawCenteredText(dc, $"📍 THƯỢNG LƯU: Z1 = {geom.Z1:N3}m", tagTL, 11, MintTextBrush, true);
+            DrawCenteredText(dc, $"📍 HẠ LƯU: Z2 = {geom.Z2:N3}m", tagHL, 11, YellowTextBrush, true);
+
+            string slopeNote = $"ĐỘ DỐC: i = {geom.DoDocPercent:N2}% (ΔH = {geom.DeltaH:N3}m) | L = {totalL:N2}m";
+            DrawCenteredText(dc, $"PHỐI CẢNH 3D: CỐNG {geom.LoaiCong} ({geom.KhauDo}) - {slopeNote}", new Point(cx, cy + 90), 12.5, CyanTextBrush, true);
         }
 
-        private void Draw3DBox(DrawingContext dc, Point p0, double lenM, double hM, double wM, double scale, double angX, double angZ, Brush fill, Pen stroke)
+        private void Draw3DPrism(DrawingContext dc, Point p0, Point p1, Point p2, Point p3,
+                                 Point p0_top, Point p1_top, Point p2_top, Point p3_top,
+                                 Brush fill, Pen stroke)
         {
-            double dx = lenM * scale * Math.Cos(angX);
-            double dy = lenM * scale * Math.Sin(angX);
-            double dz_x = wM * scale * Math.Cos(angZ);
-            double dz_y = wM * scale * Math.Sin(angZ);
-            double dh = hM * scale;
-
-            Point p1 = new Point(p0.X + dx, p0.Y + dy);
-            Point p2 = new Point(p1.X + dz_x, p1.Y + dz_y);
-            Point p3 = new Point(p0.X + dz_x, p0.Y + dz_y);
-
-            Point p0_top = new Point(p0.X, p0.Y - dh);
-            Point p1_top = new Point(p1.X, p1.Y - dh);
-            Point p2_top = new Point(p2.X, p2.Y - dh);
-            Point p3_top = new Point(p3.X, p3.Y - dh);
-
             // Mặt trên (Top Face)
             var topPath = new PathGeometry();
             var topFig = new PathFigure { StartPoint = p0_top, IsClosed = true };
@@ -720,7 +876,7 @@ namespace InfraBIM.CulvertTool.Views
             frontPath.Figures.Add(frontFig);
             dc.DrawGeometry(fill, stroke, frontPath);
 
-            // Mặt bên (Side Face)
+            // Mặt bên phải (Right Side Face)
             var sidePath = new PathGeometry();
             var sideFig = new PathFigure { StartPoint = p1, IsClosed = true };
             sideFig.Segments.Add(new LineSegment(p2, true));
@@ -728,6 +884,15 @@ namespace InfraBIM.CulvertTool.Views
             sideFig.Segments.Add(new LineSegment(p1_top, true));
             sidePath.Figures.Add(sideFig);
             dc.DrawGeometry(fill, stroke, sidePath);
+
+            // Mặt bên trái (Left Side Face)
+            var leftPath = new PathGeometry();
+            var leftFig = new PathFigure { StartPoint = p3, IsClosed = true };
+            leftFig.Segments.Add(new LineSegment(p0, true));
+            leftFig.Segments.Add(new LineSegment(p0_top, true));
+            leftFig.Segments.Add(new LineSegment(p3_top, true));
+            leftPath.Figures.Add(leftFig);
+            dc.DrawGeometry(fill, stroke, leftPath);
         }
         #endregion
 
@@ -888,9 +1053,17 @@ namespace InfraBIM.CulvertTool.Views
             dc.DrawText(ft, new Point(viewW / 2.0, bannerY + 6));
         }
 
-        private void DrawCenteredText(DrawingContext dc, string text, Point center, double fontSize, Brush brush)
+        private void DrawCenteredText(DrawingContext dc, string text, Point center, double fontSize, Brush brush, bool isBold = false)
         {
-            var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), fontSize, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            var weight = isBold ? FontWeights.Bold : FontWeights.Normal;
+            var ft = new FormattedText(
+                text,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, weight, FontStretches.Normal),
+                fontSize,
+                brush,
+                VisualTreeHelper.GetDpi(this).PixelsPerDip)
             {
                 TextAlignment = TextAlignment.Center
             };

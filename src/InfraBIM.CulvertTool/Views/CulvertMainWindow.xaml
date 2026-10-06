@@ -850,11 +850,12 @@
                                     </DockPanel>
                                 </Border>
 
-                                <!-- 2. DROPDOWN CHỌN FAMILY CỦA CỤM ĐÃ CHỌN -->
+                                <!-- 2. DROPDOWN CHỌN FAMILY CỦA CỤM ĐÃ CHỌN & NÚT KIỂM TRA MÔ HÌNH 3D -->
                                 <Grid Grid.Row="1" Margin="0,0,0,4">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
@@ -874,59 +875,77 @@
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
-                                    <Button Grid.Column="2" Content="🔄 Quét tham số Family" Command="{Binding ScanFamilyParamsCommand}" Margin="6,0,0,0" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
+                                    <Button Grid.Column="2" Content="🔄 Quét tham số" Command="{Binding ScanFamilyParamsCommand}" Margin="5,0,0,0" Padding="8,3" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
+                                    <Button Grid.Column="3" Content="🔍 KIỂM TRA MÔ HÌNH 3D" Command="{Binding Open3DReviewCommand}" Margin="5,0,0,0" Padding="10,3" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" Cursor="Hand" ToolTip="Mở giao diện Review 3D để kiểm tra trực quan cao độ, độ dốc và hình dạng cống trước khi chạy"/>
                                 </Grid>
 
-                                <!-- 3. BỘ LỌC THAM SỐ TOÀN DIỆN (TYPE / INSTANCE / DIMENSIONS / OTHER / TÌM KIẾM) -->
+                                <!-- 3. BỘ LỌC THAM SỐ ĐƠN GIẢN THEO KHUNG ĐỎ (HÌNH 1, 2, 3: TẤT CẢ / DIMENSIONS / OTHER) -->
                                 <Border Grid.Row="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,3,0,3">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
+                                    <DockPanel LastChildFill="False">
+                                        <!-- 3 Nút lọc trực quan theo 2 nhóm chuẩn Revit trong khung đỏ -->
+                                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Nhóm tham số:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
 
-                                        <!-- Phân loại Type vs Instance (Hình 6) -->
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
-                                            <TextBlock Text="Kiểu:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                            <CheckBox Content="🏷️ Type (Loại)" 
-                                                      IsChecked="{Binding ShowTypeParams}" 
-                                                      Foreground="{StaticResource TextWhite}" FontWeight="SemiBold" Margin="0,0,8,0"
-                                                      ToolTip="Lọc tham số thuộc tính Loại (Type Parameter) như CH_B, CH_H, CH_T"/>
-                                            <CheckBox Content="⚡ Instance (Biến thể)" 
-                                                      IsChecked="{Binding ShowInstanceParams}" 
-                                                      Foreground="{StaticResource MintLight}" FontWeight="SemiBold" Margin="0,0,12,0"
-                                                      ToolTip="Lọc tham số thuộc tính Biến thể (Instance Parameter) như CO VAI KE, CONG HOP_B, TAM DAN_B"/>
-                                        </StackPanel>
+                                            <Button Content="📁 Tất cả (Khung đỏ)" Command="{Binding SetTab02ParamCategoryFilterCommand}" CommandParameter="All" Margin="0,0,4,0" Padding="8,3" FontSize="11.5">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Tab02ParamCategoryFilter}" Value="All">
+                                                                <Setter Property="Background" Value="#0284C7"/>
+                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
 
-                                        <!-- Nhóm tham số Dimensions, Visibility & Other -->
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="Nhóm:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                            <CheckBox Content="Kích thước (Dimensions)" 
-                                                      IsChecked="{Binding ShowDimensions}" 
-                                                      Foreground="{StaticResource MintLight}" FontWeight="SemiBold" Margin="0,0,8,0"/>
-                                            <CheckBox Content="👁️ Ẩn hiện (Visibility)" 
-                                                      IsChecked="{Binding ShowVisibility}" 
-                                                      Foreground="{StaticResource TextWhite}" FontWeight="SemiBold" Margin="0,0,8,0"
-                                                      ToolTip="Lọc tham số Yes/No ẩn hiện cấu kiện"/>
-                                            <CheckBox Content="Khác (Other)" 
-                                                      IsChecked="{Binding ShowOther}" 
-                                                      Foreground="{StaticResource CyanLight}" FontWeight="SemiBold" Margin="0,0,8,0"/>
-                                            <CheckBox Content="Tất cả nhóm" 
-                                                      IsChecked="{Binding ShowAllGroups}" 
-                                                      Foreground="{StaticResource TextMuted}" FontWeight="Normal"
-                                                      ToolTip="Hiển thị tất cả tham số thuộc mọi nhóm"/>
+                                            <Button Content="📐 Kích thước (Dimensions)" Command="{Binding SetTab02ParamCategoryFilterCommand}" CommandParameter="Dimensions" Margin="0,0,4,0" Padding="8,3" FontSize="11.5">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Tab02ParamCategoryFilter}" Value="Dimensions">
+                                                                <Setter Property="Background" Value="#0284C7"/>
+                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+
+                                            <Button Content="⚙️ Khác (Other)" Command="{Binding SetTab02ParamCategoryFilterCommand}" CommandParameter="Other" Margin="0,0,10,0" Padding="8,3" FontSize="11.5">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Tab02ParamCategoryFilter}" Value="Other">
+                                                                <Setter Property="Background" Value="#0284C7"/>
+                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+
+                                            <!-- Lọc Type / Instance -->
+                                            <Border Width="1" Background="{StaticResource NavyBorder}" Margin="2,2,8,2"/>
+                                            <CheckBox Content="🏷️ Type" IsChecked="{Binding ShowTypeParams}" Foreground="{StaticResource TextWhite}" VerticalAlignment="Center" Margin="0,0,6,0" ToolTip="Hiển thị thuộc tính Loại (Type)"/>
+                                            <CheckBox Content="⚡ Instance" IsChecked="{Binding ShowInstanceParams}" Foreground="{StaticResource MintLight}" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Hiển thị thuộc tính Biến thể (Instance)"/>
                                         </StackPanel>
 
                                         <!-- Ô tìm kiếm tham số nhanh -->
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="🔍 Tìm:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                             <TextBox Text="{Binding ParamSearchFilter, UpdateSourceTrigger=PropertyChanged}" 
-                                                     Width="95" Height="22" VerticalContentAlignment="Center"
+                                                     Width="110" Height="22" VerticalContentAlignment="Center"
                                                      Background="{StaticResource NavyDark}" Foreground="#FFF" BorderBrush="{StaticResource CyanDark}"
                                                      ToolTip="Nhập tên tham số để lọc nhanh"/>
                                         </StackPanel>
-                                    </Grid>
+                                    </DockPanel>
                                 </Border>
                             </Grid>
 
@@ -958,10 +977,24 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <Border Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,6">
+                            <!-- Thanh nút kiểm tra mô hình 3D trực quan trước khi chạy -->
+                            <Border Grid.Row="0" Background="{StaticResource NavyCardInner}" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,0,5">
+                                <DockPanel LastChildFill="False">
+                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="🔍 KIỂM TRA MÔ HÌNH:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" Margin="0,0,6,0"/>
+                                        <TextBlock Text="Xem phối cảnh 3D, cắt dọc, kiểm tra cao độ Z1, Z2 &amp; độ dốc" Foreground="{StaticResource TextMuted}" FontSize="11.5" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Button DockPanel.Dock="Right" Content="🔍 KIỂM TRA MÔ HÌNH 3D" Command="{Binding Open3DReviewCommand}" 
+                                            Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" Padding="12,3" Cursor="Hand" 
+                                            ToolTip="Mở cửa sổ Review 3D trực quan kiểm tra cao độ, độ dốc và hình dạng cống trước khi chạy"/>
+                                </DockPanel>
+                            </Border>
+
+                            <Border Grid.Row="1" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,6">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="2*"/>
@@ -995,7 +1028,7 @@
                                 </Grid>
                             </Border>
 
-                            <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredCulvertRows}"
+                            <DataGrid Grid.Row="2" ItemsSource="{Binding FilteredCulvertRows}"
                                       AutoGenerateColumns="False"
                                       CanUserAddRows="False"
                                       CanUserResizeColumns="True"

@@ -117,7 +117,15 @@ namespace InfraBIM.CulvertTool.Services
 
                 // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, nếu không thì lấy CustomValue
                 string valStr = m.CustomValue;
-                if (!string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến")
+                string pNameUpper = (m.InternalName ?? "").ToUpperInvariant();
+                bool isBeddingAngle = pNameUpper.Contains("A_GOC") || pNameUpper.Contains("A_GÓC");
+
+                if (isBeddingAngle)
+                {
+                    // A_góc xoay của BTL và đá dăm đệm tuyệt đối không lấy từ Excel, mà lấy từ Tab parameter (CustomValue)
+                    valStr = m.CustomValue;
+                }
+                else if (!string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến")
                 {
                     if (m.MappedField == "KhauDo") valStr = data.KhauDo;
                     else if (m.MappedField == "ChieuDai") valStr = data.ChieuDai.ToString("F2");
