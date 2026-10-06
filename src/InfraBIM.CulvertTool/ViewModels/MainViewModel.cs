@@ -101,9 +101,10 @@ namespace InfraBIM.CulvertTool.ViewModels
         #region Properties - Families & 3 Fixed Component Groups
         public ObservableCollection<FamilySymbolWrapper> AllAvailableFamilies { get; } = new();
 
-        // 3 Cụm cấu kiện cố định chuẩn
+        // 4 Cụm cấu kiện cố định chuẩn
         public ObservableCollection<CulvertComponentItem> BarrelComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> OutletComponents { get; } = new();
+        public ObservableCollection<CulvertComponentItem> ApronComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> ManholeComponents { get; } = new();
 
         // Danh sách gộp tất cả cấu kiện phục vụ Tab 02 Parameter Mapping và Tab 04 Vật liệu
@@ -319,7 +320,8 @@ namespace InfraBIM.CulvertTool.ViewModels
         public string SelectedTab02GroupName => _selectedTab02GroupFilter switch
         {
             "Barrel" => "🧱 Thân cống",
-            "Outlet" => "🌊 Cửa xả & Sân gia cố",
+            "Outlet" => "🌊 Cửa xả",
+            "Apron" => "🛡️ Sân gia cố",
             "Manhole" => "🕳️ Hố ga (Hộp nối)",
             _ => "📁 Tất cả"
         };
@@ -339,7 +341,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
         }
 
-        // Tùy chọn lọc tham số Dimensions & Other & All
+        // Tùy chọn lọc tham số Dimensions & Visibility & Other & All
         private bool _showDimensions = true;
         public bool ShowDimensions
         {
@@ -347,6 +349,19 @@ namespace InfraBIM.CulvertTool.ViewModels
             set
             {
                 if (SetProperty(ref _showDimensions, value))
+                {
+                    FilterParameterMappings();
+                }
+            }
+        }
+
+        private bool _showVisibility = true;
+        public bool ShowVisibility
+        {
+            get => _showVisibility;
+            set
+            {
+                if (SetProperty(ref _showVisibility, value))
                 {
                     FilterParameterMappings();
                 }
@@ -366,7 +381,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
         }
 
-        private bool _showAllGroups = false;
+        private bool _showAllGroups = true;
         public bool ShowAllGroups
         {
             get => _showAllGroups;
@@ -576,7 +591,8 @@ namespace InfraBIM.CulvertTool.ViewModels
         public string SelectedMaterialGroupFilterName => _selectedMaterialGroupFilter switch
         {
             "Barrel" => "🧱 Thân cống",
-            "Outlet" => "🌊 Cửa xả & Sân gia cố",
+            "Outlet" => "🌊 Cửa xả",
+            "Apron" => "🛡️ Sân gia cố",
             "Manhole" => "🕳️ Hố ga (Hộp nối)",
             _ => "📁 Tất cả các cụm"
         };
@@ -924,6 +940,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
 
             InitOutletComponents(forceRefresh: true);
+            InitApronComponents(forceRefresh: true);
             InitManholeComponents(forceRefresh: true);
             ApplyAssemblyTemplate(SelectedCulvertTemplateType ?? "CỐNG HỘP ĐÚC SẴN");
         }
@@ -936,7 +953,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả & Sân gia cố",
+                GroupType = "Cửa xả",
                 CategoryType = "Cửa xả - Tường đầu",
                 SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "TUONG DAU") ?? FindSymbol("TNN_CX_TUONG DAU"),
                 OffsetZ = 0.0,
@@ -945,7 +962,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả & Sân gia cố",
+                GroupType = "Cửa xả",
                 CategoryType = "Cửa xả - Tường cánh",
                 SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "TUONG CANH") ?? FindSymbol("TNN_CX_TUONG CANH"),
                 OffsetZ = 0.0,
@@ -954,7 +971,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả & Sân gia cố",
+                GroupType = "Cửa xả",
                 CategoryType = "Cửa xả - Sân cống",
                 SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "SAN CONG") ?? FindSymbol("TNN_CX_SAN CONG"),
                 OffsetZ = 0.0,
@@ -963,7 +980,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả & Sân gia cố",
+                GroupType = "Cửa xả",
                 CategoryType = "Cửa xả - Bê tông lót",
                 SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "BE TONG LOT") ?? FindSymbol("TNN_CX_BE TONG LOT"),
                 OffsetZ = 0.0,
@@ -972,26 +989,32 @@ namespace InfraBIM.CulvertTool.ViewModels
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả & Sân gia cố",
+                GroupType = "Cửa xả",
                 CategoryType = "Cửa xả - Đá dăm đệm",
                 SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "DA DAM DEM") ?? FindSymbol("TNN_CX_DA DAM DEM"),
                 OffsetZ = 0.0,
                 Note = "Lớp đá dăm đệm cửa xả"
             });
+        }
 
-            OutletComponents.Add(new CulvertComponentItem
+        private void InitApronComponents(bool forceRefresh = false)
+        {
+            if (!forceRefresh && ApronComponents.Count > 0) return;
+            ApronComponents.Clear();
+
+            ApronComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả & Sân gia cố",
+                GroupType = "Sân gia cố",
                 CategoryType = "Sân gia cố - Tấm sân",
                 SelectedSymbol = FindSymbol("TNN_CX_SAN GIA CO", "SAN GIA CO") ?? FindSymbol("TNN_CX_SGC_SAN GIA CO") ?? FindSymbol("TNN_CX_SAN GIA CO"),
                 OffsetZ = 0.0,
                 Note = "Tấm sân gia cố nối dài"
             });
-            OutletComponents.Add(new CulvertComponentItem
+            ApronComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
-                GroupType = "Cửa xả & Sân gia cố",
+                GroupType = "Sân gia cố",
                 CategoryType = "Sân gia cố - Bê tông lót",
                 SelectedSymbol = FindSymbol("TNN_CX_SAN GIA CO", "BE TONG LOT") ?? FindSymbol("TNN_CX_SGC_BE TONG LOT"),
                 OffsetZ = 0.0,
@@ -1170,6 +1193,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             AssemblyComponents.Clear();
             foreach (var c in BarrelComponents) AssemblyComponents.Add(c);
             foreach (var c in OutletComponents) AssemblyComponents.Add(c);
+            foreach (var c in ApronComponents) AssemblyComponents.Add(c);
             foreach (var c in ManholeComponents) AssemblyComponents.Add(c);
 
             foreach (var c in AssemblyComponents)
@@ -1208,13 +1232,15 @@ namespace InfraBIM.CulvertTool.ViewModels
             foreach (var comp in ActiveAssignedFamiliesForTab02)
             {
                 bool isBarrel = comp.GroupType == "Thân cống" || comp.GroupType?.Contains("Thân") == true || BarrelComponents.Contains(comp);
-                bool isOutlet = comp.GroupType == "Cửa xả & Sân gia cố" || comp.GroupType?.Contains("Cửa") == true || comp.GroupType?.Contains("Sân") == true || OutletComponents.Contains(comp);
+                bool isOutlet = comp.GroupType == "Cửa xả" || comp.GroupType?.Contains("Cửa") == true || OutletComponents.Contains(comp);
+                bool isApron = comp.GroupType == "Sân gia cố" || comp.GroupType?.Contains("Gia cố") == true || comp.GroupType?.Contains("Sân") == true || ApronComponents.Contains(comp);
                 bool isManhole = comp.GroupType == "Hố ga (Hộp nối)" || comp.GroupType?.Contains("Hố") == true || comp.GroupType?.Contains("Hộp") == true || ManholeComponents.Contains(comp);
 
                 bool pass = false;
                 if (f == "All") pass = true;
                 else if (f == "Barrel" && isBarrel) pass = true;
                 else if (f == "Outlet" && isOutlet) pass = true;
+                else if (f == "Apron" && isApron) pass = true;
                 else if (f == "Manhole" && isManhole) pass = true;
 
                 if (pass)
@@ -1237,11 +1263,21 @@ namespace InfraBIM.CulvertTool.ViewModels
         {
             ActiveAssignedFamiliesForTab02.Clear();
 
+            // Gom nhóm theo Family và GroupType để Cửa xả chỉ hiện 1 mục và Sân gia cố chỉ hiện 1 mục
+            // Đúng yêu cầu: "tùy biến của cửa xả giống nhau, tùy biến của sân gia cố giống nhau"
+            var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var comp in AssemblyComponents)
             {
                 if (comp.IsActive && comp.SelectedSymbol != null)
                 {
-                    ActiveAssignedFamiliesForTab02.Add(comp);
+                    string fam = comp.SelectedSymbol.Symbol?.FamilyName ?? comp.CategoryType;
+                    string key = $"{comp.GroupType}_{fam}";
+                    if (!seenKeys.Contains(key))
+                    {
+                        seenKeys.Add(key);
+                        ActiveAssignedFamiliesForTab02.Add(comp);
+                    }
                 }
             }
 
@@ -1338,7 +1374,11 @@ namespace InfraBIM.CulvertTool.ViewModels
                 {
                     FilteredComponentMaterials.Add(item);
                 }
-                else if (filter == "Outlet" && (item.GroupType == "Cửa xả & Sân gia cố" || item.GroupType?.Contains("Cửa") == true || item.GroupType?.Contains("Sân") == true))
+                else if (filter == "Outlet" && (item.GroupType == "Cửa xả" || item.GroupType?.Contains("Cửa") == true))
+                {
+                    FilteredComponentMaterials.Add(item);
+                }
+                else if (filter == "Apron" && (item.GroupType == "Sân gia cố" || item.GroupType?.Contains("Gia cố") == true || item.GroupType?.Contains("Sân") == true))
                 {
                     FilteredComponentMaterials.Add(item);
                 }
@@ -1594,7 +1634,8 @@ namespace InfraBIM.CulvertTool.ViewModels
                 GroupType = _selectedMaterialGroupFilter switch
                 {
                     "Barrel" => "Thân cống",
-                    "Outlet" => "Cửa xả & Sân gia cố",
+                    "Outlet" => "Cửa xả",
+                    "Apron" => "Sân gia cố",
                     "Manhole" => "Hố ga (Hộp nối)",
                     _ => "Thân cống"
                 },
@@ -1708,7 +1749,7 @@ namespace InfraBIM.CulvertTool.ViewModels
 
                     if (!matchTypeOrInstance) continue;
 
-                    // 2. Lọc theo Nhóm tham số (Dimensions / Other / Tất cả các nhóm)
+                    // 2. Lọc theo Nhóm tham số (Dimensions / Visibility / Other / Tất cả các nhóm)
                     bool matchGroup = false;
                     if (ShowAllGroups)
                     {
@@ -1717,8 +1758,9 @@ namespace InfraBIM.CulvertTool.ViewModels
                     else
                     {
                         if (ShowDimensions && m.IsDimension) matchGroup = true;
+                        if (ShowVisibility && m.IsVisibility) matchGroup = true;
                         if (ShowOther && m.IsOther) matchGroup = true;
-                        if (!ShowDimensions && !ShowOther) matchGroup = true; // nếu bỏ tích cả 2 thì hiện toàn bộ
+                        if (!ShowDimensions && !ShowVisibility && !ShowOther) matchGroup = true; // nếu bỏ tích cả 3 thì hiện toàn bộ
                     }
 
                     if (!matchGroup) continue;
@@ -1751,23 +1793,34 @@ namespace InfraBIM.CulvertTool.ViewModels
             var sym = SelectedComponentForTab02.SelectedSymbol.Symbol;
             string cat = SelectedComponentForTab02.CategoryType;
 
-            // Xóa tham số cũ của Family này để quét mới nhất
-            var toRemove = ParameterMappings.Where(m => string.Equals(m.FamilyName, sym.FamilyName, StringComparison.OrdinalIgnoreCase) || m.CategoryName == cat).ToList();
-            foreach (var item in toRemove) ParameterMappings.Remove(item);
-
-            var scanned = FamilyParameterScannerService.ScanParametersForFamily(Doc, sym, cat);
-            foreach (var p in scanned)
+            _eventHandler.SetAction(app =>
             {
-                ParameterMappings.Add(p);
-            }
+                var doc = app.ActiveUIDocument.Document;
+                var scanned = FamilyParameterScannerService.ScanParametersForFamily(doc, sym, cat);
 
-            FilterParameterMappings();
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    // Xóa tham số cũ của Family này để quét mới nhất
+                    var toRemove = ParameterMappings.Where(m => string.Equals(m.FamilyName, sym.FamilyName, StringComparison.OrdinalIgnoreCase) || m.CategoryName == cat).ToList();
+                    foreach (var item in toRemove) ParameterMappings.Remove(item);
 
-            int typeCount = scanned.Count(p => !p.IsInstance);
-            int instCount = scanned.Count(p => p.IsInstance);
-            int dimCount = scanned.Count(p => p.IsDimension);
-            int otherCount = scanned.Count(p => p.IsOther);
-            MessageBox.Show($"Đã quét thành công Family '{sym.FamilyName}' ({cat}):\n- Tổng số: {scanned.Count} tham số\n- Tham số Loại (Type): {typeCount} tham số\n- Tham số Biến thể (Instance): {instCount} tham số\n- Nhóm Kích thước (Dimensions): {dimCount} tham số\n- Nhóm Khác (Other): {otherCount} tham số.", "Quét hoàn tất", MessageBoxButton.OK, MessageBoxImage.Information);
+                    foreach (var p in scanned)
+                    {
+                        ParameterMappings.Add(p);
+                    }
+
+                    FilterParameterMappings();
+
+                    int typeCount = scanned.Count(p => !p.IsInstance);
+                    int instCount = scanned.Count(p => p.IsInstance);
+                    int dimCount = scanned.Count(p => p.IsDimension);
+                    int visCount = scanned.Count(p => p.IsVisibility);
+                    int otherCount = scanned.Count(p => p.IsOther);
+                    MessageBox.Show($"Đã quét thành công Family '{sym.FamilyName}' ({cat}):\n- Tổng số: {scanned.Count} tham số\n- Tham số Loại (Type): {typeCount} tham số\n- Tham số Biến thể (Instance): {instCount} tham số\n- Nhóm Kích thước (Dimensions): {dimCount} tham số\n- Nhóm Ẩn hiện (Visibility): {visCount} tham số\n- Nhóm Khác (Other): {otherCount} tham số.", "Quét hoàn tất", MessageBoxButton.OK, MessageBoxImage.Information);
+                });
+            });
+
+            _externalEvent.Raise();
         }
 
         private void ApplyBatchValue()
@@ -1993,6 +2046,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     ParameterMappings,
                     BarrelComponents.ToList(),
                     OutletComponents.ToList(),
+                    ApronComponents.ToList(),
                     ManholeComponents.ToList(),
                     L_Std,
                     Khe_Ho,

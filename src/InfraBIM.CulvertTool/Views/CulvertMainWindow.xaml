@@ -472,8 +472,8 @@
                             </StackPanel>
                         </GroupBox>
 
-                        <!-- KHUNG 2: CỤM CẤU KIỆN LẮP GHÉP (3 CỤM CHUẨN DỰ ÁN) -->
-                        <GroupBox Header="2. CỤM CẤU KIỆN LẮP GHÉP (THÂN CỐNG - CỬA XẢ - HỐ GA)" Grid.Column="1">
+                        <!-- KHUNG 2: CỤM CẤU KIỆN LẮP GHÉP (4 CỤM CHUẨN DỰ ÁN) -->
+                        <GroupBox Header="2. CỤM CẤU KIỆN LẮP GHÉP (THÂN CỐNG - CỬA XẢ - SÂN GIA CỐ - HỐ GA)" Grid.Column="1">
                             <TabControl Background="Transparent" BorderThickness="0" Margin="0,1,0,0">
                                 <!-- SUB-TAB 1: THÂN CỐNG -->
                                 <TabItem Header="THÂN CỐNG" Padding="10,4" FontSize="11.5">
@@ -544,15 +544,15 @@
                                     </Grid>
                                 </TabItem>
 
-                                <!-- SUB-TAB 2: CỬA XẢ & SÂN GIA CỐ -->
-                                <TabItem Header="CỬA XẢ &amp; SÂN GIA CỐ" Padding="10,4" FontSize="11.5">
+                                <!-- SUB-TAB 2: CỬA XẢ -->
+                                <TabItem Header="CỬA XẢ" Padding="10,4" FontSize="11.5">
                                     <Grid Margin="0,4,0,0">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="*"/>
                                         </Grid.RowDefinitions>
 
-                                        <TextBlock Grid.Row="0" Text="💡 TNN_CUA XA (5 cấu kiện) &amp; TNN_SAN GIA CO (2 cấu kiện) ẩn hiện bóc tách khối lượng:" Foreground="{StaticResource CyanLight}" FontSize="11" Margin="0,0,0,4"/>
+                                        <TextBlock Grid.Row="0" Text="💡 TNN_CX_SAN CONG (5 cấu kiện: Tường đầu, Tường cánh, Sân cống, BTL, Đá dăm) rải 5 lần tại 1 vị trí:" Foreground="{StaticResource CyanLight}" FontSize="11" Margin="0,0,0,4"/>
 
                                         <DataGrid Grid.Row="1" ItemsSource="{Binding OutletComponents}" Height="215"
                                                   AutoGenerateColumns="False" CanUserAddRows="False" CanUserResizeColumns="True"
@@ -580,7 +580,43 @@
                                     </Grid>
                                 </TabItem>
 
-                                <!-- SUB-TAB 3: HỐ GA (HỘP NỐI) -->
+                                <!-- SUB-TAB 3: SÂN GIA CỐ -->
+                                <TabItem Header="SÂN GIA CỐ" Padding="10,4" FontSize="11.5">
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0" Text="💡 TNN_CX_SAN GIA CO (2 cấu kiện: Sân gia cố, Bê tông lót) rải 2 lần tại 1 vị trí:" Foreground="{StaticResource MintLight}" FontSize="11" Margin="0,0,0,4"/>
+
+                                        <DataGrid Grid.Row="1" ItemsSource="{Binding ApronComponents}" Height="215"
+                                                  AutoGenerateColumns="False" CanUserAddRows="False" CanUserResizeColumns="True"
+                                                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                                            <DataGrid.Columns>
+                                                <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsActive}" Width="45" MinWidth="40"/>
+                                                <DataGridTextColumn Header="Cấu kiện" Binding="{Binding CategoryType, UpdateSourceTrigger=PropertyChanged}" Width="160" MinWidth="130" IsReadOnly="False" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
+                                                <DataGridTemplateColumn Header="Family Revit" Width="220" MinWidth="180">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding SelectedSymbol.DisplayName}" VerticalAlignment="Center" Margin="3,0"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                                        <DataTemplate>
+                                                            <ComboBox ItemsSource="{Binding DataContext.AllAvailableFamilies, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                                      SelectedItem="{Binding SelectedSymbol}"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="Chênh Z (m)" Binding="{Binding OffsetZ, StringFormat=N2}" Width="90" MinWidth="80"/>
+                                                <DataGridTextColumn Header="Ghi chú" Binding="{Binding Note}" Width="160" MinWidth="120"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Grid>
+                                </TabItem>
+
+                                <!-- SUB-TAB 4: HỐ GA (HỘP NỐI) -->
                                 <TabItem Header="HỐ GA (HỘP NỐI)" Padding="10,4" FontSize="11.5">
                                     <Grid Margin="0,4,0,0">
                                         <Grid.RowDefinitions>
@@ -743,11 +779,26 @@
                                                 </Button.Style>
                                             </Button>
 
-                                            <Button Content="🌊 Cửa xả &amp; Sân gia cố" Command="{Binding FilterTab02GroupCommand}" CommandParameter="Outlet" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
+                                            <Button Content="🌊 Cửa xả" Command="{Binding FilterTab02GroupCommand}" CommandParameter="Outlet" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
                                                 <Button.Style>
                                                     <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding SelectedTab02GroupFilter}" Value="Outlet">
+                                                                <Setter Property="Background" Value="#0284C7"/>
+                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+
+                                            <Button Content="🛡️ Sân gia cố" Command="{Binding FilterTab02GroupCommand}" CommandParameter="Apron" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedTab02GroupFilter}" Value="Apron">
                                                                 <Setter Property="Background" Value="#0284C7"/>
                                                                 <Setter Property="BorderBrush" Value="#38BDF8"/>
                                                                 <Setter Property="Foreground" Value="#FFFFFF"/>
@@ -848,12 +899,16 @@
                                                       ToolTip="Lọc tham số thuộc tính Biến thể (Instance Parameter) như CO VAI KE, CONG HOP_B, TAM DAN_B"/>
                                         </StackPanel>
 
-                                        <!-- Nhóm tham số Dimensions & Other -->
+                                        <!-- Nhóm tham số Dimensions, Visibility & Other -->
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="Nhóm:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                             <CheckBox Content="Kích thước (Dimensions)" 
                                                       IsChecked="{Binding ShowDimensions}" 
                                                       Foreground="{StaticResource MintLight}" FontWeight="SemiBold" Margin="0,0,8,0"/>
+                                            <CheckBox Content="👁️ Ẩn hiện (Visibility)" 
+                                                      IsChecked="{Binding ShowVisibility}" 
+                                                      Foreground="{StaticResource TextWhite}" FontWeight="SemiBold" Margin="0,0,8,0"
+                                                      ToolTip="Lọc tham số Yes/No ẩn hiện cấu kiện"/>
                                             <CheckBox Content="Khác (Other)" 
                                                       IsChecked="{Binding ShowOther}" 
                                                       Foreground="{StaticResource CyanLight}" FontWeight="SemiBold" Margin="0,0,8,0"/>
@@ -996,14 +1051,15 @@
                                 <TextBlock Text="* Tự do thêm/xóa cấu kiện, đổi tên và bấm 🎨 để đổi màu sắc." VerticalAlignment="Center" Foreground="{StaticResource TextMuted}" FontStyle="Italic"/>
                             </StackPanel>
 
-                            <!-- Thanh Lọc Cụm Cấu Kiện (Khớp 3 cụm ở Tab 01: Thân cống, Cửa xả, Hố ga) -->
+                            <!-- Thanh Lọc Cụm Cấu Kiện (Khớp 4 cụm ở Tab 01: Thân cống, Cửa xả, Sân gia cố, Hố ga) -->
                             <Border Grid.Row="1" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
                                 <DockPanel LastChildFill="False">
                                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="Lọc cụm cấu kiện:" VerticalAlignment="Center" Foreground="{StaticResource CyanLight}" FontWeight="Bold" Margin="0,0,8,0"/>
                                         <Button Content="📁 Tất cả" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="All" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
                                         <Button Content="🧱 Thân cống" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="Barrel" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
-                                        <Button Content="🌊 Cửa xả &amp; Sân gia cố" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="Outlet" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
+                                        <Button Content="🌊 Cửa xả" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="Outlet" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
+                                        <Button Content="🛡️ Sân gia cố" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="Apron" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
                                         <Button Content="🕳️ Hố ga (Hộp nối)" Command="{Binding FilterMaterialGroupCommand}" CommandParameter="Manhole" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
                                     </StackPanel>
                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">

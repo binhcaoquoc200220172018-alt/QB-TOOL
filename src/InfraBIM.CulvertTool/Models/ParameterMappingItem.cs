@@ -85,6 +85,13 @@ namespace InfraBIM.CulvertTool.Models
             set { _isOther = value; OnPropertyChanged(); }
         }
 
+        private bool _isVisibility = false;
+        public bool IsVisibility
+        {
+            get => _isVisibility;
+            set { _isVisibility = value; OnPropertyChanged(); }
+        }
+
         private string _dataType = "Length";
         public string DataType
         {
