@@ -82,6 +82,20 @@ namespace InfraBIM.CulvertTool.ViewModels
             get => _selectedDuplicateOptionIndex;
             set => SetProperty(ref _selectedDuplicateOptionIndex, value);
         }
+
+        private string _familyFolderPath = @"C:\Users\ADMIN\Desktop\TEST TOOL\FAMLY REVIT_HTKT";
+        public string FamilyFolderPath
+        {
+            get => _familyFolderPath;
+            set => SetProperty(ref _familyFolderPath, value);
+        }
+
+        private string _familyLoadStatus = string.Empty;
+        public string FamilyLoadStatus
+        {
+            get => _familyLoadStatus;
+            set => SetProperty(ref _familyLoadStatus, value);
+        }
         #endregion
 
         #region Properties - Families & 3 Fixed Component Groups
@@ -528,6 +542,8 @@ namespace InfraBIM.CulvertTool.ViewModels
         public RelayCommand BrowseExcelCommand { get; }
         public RelayCommand CreateSampleExcelCommand { get; }
         public RelayCommand ReloadExcelCommand { get; }
+        public RelayCommand BrowseFamilyFolderCommand { get; }
+        public RelayCommand LoadFamiliesFromFolderCommand { get; }
         public RelayCommand ScanFamilyParamsCommand { get; }
         public RelayCommand BatchApplyCommand { get; }
         public RelayCommand ValidateCommand { get; }
@@ -575,6 +591,8 @@ namespace InfraBIM.CulvertTool.ViewModels
             BrowseExcelCommand = new RelayCommand(BrowseExcel);
             CreateSampleExcelCommand = new RelayCommand(CreateSampleExcel);
             ReloadExcelCommand = new RelayCommand(ReloadExcelData);
+            BrowseFamilyFolderCommand = new RelayCommand(BrowseFamilyFolder);
+            LoadFamiliesFromFolderCommand = new RelayCommand(ExecuteLoadFamiliesFromFolder);
             ScanFamilyParamsCommand = new RelayCommand(ScanCurrentSelectedFamilyParameters);
             FilterTab02GroupCommand = new RelayCommand<string>(FilterTab02Group);
             BatchApplyCommand = new RelayCommand(ApplyBatchValue);
@@ -641,6 +659,83 @@ namespace InfraBIM.CulvertTool.ViewModels
                     SelectedSheetName = SheetNames[0];
                 }
             }
+        }
+
+        private void BrowseFamilyFolder()
+        {
+            using var dlg = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Chọn thư mục chứa Family Revit (.rfa) để nạp tự động vào Revit",
+                SelectedPath = Directory.Exists(FamilyFolderPath) ? FamilyFolderPath : @"C:\Users\ADMIN\Desktop\TEST TOOL\FAMLY REVIT_HTKT",
+                ShowNewFolderButton = false
+            };
+
+            if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                FamilyFolderPath = dlg.SelectedPath;
+                ExecuteLoadFamiliesFromFolder();
+            }
+        }
+
+        public void ExecuteLoadFamiliesFromFolder()
+        {
+            if (string.IsNullOrWhiteSpace(FamilyFolderPath) || !Directory.Exists(FamilyFolderPath))
+            {
+                MessageBox.Show("Thư mục Family không tồn tại hoặc chưa được chọn.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            string[] rfaFiles = Directory.GetFiles(FamilyFolderPath, "*.rfa", SearchOption.AllDirectories);
+            if (rfaFiles.Length == 0)
+            {
+                MessageBox.Show("Không tìm thấy file .rfa nào trong thư mục đã chọn.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            FamilyLoadStatus = $"Đang nạp {rfaFiles.Length} Family vào Revit...";
+
+            _eventHandler.SetAction(app =>
+            {
+                var doc = app.ActiveUIDocument?.Document;
+                if (doc == null) return;
+
+                int loadedCount = 0;
+                int errorCount = 0;
+
+                using (Transaction t = new Transaction(doc, "Load Culvert Families"))
+                {
+                    t.Start();
+                    var loadOptions = new CustomFamilyLoadOptions();
+                    foreach (var file in rfaFiles)
+                    {
+                        try
+                        {
+                            if (doc.LoadFamily(file, loadOptions, out Family f))
+                            {
+                                loadedCount++;
+                            }
+                            else
+                            {
+                                loadedCount++;
+                            }
+                        }
+                        catch
+                        {
+                            errorCount++;
+                        }
+                    }
+                    t.Commit();
+                }
+
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    LoadAvailableFamilies();
+                    FamilyLoadStatus = $"Đã nạp {loadedCount}/{rfaFiles.Length} Family thành công!";
+                    MessageBox.Show($"Đã tự động nạp thành công {loadedCount}/{rfaFiles.Length} Family vào Revit!", "Nạp Family Hoàn Tất", MessageBoxButton.OK, MessageBoxImage.Information);
+                });
+            });
+
+            _externalEvent.Raise();
         }
 
         private void CreateSampleExcel()
@@ -775,21 +870,22 @@ namespace InfraBIM.CulvertTool.ViewModels
                 AllAvailableFamilies.Add(wrapper);
             }
 
-            InitOutletComponents();
-            InitManholeComponents();
+            InitOutletComponents(forceRefresh: true);
+            InitManholeComponents(forceRefresh: true);
             ApplyAssemblyTemplate(SelectedCulvertTemplateType ?? "CỐNG HỘP ĐÚC SẴN");
         }
 
-        private void InitOutletComponents()
+        private void InitOutletComponents(bool forceRefresh = false)
         {
-            if (OutletComponents.Count > 0) return;
+            if (!forceRefresh && OutletComponents.Count > 0) return;
+            OutletComponents.Clear();
 
             OutletComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Tường đầu",
-                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "TUONG DAU") ?? FindSymbol("TNN_CUA XA", "TUONG DAU") ?? FindSymbol("TUONG DAU"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "TUONG DAU") ?? FindSymbol("TNN_CX_TUONG DAU"),
                 OffsetZ = 0.0,
                 Note = "Tường đầu cửa xả"
             });
@@ -798,7 +894,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Tường cánh",
-                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "TUONG CANH") ?? FindSymbol("TNN_CUA XA", "TUONG CANH") ?? FindSymbol("TUONG CANH"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "TUONG CANH") ?? FindSymbol("TNN_CX_TUONG CANH"),
                 OffsetZ = 0.0,
                 Note = "Tường cánh cửa xả"
             });
@@ -807,7 +903,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Sân cống",
-                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "SAN CONG") ?? FindSymbol("TNN_CUA XA", "SAN CONG") ?? FindSymbol("SAN CONG"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "SAN CONG") ?? FindSymbol("TNN_CX_SAN CONG"),
                 OffsetZ = 0.0,
                 Note = "Sân cống cửa xả"
             });
@@ -816,7 +912,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Bê tông lót",
-                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "BE TONG LOT") ?? FindSymbol("TNN_CUA XA", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "BE TONG LOT") ?? FindSymbol("TNN_CX_BE TONG LOT"),
                 OffsetZ = 0.0,
                 Note = "Bê tông lót cửa xả"
             });
@@ -825,7 +921,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Cửa xả - Đá dăm đệm",
-                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "DA DAM DEM") ?? FindSymbol("TNN_CUA XA", "CPDD") ?? FindSymbol("DA DAM"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN CONG", "DA DAM DEM") ?? FindSymbol("TNN_CX_DA DAM DEM"),
                 OffsetZ = 0.0,
                 Note = "Lớp đá dăm đệm cửa xả"
             });
@@ -835,7 +931,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Sân gia cố - Tấm sân",
-                SelectedSymbol = FindSymbol("TNN_CX_SAN GIA CO", "SAN GIA CO") ?? FindSymbol("TNN_SAN GIA CO", "SAN GIA CO") ?? FindSymbol("SAN GIA CO"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN GIA CO", "SAN GIA CO") ?? FindSymbol("TNN_CX_SGC_SAN GIA CO") ?? FindSymbol("TNN_CX_SAN GIA CO"),
                 OffsetZ = 0.0,
                 Note = "Tấm sân gia cố nối dài"
             });
@@ -844,15 +940,16 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cửa xả & Sân gia cố",
                 CategoryType = "Sân gia cố - Bê tông lót",
-                SelectedSymbol = FindSymbol("TNN_CX_SAN GIA CO", "BE TONG LOT") ?? FindSymbol("TNN_SAN GIA CO", "BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                SelectedSymbol = FindSymbol("TNN_CX_SAN GIA CO", "BE TONG LOT") ?? FindSymbol("TNN_CX_SGC_BE TONG LOT"),
                 OffsetZ = 0.0,
                 Note = "Bê tông lót sân gia cố"
             });
         }
 
-        private void InitManholeComponents()
+        private void InitManholeComponents(bool forceRefresh = false)
         {
-            if (ManholeComponents.Count > 0) return;
+            if (!forceRefresh && ManholeComponents.Count > 0) return;
+            ManholeComponents.Clear();
 
             var hopNoiSym = FindSymbol("HOP NOI CONG DOC") ?? FindSymbol("HOP NOI");
             if (hopNoiSym != null)
@@ -947,7 +1044,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Thân cống hộp đổ tại chỗ",
-                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
+                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(f => f.Symbol.FamilyName.Contains("TNN_CH")),
                     OffsetZ = 0.0,
                     Note = "Đốt thân cống hộp đổ tại chỗ (2x3x2)"
                 });
@@ -956,7 +1053,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Bê tông lót thân cống",
-                    SelectedSymbol = FindSymbol("TNN_CH_DEM CONG_2x3x2") ?? FindSymbol("TNN_CH_BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                    SelectedSymbol = FindSymbol("TNN_CH_BE TONG LOT_2x3x2") ?? FindSymbol("TNN_CH_DEM CONG_2x3x2") ?? FindSymbol("TNN_CH_BE TONG LOT"),
                     OffsetZ = -0.10,
                     Note = "Lớp đệm / bê tông lót thân cống đổ tại chỗ"
                 });
@@ -965,7 +1062,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Đá dăm đệm thân cống",
-                    SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM_2x3x2") ?? FindSymbol("TNN_CH_DA DAM DEM") ?? FindSymbol("DA DAM"),
+                    SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM_2x3x2") ?? FindSymbol("TNN_CH_DA DAM DEM"),
                     OffsetZ = -0.20,
                     Note = "Lớp đá dăm đệm thân cống đổ tại chỗ"
                 });
@@ -982,7 +1079,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Thân cống hộp đúc sẵn",
-                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG", "1.5x1.5") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(),
+                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG", "1.5x1.5") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(f => f.Symbol.FamilyName.Contains("TNN_CH")),
                     OffsetZ = 0.0,
                     Note = "Đốt thân cống hộp đúc sẵn"
                 });
@@ -991,7 +1088,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Bê tông lót thân cống",
-                    SelectedSymbol = FindSymbol("TNN_CH_BE TONG LOT") ?? FindSymbol("TNN_BE TONG LOT") ?? FindSymbol("BE TONG LOT"),
+                    SelectedSymbol = FindSymbol("TNN_CH_BE TONG LOT") ?? FindSymbol("TNN_CH_DEM CONG"),
                     OffsetZ = -0.10,
                     Note = "Lớp bê tông lót thân cống đúc sẵn"
                 });
@@ -1000,7 +1097,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     IsActive = true,
                     GroupType = "Thân cống",
                     CategoryType = "Đá dăm đệm thân cống",
-                    SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM") ?? FindSymbol("TNN_DA DAM DEM") ?? FindSymbol("DA DAM"),
+                    SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM"),
                     OffsetZ = -0.20,
                     Note = "Lớp đá dăm đệm thân cống đúc sẵn"
                 });
@@ -1836,5 +1933,24 @@ namespace InfraBIM.CulvertTool.ViewModels
             _externalEvent.Raise();
         }
         #endregion
+    }
+
+    /// <summary>
+    /// Xử lý ghi đè Family khi nạp tự động vào Revit Document
+    /// </summary>
+    public class CustomFamilyLoadOptions : IFamilyLoadOptions
+    {
+        public bool OnFamilyFound(bool familyInUse, out bool overwriteParameterValues)
+        {
+            overwriteParameterValues = true;
+            return true;
+        }
+
+        public bool OnSharedFamilyFound(Family sharedFamily, bool familyInUse, out FamilySource source, out bool overwriteParameterValues)
+        {
+            source = FamilySource.Family;
+            overwriteParameterValues = true;
+            return true;
+        }
     }
 }
