@@ -1,4 +1,5 @@
 using System.Windows;
+using InfraBIM.CulvertTool.Models;
 using InfraBIM.CulvertTool.ViewModels;
 
 namespace InfraBIM.CulvertTool.Views
@@ -21,26 +22,46 @@ namespace InfraBIM.CulvertTool.Views
             {
                 ViewModel.RequestPreviewAction = action =>
                 {
-                    if (action == "Fit") Canvas3D.FitView();
-                    else if (action == "ZoomIn") Canvas3D.ZoomIn();
-                    else if (action == "ZoomOut") Canvas3D.ZoomOut();
+                    if (action == "Fit") FitViewInternal();
+                    else if (action == "ZoomIn") ZoomInInternal();
+                    else if (action == "ZoomOut") ZoomOutInternal();
                 };
             }
         }
 
+        private bool Is3DMode => ViewModel?.PreviewMode == PreviewViewMode.Isometric3D;
+
+        private void ZoomInInternal()
+        {
+            if (Is3DMode) Viewport3DControl.ZoomIn();
+            else Canvas2D.ZoomIn();
+        }
+
+        private void ZoomOutInternal()
+        {
+            if (Is3DMode) Viewport3DControl.ZoomOut();
+            else Canvas2D.ZoomOut();
+        }
+
+        private void FitViewInternal()
+        {
+            if (Is3DMode) Viewport3DControl.FitView();
+            else Canvas2D.FitView();
+        }
+
         private void ZoomIn_Click(object sender, RoutedEventArgs e)
         {
-            Canvas3D.ZoomIn();
+            ZoomInInternal();
         }
 
         private void ZoomOut_Click(object sender, RoutedEventArgs e)
         {
-            Canvas3D.ZoomOut();
+            ZoomOutInternal();
         }
 
         private void FitView_Click(object sender, RoutedEventArgs e)
         {
-            Canvas3D.FitView();
+            FitViewInternal();
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)

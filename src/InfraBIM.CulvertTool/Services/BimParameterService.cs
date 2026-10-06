@@ -107,25 +107,34 @@ namespace InfraBIM.CulvertTool.Services
 
                 if (!matchCat && !matchFam) continue;
 
+                string pNameUpper = (m.InternalName ?? "").ToUpperInvariant();
+
+                // YÊU CẦU 2: Bỏ hoàn toàn A_GÓC XOAY, không gán hay can thiệp
+                if (pNameUpper.Contains("A_GOC") || pNameUpper.Contains("A_GÓC")) continue;
+
+                // YÊU CẦU 1: Bỏ qua tuyệt đối các biến công thức hình học nội bộ tránh lỗi Can't make type
+                if (pNameUpper.StartsWith("A1") || pNameUpper.StartsWith("A2") || pNameUpper.StartsWith("A3") ||
+                    pNameUpper.StartsWith("A4") || pNameUpper.StartsWith("A5") || pNameUpper.StartsWith("A6") ||
+                    pNameUpper.StartsWith("A7") || pNameUpper.Contains("'")) continue;
+
                 // Hỗ trợ cả Instance parameter (trên inst) và Type parameter (trên inst.Symbol)
                 Parameter? p = inst.LookupParameter(m.InternalName);
+                bool isTypeParam = false;
                 if (p == null && inst.Symbol != null)
                 {
                     p = inst.Symbol.LookupParameter(m.InternalName);
+                    isTypeParam = true;
                 }
                 if (p == null || p.IsReadOnly) continue;
 
+                // Nếu là Type Parameter mà giá trị không thay đổi hoặc không có ánh xạ Excel, không ghi đè tránh regenerate type lỗi
+                bool hasExplicitMapping = !string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến";
+                bool isCustomized = !string.Equals(m.CustomValue, m.DefaultValue, StringComparison.OrdinalIgnoreCase);
+                if (isTypeParam && !hasExplicitMapping && !isCustomized) continue;
+
                 // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, nếu không thì lấy CustomValue
                 string valStr = m.CustomValue;
-                string pNameUpper = (m.InternalName ?? "").ToUpperInvariant();
-                bool isBeddingAngle = pNameUpper.Contains("A_GOC") || pNameUpper.Contains("A_GÓC");
-
-                if (isBeddingAngle)
-                {
-                    // A_góc xoay của BTL và đá dăm đệm tuyệt đối không lấy từ Excel, mà lấy từ Tab parameter (CustomValue)
-                    valStr = m.CustomValue;
-                }
-                else if (!string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến")
+                if (hasExplicitMapping)
                 {
                     if (m.MappedField == "KhauDo") valStr = data.KhauDo;
                     else if (m.MappedField == "ChieuDai") valStr = data.ChieuDai.ToString("F2");
@@ -158,7 +167,7 @@ namespace InfraBIM.CulvertTool.Services
                                 var dt = p.Definition.GetDataType();
                                 if (dt == SpecTypeId.Length)
                                 {
-                                    internalVal = (dVal >= 10.0)
+                                    internalVal = (Math.Abs(dVal) >= 10.0)
                                         ? UnitUtils.ConvertToInternalUnits(dVal, UnitTypeId.Millimeters)
                                         : UnitUtils.ConvertToInternalUnits(dVal, UnitTypeId.Meters);
                                 }
@@ -169,7 +178,7 @@ namespace InfraBIM.CulvertTool.Services
                             }
                             catch
                             {
-                                internalVal = (dVal >= 10.0)
+                                internalVal = (Math.Abs(dVal) >= 10.0)
                                     ? UnitUtils.ConvertToInternalUnits(dVal, UnitTypeId.Millimeters)
                                     : UnitUtils.ConvertToInternalUnits(dVal, UnitTypeId.Meters);
                             }
