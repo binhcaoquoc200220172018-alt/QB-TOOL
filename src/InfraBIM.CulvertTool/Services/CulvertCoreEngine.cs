@@ -259,16 +259,11 @@ namespace InfraBIM.CulvertTool.Services
             if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Integer)
             {
                 p.Set(value);
-                return;
             }
-            if (inst.Symbol != null)
-            {
-                var pType = inst.Symbol.LookupParameter(paramName);
-                if (pType != null && !pType.IsReadOnly && pType.StorageType == StorageType.Integer)
-                {
-                    pType.Set(value);
-                }
-            }
+            // TUYỆT ĐỐI KHÔNG can thiệp vào inst.Symbol (Type Parameter)
+            // Vì các Type trong Family (như TNN_CX_SAN CONG, TNN_CX_TUONG DAU...) đã có thiết lập Yes/No cố định.
+            // Việc sửa Type parameter tại runtime làm phá vỡ ràng buộc hình học của Type và gây lỗi nghiêm trọng:
+            // "Can't make type TNN_CX_SAN CONG"
         }
 
         private static IList<CulvertComponentItem> ResolveComponentsForCulvert(
