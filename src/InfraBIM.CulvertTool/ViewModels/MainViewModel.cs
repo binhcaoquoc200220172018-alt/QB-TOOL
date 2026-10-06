@@ -339,7 +339,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
         }
 
-        // Tùy chọn lọc tham số Dimensions & Other
+        // Tùy chọn lọc tham số Dimensions & Other & All
         private bool _showDimensions = true;
         public bool ShowDimensions
         {
@@ -360,6 +360,59 @@ namespace InfraBIM.CulvertTool.ViewModels
             set
             {
                 if (SetProperty(ref _showOther, value))
+                {
+                    FilterParameterMappings();
+                }
+            }
+        }
+
+        private bool _showAllGroups = false;
+        public bool ShowAllGroups
+        {
+            get => _showAllGroups;
+            set
+            {
+                if (SetProperty(ref _showAllGroups, value))
+                {
+                    FilterParameterMappings();
+                }
+            }
+        }
+
+        // Tùy chọn lọc Type & Instance Parameters (Hình 6: Type vs Instance)
+        private bool _showTypeParams = true;
+        public bool ShowTypeParams
+        {
+            get => _showTypeParams;
+            set
+            {
+                if (SetProperty(ref _showTypeParams, value))
+                {
+                    FilterParameterMappings();
+                }
+            }
+        }
+
+        private bool _showInstanceParams = true;
+        public bool ShowInstanceParams
+        {
+            get => _showInstanceParams;
+            set
+            {
+                if (SetProperty(ref _showInstanceParams, value))
+                {
+                    FilterParameterMappings();
+                }
+            }
+        }
+
+        private string _paramSearchFilter = string.Empty;
+        public string ParamSearchFilter
+        {
+            get => _paramSearchFilter;
+            set
+            {
+                if (SetProperty(ref _paramSearchFilter, value))
                 {
                     FilterParameterMappings();
                 }
@@ -1645,17 +1698,42 @@ namespace InfraBIM.CulvertTool.ViewModels
                 bool matchFam = string.Equals(m.FamilyName, sym.FamilyName, StringComparison.OrdinalIgnoreCase);
                 bool matchCat = string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase);
 
-                if (matchFam || matchCat)
+                if (matchFam || (string.IsNullOrEmpty(m.FamilyName) && matchCat))
                 {
-                    bool allow = false;
-                    if (ShowDimensions && m.IsDimension) allow = true;
-                    if (ShowOther && m.IsOther) allow = true;
-                    if (!ShowDimensions && !ShowOther) allow = true; // nếu bỏ tích cả 2 thì hiện toàn bộ
+                    // 1. Lọc theo Phân loại Type / Instance (Hình 6)
+                    bool matchTypeOrInstance = false;
+                    if (ShowTypeParams && !m.IsInstance) matchTypeOrInstance = true;
+                    if (ShowInstanceParams && m.IsInstance) matchTypeOrInstance = true;
+                    if (!ShowTypeParams && !ShowInstanceParams) matchTypeOrInstance = true; // nếu bỏ tích cả 2 thì hiện toàn bộ
 
-                    if (allow)
+                    if (!matchTypeOrInstance) continue;
+
+                    // 2. Lọc theo Nhóm tham số (Dimensions / Other / Tất cả các nhóm)
+                    bool matchGroup = false;
+                    if (ShowAllGroups)
                     {
-                        FilteredParameterMappings.Add(m);
+                        matchGroup = true;
                     }
+                    else
+                    {
+                        if (ShowDimensions && m.IsDimension) matchGroup = true;
+                        if (ShowOther && m.IsOther) matchGroup = true;
+                        if (!ShowDimensions && !ShowOther) matchGroup = true; // nếu bỏ tích cả 2 thì hiện toàn bộ
+                    }
+
+                    if (!matchGroup) continue;
+
+                    // 3. Lọc theo từ khóa tìm kiếm (nếu người dùng nhập)
+                    if (!string.IsNullOrWhiteSpace(ParamSearchFilter))
+                    {
+                        string q = ParamSearchFilter.Trim().ToLowerInvariant();
+                        bool matchSearch = m.InternalName.ToLowerInvariant().Contains(q) ||
+                                           m.GroupName.ToLowerInvariant().Contains(q) ||
+                                           m.MappedField.ToLowerInvariant().Contains(q);
+                        if (!matchSearch) continue;
+                    }
+
+                    FilteredParameterMappings.Add(m);
                 }
             }
 
@@ -1674,7 +1752,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             string cat = SelectedComponentForTab02.CategoryType;
 
             // Xóa tham số cũ của Family này để quét mới nhất
-            var toRemove = ParameterMappings.Where(m => m.FamilyName == sym.FamilyName || m.CategoryName == cat).ToList();
+            var toRemove = ParameterMappings.Where(m => string.Equals(m.FamilyName, sym.FamilyName, StringComparison.OrdinalIgnoreCase) || m.CategoryName == cat).ToList();
             foreach (var item in toRemove) ParameterMappings.Remove(item);
 
             var scanned = FamilyParameterScannerService.ScanParametersForFamily(Doc, sym, cat);
@@ -1685,9 +1763,11 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             FilterParameterMappings();
 
+            int typeCount = scanned.Count(p => !p.IsInstance);
+            int instCount = scanned.Count(p => p.IsInstance);
             int dimCount = scanned.Count(p => p.IsDimension);
             int otherCount = scanned.Count(p => p.IsOther);
-            MessageBox.Show($"Đã quét thành công Family '{sym.FamilyName}' ({cat}):\n- Tổng số tham số: {scanned.Count}\n- Tham số Kích thước (Dimensions): {dimCount} tham số\n- Tham số nhóm Khác (Other): {otherCount} tham số.", "Quét hoàn tất", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show($"Đã quét thành công Family '{sym.FamilyName}' ({cat}):\n- Tổng số: {scanned.Count} tham số\n- Tham số Loại (Type): {typeCount} tham số\n- Tham số Biến thể (Instance): {instCount} tham số\n- Nhóm Kích thước (Dimensions): {dimCount} tham số\n- Nhóm Khác (Other): {otherCount} tham số.", "Quét hoàn tất", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void ApplyBatchValue()

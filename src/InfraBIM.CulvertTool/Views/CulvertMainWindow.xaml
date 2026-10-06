@@ -825,18 +825,53 @@
                                     <Button Grid.Column="2" Content="🔄 Quét tham số Family" Command="{Binding ScanFamilyParamsCommand}" Margin="6,0,0,0" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
                                 </Grid>
 
-                                <!-- 3. BỘ LỌC THAM SỐ (DIMENSIONS / OTHER) -->
-                                <Grid Grid.Row="2" Margin="0,4,0,2">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="Bộ lọc tham số:" Foreground="{StaticResource TextMuted}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                        <CheckBox Content="Kích thước (Dimensions)" 
-                                                  IsChecked="{Binding ShowDimensions}" 
-                                                  Foreground="{StaticResource MintLight}" FontWeight="SemiBold" Margin="0,0,18,0"/>
-                                        <CheckBox Content="Khác (Other)" 
-                                                  IsChecked="{Binding ShowOther}" 
-                                                  Foreground="{StaticResource CyanLight}" FontWeight="SemiBold"/>
-                                    </StackPanel>
-                                </Grid>
+                                <!-- 3. BỘ LỌC THAM SỐ TOÀN DIỆN (TYPE / INSTANCE / DIMENSIONS / OTHER / TÌM KIẾM) -->
+                                <Border Grid.Row="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,3,0,3">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Phân loại Type vs Instance (Hình 6) -->
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                            <TextBlock Text="Kiểu:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <CheckBox Content="🏷️ Type (Loại)" 
+                                                      IsChecked="{Binding ShowTypeParams}" 
+                                                      Foreground="{StaticResource TextWhite}" FontWeight="SemiBold" Margin="0,0,8,0"
+                                                      ToolTip="Lọc tham số thuộc tính Loại (Type Parameter) như CH_B, CH_H, CH_T"/>
+                                            <CheckBox Content="⚡ Instance (Biến thể)" 
+                                                      IsChecked="{Binding ShowInstanceParams}" 
+                                                      Foreground="{StaticResource MintLight}" FontWeight="SemiBold" Margin="0,0,12,0"
+                                                      ToolTip="Lọc tham số thuộc tính Biến thể (Instance Parameter) như CO VAI KE, CONG HOP_B, TAM DAN_B"/>
+                                        </StackPanel>
+
+                                        <!-- Nhóm tham số Dimensions & Other -->
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Nhóm:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <CheckBox Content="Kích thước (Dimensions)" 
+                                                      IsChecked="{Binding ShowDimensions}" 
+                                                      Foreground="{StaticResource MintLight}" FontWeight="SemiBold" Margin="0,0,8,0"/>
+                                            <CheckBox Content="Khác (Other)" 
+                                                      IsChecked="{Binding ShowOther}" 
+                                                      Foreground="{StaticResource CyanLight}" FontWeight="SemiBold" Margin="0,0,8,0"/>
+                                            <CheckBox Content="Tất cả nhóm" 
+                                                      IsChecked="{Binding ShowAllGroups}" 
+                                                      Foreground="{StaticResource TextMuted}" FontWeight="Normal"
+                                                      ToolTip="Hiển thị tất cả tham số thuộc mọi nhóm"/>
+                                        </StackPanel>
+
+                                        <!-- Ô tìm kiếm tham số nhanh -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="🔍 Tìm:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                            <TextBox Text="{Binding ParamSearchFilter, UpdateSourceTrigger=PropertyChanged}" 
+                                                     Width="95" Height="22" VerticalContentAlignment="Center"
+                                                     Background="{StaticResource NavyDark}" Foreground="#FFF" BorderBrush="{StaticResource CyanDark}"
+                                                     ToolTip="Nhập tên tham số để lọc nhanh"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                             </Grid>
 
                             <!-- DataGrid hiển thị chi tiết các tham số của Family đang chọn -->
@@ -857,7 +892,7 @@
                                     <DataGridTextColumn Header="Mặc định Family" Binding="{Binding DefaultValue}" IsReadOnly="True" Width="120" MinWidth="105"/>
                                     <DataGridTextColumn Header="Giá trị tùy chỉnh (Sửa)" Binding="{Binding CustomValue}" Width="150" MinWidth="130" Foreground="{StaticResource MintLight}"/>
                                     <DataGridTextColumn Header="Ánh xạ cột Excel" Binding="{Binding MappedField}" Width="130" MinWidth="110"/>
-                                    <DataGridTextColumn Header="Phân loại" Binding="{Binding InstanceTypeBadge}" IsReadOnly="True" Width="110" MinWidth="100"/>
+                                    <DataGridTextColumn Header="Phân loại" Binding="{Binding InstanceTypeBadge}" IsReadOnly="True" Width="140" MinWidth="120"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>

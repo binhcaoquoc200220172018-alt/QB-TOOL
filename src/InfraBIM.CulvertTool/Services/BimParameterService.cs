@@ -107,7 +107,12 @@ namespace InfraBIM.CulvertTool.Services
 
                 if (!matchCat && !matchFam) continue;
 
-                Parameter p = inst.LookupParameter(m.InternalName);
+                // Hỗ trợ cả Instance parameter (trên inst) và Type parameter (trên inst.Symbol)
+                Parameter? p = inst.LookupParameter(m.InternalName);
+                if (p == null && inst.Symbol != null)
+                {
+                    p = inst.Symbol.LookupParameter(m.InternalName);
+                }
                 if (p == null || p.IsReadOnly) continue;
 
                 // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, nếu không thì lấy CustomValue
@@ -170,7 +175,29 @@ namespace InfraBIM.CulvertTool.Services
                     }
                     else if (p.StorageType == StorageType.Integer)
                     {
-                        if (int.TryParse(valStr.Trim(), out int iVal)) p.Set(iVal);
+                        string trimVal = valStr.Trim();
+                        if (int.TryParse(trimVal, out int iVal))
+                        {
+                            p.Set(iVal);
+                        }
+                        else if (bool.TryParse(trimVal, out bool bVal))
+                        {
+                            p.Set(bVal ? 1 : 0);
+                        }
+                        else if (string.Equals(trimVal, "có", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(trimVal, "co", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(trimVal, "yes", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(trimVal, "bật", StringComparison.OrdinalIgnoreCase))
+                        {
+                            p.Set(1);
+                        }
+                        else if (string.Equals(trimVal, "không", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(trimVal, "khong", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(trimVal, "no", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(trimVal, "tắt", StringComparison.OrdinalIgnoreCase))
+                        {
+                            p.Set(0);
+                        }
                     }
                 }
                 catch { }

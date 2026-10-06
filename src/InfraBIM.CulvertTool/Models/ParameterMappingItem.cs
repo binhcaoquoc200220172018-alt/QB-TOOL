@@ -120,7 +120,7 @@ namespace InfraBIM.CulvertTool.Models
             set { _isInstance = value; OnPropertyChanged(); }
         }
 
-        public string InstanceTypeBadge => IsInstance ? "Instance (default)" : "Type";
+        public string InstanceTypeBadge => IsInstance ? "⚡ Instance (Biến thể)" : "🏷️ Type (Loại)";
 
         public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string? propName = null)
