@@ -943,6 +943,22 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         private FamilySymbolWrapper? FindSymbol(string familyKeyword, string? typeKeyword = null)
         {
+            // 1. Khớp chính xác 100% FamilyName trước tiên (ví dụ "TNN_CH_THAN CONG" không nhầm sang "TNN_CH_THAN CONG_2x3x2")
+            var exactMatches = AllAvailableFamilies.Where(f =>
+                string.Equals(f.Symbol.FamilyName, familyKeyword, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            if (exactMatches.Count > 0)
+            {
+                if (!string.IsNullOrEmpty(typeKeyword))
+                {
+                    var tm = exactMatches.FirstOrDefault(f =>
+                        f.Symbol.Name.IndexOf(typeKeyword, StringComparison.OrdinalIgnoreCase) >= 0);
+                    if (tm != null) return tm;
+                }
+                return exactMatches.FirstOrDefault();
+            }
+
+            // 2. Fallback nếu không có khớp chính xác: tìm kiếm Contains
             var matches = AllAvailableFamilies.Where(f =>
                 f.Symbol.FamilyName.IndexOf(familyKeyword, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
             if (!matches.Any())
@@ -986,6 +1002,7 @@ namespace InfraBIM.CulvertTool.ViewModels
         private void InitPrecastBarrelComponents(bool forceRefresh = false)
         {
             if (!forceRefresh && PrecastBarrelComponents.Count > 0) return;
+            foreach (var c in PrecastBarrelComponents) c.PropertyChanged -= OnAssemblyComponentPropertyChanged;
             PrecastBarrelComponents.Clear();
 
             PrecastBarrelComponents.Add(new CulvertComponentItem
@@ -993,7 +1010,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cống đúc sẵn",
                 CategoryType = "Thân cống hộp đúc sẵn",
-                SelectedSymbol = FindSymbol("TNN_CH_THAN CONG", "1.5x1.5") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(f => f.Symbol.FamilyName.Contains("TNN_CH")),
+                SelectedSymbol = FindSymbol("TNN_CH_THAN CONG", "1.5x1.5") ?? FindSymbol("TNN_CH_THAN CONG"),
                 OffsetZ = 0.0,
                 Note = "Đốt thân cống hộp đúc sẵn"
             });
@@ -1015,11 +1032,14 @@ namespace InfraBIM.CulvertTool.ViewModels
                 OffsetZ = -0.20,
                 Note = "Lớp đá dăm đệm thân cống đúc sẵn"
             });
+
+            foreach (var c in PrecastBarrelComponents) c.PropertyChanged += OnAssemblyComponentPropertyChanged;
         }
 
         private void InitCastInPlaceBarrelComponents(bool forceRefresh = false)
         {
             if (!forceRefresh && CastInPlaceBarrelComponents.Count > 0) return;
+            foreach (var c in CastInPlaceBarrelComponents) c.PropertyChanged -= OnAssemblyComponentPropertyChanged;
             CastInPlaceBarrelComponents.Clear();
 
             CastInPlaceBarrelComponents.Add(new CulvertComponentItem
@@ -1027,7 +1047,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Cống đổ tại chỗ",
                 CategoryType = "Thân cống hộp đổ tại chỗ",
-                SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(f => f.Symbol.FamilyName.Contains("TNN_CH")),
+                SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG"),
                 OffsetZ = 0.0,
                 Note = "Đốt thân cống hộp đổ tại chỗ (2x3x2)"
             });
@@ -1049,7 +1069,10 @@ namespace InfraBIM.CulvertTool.ViewModels
                 OffsetZ = -0.20,
                 Note = "Lớp đá dăm đệm thân cống đổ tại chỗ"
             });
+
+            foreach (var c in CastInPlaceBarrelComponents) c.PropertyChanged += OnAssemblyComponentPropertyChanged;
         }
+
 
         private void InitOutletComponents(bool forceRefresh = false)
         {
@@ -2180,9 +2203,11 @@ namespace InfraBIM.CulvertTool.ViewModels
                 return;
             }
 
-            if (!BarrelComponents.Any(c => c.IsActive && c.SelectedSymbol != null))
+            bool hasValidBarrel = PrecastBarrelComponents.Any(c => c.IsActive && c.SelectedSymbol != null) ||
+                                  CastInPlaceBarrelComponents.Any(c => c.IsActive && c.SelectedSymbol != null);
+            if (!hasValidBarrel)
             {
-                MessageBox.Show("Vui lòng kích hoạt và chọn Family cho Cụm Thân cống ở Khung 2.", "Chưa chọn Family", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Vui lòng kích hoạt và chọn Family cho Cống đúc sẵn hoặc Cống đổ tại chỗ ở Khung 2.", "Chưa chọn Family", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -2208,7 +2233,8 @@ namespace InfraBIM.CulvertTool.ViewModels
                     BimConfig,
                     CustomBimParameters,
                     ParameterMappings,
-                    BarrelComponents.ToList(),
+                    PrecastBarrelComponents.ToList(),
+                    CastInPlaceBarrelComponents.ToList(),
                     OutletComponents.ToList(),
                     ApronComponents.ToList(),
                     ManholeComponents.ToList(),

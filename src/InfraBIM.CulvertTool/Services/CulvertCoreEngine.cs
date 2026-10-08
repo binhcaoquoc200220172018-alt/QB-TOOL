@@ -31,6 +31,47 @@ namespace InfraBIM.CulvertTool.Services
             bool useSurveyPoint = true,
             IEnumerable<CulvertMaterialItem>? materialSettings = null)
         {
+            return BuildAllCulvertsV2(
+                doc,
+                culvertList,
+                bimConfig,
+                customBimParams,
+                familyParameterMappings,
+                barrelComponents,
+                barrelComponents,
+                outletComponents,
+                apronComponents,
+                manholeComponents,
+                lStdM,
+                jointGapM,
+                bBoxM,
+                defaultKhoangCachTim,
+                arrayMode,
+                isCastInPlace,
+                useSurveyPoint,
+                materialSettings);
+        }
+
+        public static (int SuccessCount, int ErrorCount, List<string> Logs) BuildAllCulvertsV2(
+            Document doc,
+            IList<CulvertRowData> culvertList,
+            BimInfoConfig bimConfig,
+            IEnumerable<CustomBimParameterItem>? customBimParams,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            IList<CulvertComponentItem> precastBarrelComponents,
+            IList<CulvertComponentItem> castInPlaceBarrelComponents,
+            IList<CulvertComponentItem> outletComponents,
+            IList<CulvertComponentItem> apronComponents,
+            IList<CulvertComponentItem> manholeComponents,
+            double lStdM,
+            double jointGapM,
+            double bBoxM,
+            double defaultKhoangCachTim,
+            CulvertArrayMode arrayMode,
+            bool isCastInPlace,
+            bool useSurveyPoint = true,
+            IEnumerable<CulvertMaterialItem>? materialSettings = null)
+        {
             var logs = new List<string>();
             int successCount = 0;
             int errorCount = 0;
@@ -49,7 +90,13 @@ namespace InfraBIM.CulvertTool.Services
                 using (var tAct = new Transaction(doc, "Kích hoạt Family Symbols"))
                 {
                     tAct.Start();
-                    foreach (var c in barrelComponents.Concat(outletComponents).Concat(apronComponents).Concat(manholeComponents))
+                    var allComps = (precastBarrelComponents ?? new List<CulvertComponentItem>())
+                        .Concat(castInPlaceBarrelComponents ?? new List<CulvertComponentItem>())
+                        .Concat(outletComponents ?? new List<CulvertComponentItem>())
+                        .Concat(apronComponents ?? new List<CulvertComponentItem>())
+                        .Concat(manholeComponents ?? new List<CulvertComponentItem>());
+
+                    foreach (var c in allComps)
                     {
                         if (c.IsActive && c.SelectedSymbol != null)
                         {
@@ -74,8 +121,19 @@ namespace InfraBIM.CulvertTool.Services
                         {
                             subT.Start();
 
-                            // Tự động nhận diện Family tương ứng cho từng dòng cống theo Loại cống, Khẩu độ, Cấu kiện
-                            var curBarrel = ResolveComponentsForCulvert(doc, barrelComponents, row);
+                            // Phân định dòng cống này thuộc loại Đúc sẵn hay Đổ tại chỗ
+                            bool isRowCastInPlace = (row.SoCua > 1) ||
+                                (row.CauKien?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (row.CauKien?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (row.LoaiCong?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (row.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (row.GhiChu?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (row.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
+
+                            var targetBarrelList = isRowCastInPlace ? castInPlaceBarrelComponents : precastBarrelComponents;
+
+                            // Tự động nhận diện / bảo toàn Family tương ứng cho từng dòng cống
+                            var curBarrel = ResolveComponentsForCulvert(doc, targetBarrelList, row);
                             var curOutlet = ResolveComponentsForCulvert(doc, outletComponents, row);
                             var curApron = ResolveComponentsForCulvert(doc, apronComponents, row);
                             var curManhole = ResolveComponentsForCulvert(doc, manholeComponents, row);
@@ -95,7 +153,7 @@ namespace InfraBIM.CulvertTool.Services
                                 bBoxM,
                                 defaultKhoangCachTim,
                                 arrayMode,
-                                isCastInPlace,
+                                isRowCastInPlace,
                                 useSurveyPoint,
                                 materialSettings);
 
@@ -114,6 +172,7 @@ namespace InfraBIM.CulvertTool.Services
 
                 tg.Assimilate();
             }
+
 
             return (successCount, errorCount, logs);
         }
@@ -306,11 +365,23 @@ namespace InfraBIM.CulvertTool.Services
 
                 if (copy.IsActive)
                 {
-                    var matchSym = ResolveFamilyForCulvert(allSymbols, loaiCong, cauKien, ghiChu, row.SoCua, row.KhauDo, copy.CategoryType ?? "");
-                    if (matchSym != null)
+                    if (copy.SelectedSymbol != null)
                     {
-                        copy.SelectedSymbol = new FamilySymbolWrapper(matchSym);
-                        ActivateSymbol(matchSym);
+                        var fresh = copy.SelectedSymbol.GetFreshSymbol(doc);
+                        if (fresh != null)
+                        {
+                            copy.SelectedSymbol = new FamilySymbolWrapper(fresh);
+                            ActivateSymbol(fresh);
+                        }
+                    }
+                    else
+                    {
+                        var matchSym = ResolveFamilyForCulvert(allSymbols, loaiCong, cauKien, ghiChu, row.SoCua, row.KhauDo, copy.CategoryType ?? "");
+                        if (matchSym != null)
+                        {
+                            copy.SelectedSymbol = new FamilySymbolWrapper(matchSym);
+                            ActivateSymbol(matchSym);
+                        }
                     }
                 }
 
