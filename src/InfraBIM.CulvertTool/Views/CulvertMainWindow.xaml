@@ -17,6 +17,7 @@
     <Window.Resources>
         <!-- Converter hiển thị động -->
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis"/>
 
         <!-- BẢNG MÀU CHUYÊN NGHIỆP: XANH ĐẬM (NAVY), XANH LƠ (CYAN), XANH LÁ NHẠT (MINT) -->
         <SolidColorBrush x:Key="NavyBg" Color="#0A1120"/>
@@ -381,8 +382,8 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="📄 Tạo Excel mẫu 21 cột" Command="{Binding CreateSampleExcelCommand}" Margin="0,0,8,0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}"/>
-                    <Button Content="🔍 Kiểm tra mô hình" Command="{Binding ValidateCommand}" Margin="0,0,8,0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}"/>
+                    <Button Content="📄 Tạo Excel mẫu 21 cột" Command="{Binding CreateSampleExcelCommand}" Margin="0,0,10,0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}"/>
+                    <Button Content="🔍 KIỂM TRA MÔ HÌNH 3D" Command="{Binding Open3DReviewCommand}" Padding="14,4" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFFFFF" FontWeight="Bold" FontSize="12.5" Cursor="Hand" ToolTip="Kiểm tra trực quan mô hình 3D chính xác 100% hình học family trước khi thực hiện"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -736,21 +737,20 @@
             <!-- ============================================== -->
             <TabItem Header="02 PARAMETER HÌNH HỌC">
                 <Grid Margin="4">
-                    <Grid.ColumnDefinitions>
-                        <!-- Bên trái: Catalog Parameter quét từ Family đã chọn ở Tab 01 -->
-                        <ColumnDefinition Width="5.2*"/>
-                        <!-- Bên phải: Gán hàng loạt theo khoảng STT -->
-                        <ColumnDefinition Width="4.8*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <GroupBox Header="DANH MỤC THAM SỐ THEO TỪNG FAMILY ĐÃ CHỌN Ở TAB 01 (DIMENSIONS &amp; MAPPING)" Grid.Column="0">
+                    <GroupBox Header="QUẢN LÝ &amp; GÁN THAM SỐ HÌNH HỌC THEO TỪNG CỤM CẤU KIỆN (DIMENSIONS &amp; OTHER)">
                         <Grid>
                             <Grid.RowDefinitions>
+                                <!-- Hàng 0: Toolbar lọc cụm cấu kiện, dropdown family, quét, nhóm tham số -->
                                 <RowDefinition Height="Auto"/>
+                                <!-- Hàng 1: Bảng tham số thống nhất (giữ nguyên thứ tự family, gõ giá trị hoặc chọn Yes/No) -->
                                 <RowDefinition Height="*"/>
+                                <!-- Hàng 2: Thanh công cụ gán thông số theo phạm vi lý trình (Từ STT đến STT) -->
+                                <RowDefinition Height="Auto"/>
+                                <!-- Hàng 3: Bảng tổng hợp lý trình từ trên xuống theo thứ tự STT -->
+                                <RowDefinition Height="185"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Thanh chọn Cụm cấu kiện (Tab 01) & Family đã gán & Nút quét tham số -->
+                            <!-- HÀNG 0: TOOLBAR ĐIỀU KHIỂN & BỘ LỌC (HÌNH 4: TÁCH CỐNG ĐÚC SẴN & ĐỔ TẠI CHỖ) -->
                             <Grid Grid.Row="0" Margin="0,0,0,6">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -758,17 +758,32 @@
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
-                                <!-- 1. THANH LỌC CỤM CẤU KIỆN (THÂN CỐNG - CỬA XẢ - HỐ GA) TƯƠNG ỨNG TAB 01 -->
+                                <!-- 1. THANH LỌC CỤM CẤU KIỆN (TÁCH CỐNG ĐÚC SẴN, CỐNG ĐỔ TẠI CHỖ, CỬA XẢ, SÂN GIA CỐ, HỐ GA, TẤT CẢ) -->
                                 <Border Grid.Row="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,5">
                                     <DockPanel LastChildFill="False">
                                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="Cụm cấu kiện:" VerticalAlignment="Center" Foreground="{StaticResource CyanLight}" FontWeight="Bold" Margin="0,0,8,0"/>
 
-                                            <Button Content="🧱 Thân cống" Command="{Binding FilterTab02GroupCommand}" CommandParameter="Barrel" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
+                                            <Button Content="🧱 Cống đúc sẵn" Command="{Binding FilterTab02GroupCommand}" CommandParameter="Precast" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
                                                 <Button.Style>
                                                     <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding SelectedTab02GroupFilter}" Value="Barrel">
+                                                            <DataTrigger Binding="{Binding SelectedTab02GroupFilter}" Value="Precast">
+                                                                <Setter Property="Background" Value="#0284C7"/>
+                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+
+                                            <Button Content="🏗️ Cống đổ tại chỗ" Command="{Binding FilterTab02GroupCommand}" CommandParameter="CastInPlace" Margin="0,0,3,0" Padding="8,3" FontSize="11.5">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedTab02GroupFilter}" Value="CastInPlace">
                                                                 <Setter Property="Background" Value="#0284C7"/>
                                                                 <Setter Property="BorderBrush" Value="#38BDF8"/>
                                                                 <Setter Property="Foreground" Value="#FFFFFF"/>
@@ -850,12 +865,11 @@
                                     </DockPanel>
                                 </Border>
 
-                                <!-- 2. DROPDOWN CHỌN FAMILY CỦA CỤM ĐÃ CHỌN & NÚT KIỂM TRA MÔ HÌNH 3D -->
+                                <!-- 2. DROPDOWN CHỌN FAMILY CỦA CỤM ĐÃ CHỌN & NÚT QUÉT THAM SỐ -->
                                 <Grid Grid.Row="1" Margin="0,0,0,4">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
@@ -875,14 +889,12 @@
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
-                                    <Button Grid.Column="2" Content="🔄 Quét tham số" Command="{Binding ScanFamilyParamsCommand}" Margin="5,0,0,0" Padding="8,3" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
-                                    <Button Grid.Column="3" Content="🔍 KIỂM TRA MÔ HÌNH 3D" Command="{Binding Open3DReviewCommand}" Margin="5,0,0,0" Padding="10,3" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" Cursor="Hand" ToolTip="Mở giao diện Review 3D để kiểm tra trực quan cao độ, độ dốc và hình dạng cống trước khi chạy"/>
+                                    <Button Grid.Column="2" Content="🔄 Quét tham số" Command="{Binding ScanFamilyParamsCommand}" Margin="5,0,0,0" Padding="12,4" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
                                 </Grid>
 
-                                <!-- 3. BỘ LỌC THAM SỐ ĐƠN GIẢN THEO KHUNG ĐỎ (HÌNH 1, 2, 3: TẤT CẢ / DIMENSIONS / OTHER) -->
+                                <!-- 3. BỘ LỌC THAM SỐ ĐƠN GIẢN THEO KHUNG ĐỎ (TẤT CẢ / DIMENSIONS / OTHER) -->
                                 <Border Grid.Row="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,3,0,3">
                                     <DockPanel LastChildFill="False">
-                                        <!-- 3 Nút lọc trực quan theo 2 nhóm chuẩn Revit trong khung đỏ -->
                                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="Nhóm tham số:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
 
@@ -949,7 +961,7 @@
                                 </Border>
                             </Grid>
 
-                            <!-- DataGrid hiển thị chi tiết các tham số của Family đang chọn -->
+                            <!-- HÀNG 1: BẢNG DANH MỤC THAM SỐ GỘP CHUNG (GIỮ NGUYÊN THỨ TỰ FAMILY & TÙY BIẾN GIÁ TRỊ) -->
                             <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredParameterMappings}"
                                       AutoGenerateColumns="False"
                                       CanUserAddRows="False"
@@ -960,76 +972,56 @@
                                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                                       ScrollViewer.CanContentScroll="True">
                                 <DataGrid.Columns>
-                                    <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsSelected}" Width="45" MinWidth="40"/>
-                                    <DataGridTextColumn Header="Tên tham số (Parameter)" Binding="{Binding InternalName}" IsReadOnly="True" Width="250" MinWidth="180" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="Nhóm tham số" Binding="{Binding GroupName}" IsReadOnly="True" Width="125" MinWidth="95"/>
-                                    <DataGridTextColumn Header="Kiểu dữ liệu" Binding="{Binding DataType}" IsReadOnly="True" Width="120" MinWidth="105"/>
-                                    <DataGridTextColumn Header="Mặc định Family" Binding="{Binding DefaultValue}" IsReadOnly="True" Width="110" MinWidth="95"/>
-                                    <DataGridTextColumn Header="Giá trị tùy chỉnh (Sửa)" Binding="{Binding CustomValue}" Width="135" MinWidth="110" Foreground="{StaticResource MintLight}"/>
+                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" IsReadOnly="True" Width="55" MinWidth="45" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="Tham số (Family Order)" Binding="{Binding InternalName}" IsReadOnly="True" Width="260" MinWidth="180" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
+                                    <DataGridTextColumn Header="Nhóm tham số" Binding="{Binding GroupName}" IsReadOnly="True" Width="140" MinWidth="110"/>
+                                    <DataGridTextColumn Header="Kiểu dữ liệu" Binding="{Binding DataType}" IsReadOnly="True" Width="130" MinWidth="105"/>
+                                    <DataGridTextColumn Header="Giá trị mặc định" Binding="{Binding DefaultValue}" IsReadOnly="True" Width="120" MinWidth="95"/>
+
+                                    <!-- CỘT GIÁ TRỊ: GÕ SỐ / CHỮ HOẶC CHỌN YES/NO NẾU LÀ BIẾN BOOLEAN -->
+                                    <DataGridTemplateColumn Header="Giá trị tùy biến" Width="170" MinWidth="130">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Grid>
+                                                    <ComboBox ItemsSource="{Binding Source={x:Static models:ParameterMappingItem.BooleanOptions}}"
+                                                              SelectedItem="{Binding CustomValue, UpdateSourceTrigger=PropertyChanged}"
+                                                              Visibility="{Binding IsBooleanType, Converter={StaticResource BoolToVis}}"
+                                                              Background="#13233A" Foreground="#38BDF8" FontWeight="Bold"/>
+                                                    <TextBox Text="{Binding CustomValue, UpdateSourceTrigger=PropertyChanged}"
+                                                             Visibility="{Binding IsBooleanType, Converter={StaticResource InverseBoolToVis}}"
+                                                             Background="#102035" Foreground="#34D399" FontWeight="Bold" Padding="4,2"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
                                     <DataGridTextColumn Header="Ánh xạ cột Excel" Binding="{Binding MappedField}" Width="120" MinWidth="100"/>
-                                    <DataGridTextColumn Header="Phân loại" Binding="{Binding InstanceTypeBadge}" IsReadOnly="True" Width="110" MinWidth="95"/>
+                                    <DataGridTextColumn Header="Phân loại" Binding="{Binding InstanceTypeBadge}" IsReadOnly="True" Width="120" MinWidth="95"/>
                                 </DataGrid.Columns>
                             </DataGrid>
-                        </Grid>
-                    </GroupBox>
 
-                    <GroupBox Header="GÁN GIÁ TRỊ PARAMETER HÀNG LOẠT (TỪ STT ĐẾN STT)" Grid.Column="1">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-
-                            <!-- Thanh nút kiểm tra mô hình 3D trực quan trước khi chạy -->
-                            <Border Grid.Row="0" Background="{StaticResource NavyCardInner}" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,0,5">
+                            <!-- HÀNG 2: GÁN THÔNG SỐ CẤU KIỆN ĐÃ CHỌN CHO PHẠM VI LÝ TRÌNH (TỪ STT ĐẾN STT) -->
+                            <Border Grid.Row="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8,5" Margin="0,5,0,5">
                                 <DockPanel LastChildFill="False">
                                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="🔍 KIỂM TRA MÔ HÌNH:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" Margin="0,0,6,0"/>
-                                        <TextBlock Text="Xem phối cảnh 3D, cắt dọc, kiểm tra cao độ Z1, Z2 &amp; độ dốc" Foreground="{StaticResource TextMuted}" FontSize="11.5" VerticalAlignment="Center"/>
+                                        <TextBlock Text="⚡ Gán thông số cấu kiện này cho phạm vi lý trình:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                        <TextBlock Text="Từ STT:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBox Text="{Binding BatchFromSTT, UpdateSourceTrigger=PropertyChanged}" Width="55" Height="24" TextAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Đến STT:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBox Text="{Binding BatchToSTT, UpdateSourceTrigger=PropertyChanged}" Width="55" Height="24" TextAlignment="Center" Margin="0,0,14,0"/>
+                                        <Button Content="⚡ ÁP DỤNG CHO CÁC LÝ TRÌNH ĐÃ CHỌN" Command="{Binding ApplyAllCustomParamsToStationRangeCommand}" 
+                                                Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold" Padding="14,4" Cursor="Hand" BorderBrush="{StaticResource MintLight}"/>
                                     </StackPanel>
-                                    <Button DockPanel.Dock="Right" Content="🔍 KIỂM TRA MÔ HÌNH 3D" Command="{Binding Open3DReviewCommand}" 
-                                            Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" Padding="12,3" Cursor="Hand" 
-                                            ToolTip="Mở cửa sổ Review 3D trực quan kiểm tra cao độ, độ dốc và hình dạng cống trước khi chạy"/>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Tổng số cống trong dự án: " Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
+                                        <TextBlock Text="{Binding AllCulvertRows.Count}" Foreground="{StaticResource TextWhite}" FontWeight="Bold" FontSize="11.5"/>
+                                        <TextBlock Text=" cống" Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
+                                    </StackPanel>
                                 </DockPanel>
                             </Border>
 
-                            <Border Grid.Row="1" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,6">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="2*"/>
-                                        <ColumnDefinition Width="2*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="1.4*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Grid.Column="0" Margin="2">
-                                        <TextBlock Text="Chọn tham số:" Foreground="{StaticResource TextMuted}"/>
-                                        <ComboBox ItemsSource="{Binding FilteredParameterMappings}" SelectedItem="{Binding SelectedParamForBatch}" DisplayMemberPath="InternalName"/>
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="1" Margin="2">
-                                        <TextBlock Text="Giá trị gán mới:" Foreground="{StaticResource TextMuted}"/>
-                                        <TextBox Text="{Binding BatchApplyValue, UpdateSourceTrigger=PropertyChanged}"/>
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="2" Margin="2">
-                                        <TextBlock Text="Từ STT:" Foreground="{StaticResource TextMuted}"/>
-                                        <TextBox Text="{Binding BatchFromSTT, UpdateSourceTrigger=PropertyChanged}"/>
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="3" Margin="2">
-                                        <TextBlock Text="Đến STT:" Foreground="{StaticResource TextMuted}"/>
-                                        <TextBox Text="{Binding BatchToSTT, UpdateSourceTrigger=PropertyChanged}"/>
-                                    </StackPanel>
-
-                                    <Button Grid.Column="4" Content="ÁP DỤNG" Command="{Binding BatchApplyCommand}" Background="{StaticResource MintDark}" Foreground="#FFF" Margin="3,15,2,2" BorderBrush="{StaticResource MintLight}"/>
-                                </Grid>
-                            </Border>
-
-                            <!-- YÊU CẦU 4 (HÌNH 5): Thể hiện STT, Lý trình, Tên tham số, Giá trị tùy chỉnh -->
-                            <DataGrid Grid.Row="2" ItemsSource="{Binding FilteredCulvertRows}"
+                            <!-- HÀNG 3: BẢNG TỔNG HỢP LÝ TRÌNH TỪ TRÊN XUỐNG THEO THỨ TỰ STT ĐỂ DỄ THEO DÕI VÀ CHỌN KHOẢNG STT -->
+                            <DataGrid Grid.Row="3" ItemsSource="{Binding FilteredCulvertRows}"
                                       AutoGenerateColumns="False"
                                       CanUserAddRows="False"
                                       CanUserResizeColumns="True"
@@ -1039,10 +1031,16 @@
                                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                                       ScrollViewer.CanContentScroll="True">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" IsReadOnly="True" Width="65" MinWidth="50" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" IsReadOnly="True" Width="60" MinWidth="50" FontWeight="Bold"/>
                                     <DataGridTextColumn Header="Lý trình" Binding="{Binding LyTrinh}" IsReadOnly="True" Width="130" MinWidth="100" FontWeight="SemiBold" Foreground="{StaticResource MintLight}"/>
-                                    <DataGridTextColumn Header="Tên tham số" Binding="{Binding ActiveParamName}" IsReadOnly="True" Width="200" MinWidth="150" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
-                                    <DataGridTextColumn Header="Giá trị tùy chỉnh" Binding="{Binding ActiveParamValue, UpdateSourceTrigger=PropertyChanged}" Width="*" MinWidth="140" FontWeight="Bold" Foreground="#FFFFFF"/>
+                                    <DataGridTextColumn Header="Loại cống" Binding="{Binding LoaiCong}" IsReadOnly="True" Width="140" MinWidth="110"/>
+                                    <DataGridTextColumn Header="Cấu kiện" Binding="{Binding CauKien}" IsReadOnly="True" Width="120" MinWidth="90"/>
+                                    <DataGridTextColumn Header="Số cửa" Binding="{Binding SoCua}" IsReadOnly="True" Width="65" MinWidth="55"/>
+                                    <DataGridTextColumn Header="Khẩu độ" Binding="{Binding KhauDo}" IsReadOnly="True" Width="110" MinWidth="90"/>
+                                    <DataGridTextColumn Header="Chiều dài (m)" Binding="{Binding ChieuDai, StringFormat={}{0:0.00}}" IsReadOnly="True" Width="105" MinWidth="90"/>
+                                    <DataGridTextColumn Header="Độ dốc (%)" Binding="{Binding DoDoc, StringFormat={}{0:0.00}}" IsReadOnly="True" Width="95" MinWidth="85"/>
+                                    <DataGridTextColumn Header="Ghi chú cống" Binding="{Binding GhiChu}" IsReadOnly="True" Width="200" MinWidth="150" Foreground="{StaticResource CyanLight}"/>
+                                    <DataGridTextColumn Header="Trạng thái cống" Binding="{Binding StatusNote}" IsReadOnly="True" Width="*" MinWidth="180"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>
@@ -1509,8 +1507,7 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="ĐÓNG" Command="{Binding CloseCommand}" Margin="0,0,8,0" Width="95"/>
-                    <Button Content="KIỂM TRA LẠI" Command="{Binding ValidateCommand}" Margin="0,0,8,0" Width="120" BorderBrush="{StaticResource CyanDark}"/>
+                    <Button Content="ĐÓNG" Command="{Binding CloseCommand}" Margin="0,0,10,0" Width="100"/>
                     <Button Content="THỰC HIỆN TẠO MÔ HÌNH" Command="{Binding ExecutePlacementCommand}" Style="{StaticResource BtnExecuteStyle}"/>
                 </StackPanel>
             </Grid>

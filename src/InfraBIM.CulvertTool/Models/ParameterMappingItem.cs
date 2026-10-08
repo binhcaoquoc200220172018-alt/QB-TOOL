@@ -29,6 +29,13 @@ namespace InfraBIM.CulvertTool.Models
             "Z2"
         };
 
+        private int _stt = 1;
+        public int STT
+        {
+            get => _stt;
+            set { _stt = value; OnPropertyChanged(); }
+        }
+
         private bool _isSelected = true;
         public bool IsSelected
         {
@@ -128,6 +135,10 @@ namespace InfraBIM.CulvertTool.Models
         }
 
         public string InstanceTypeBadge => IsInstance ? "⚡ Instance (Biến thể)" : "🏷️ Type (Loại)";
+
+        public bool IsBooleanType => IsVisibility || (DataType != null && DataType.Contains("Yes/No"));
+
+        public static List<string> BooleanOptions { get; } = new() { "Có", "Không" };
 
         public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string? propName = null)

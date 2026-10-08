@@ -51,9 +51,13 @@ namespace InfraBIM.CulvertTool.Services
                     tAct.Start();
                     foreach (var c in barrelComponents.Concat(outletComponents).Concat(apronComponents).Concat(manholeComponents))
                     {
-                        if (c.IsActive && c.SelectedSymbol?.Symbol != null)
+                        if (c.IsActive && c.SelectedSymbol != null)
                         {
-                            ActivateSymbol(c.SelectedSymbol.Symbol);
+                            var sym = c.SelectedSymbol.GetFreshSymbol(doc);
+                            if (sym != null)
+                            {
+                                ActivateSymbol(sym);
+                            }
                         }
                     }
                     doc.Regenerate();
@@ -116,10 +120,15 @@ namespace InfraBIM.CulvertTool.Services
 
         private static void ActivateSymbol(FamilySymbol? sym)
         {
-            if (sym != null && !sym.IsActive)
+            if (sym == null) return;
+            try
             {
-                sym.Activate();
+                if (sym.IsValidObject && !sym.IsActive)
+                {
+                    sym.Activate();
+                }
             }
+            catch { }
         }
 
         private static FamilyInstance CreateInstanceSafe(Document doc, XYZ pt, FamilySymbol sym)

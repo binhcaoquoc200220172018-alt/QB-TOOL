@@ -103,6 +103,8 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         // 4 Cụm cấu kiện cố định chuẩn
         public ObservableCollection<CulvertComponentItem> BarrelComponents { get; } = new();
+        public ObservableCollection<CulvertComponentItem> PrecastBarrelComponents { get; } = new();
+        public ObservableCollection<CulvertComponentItem> CastInPlaceBarrelComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> OutletComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> ApronComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> ManholeComponents { get; } = new();
@@ -319,6 +321,8 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         public string SelectedTab02GroupName => _selectedTab02GroupFilter switch
         {
+            "Precast" => "🧱 Cống đúc sẵn",
+            "CastInPlace" => "🏗️ Cống đổ tại chỗ",
             "Barrel" => "🧱 Thân cống",
             "Outlet" => "🌊 Cửa xả",
             "Apron" => "🛡️ Sân gia cố",
@@ -635,6 +639,7 @@ namespace InfraBIM.CulvertTool.ViewModels
         public RelayCommand LoadFamiliesFromFolderCommand { get; }
         public RelayCommand ScanFamilyParamsCommand { get; }
         public RelayCommand BatchApplyCommand { get; }
+        public RelayCommand ApplyAllCustomParamsToStationRangeCommand { get; }
         public RelayCommand ValidateCommand { get; }
         public RelayCommand ExecutePlacementCommand { get; }
         public RelayCommand CloseCommand { get; }
@@ -687,6 +692,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             ScanFamilyParamsCommand = new RelayCommand(ScanCurrentSelectedFamilyParameters);
             FilterTab02GroupCommand = new RelayCommand<string>(FilterTab02Group);
             BatchApplyCommand = new RelayCommand(ApplyBatchValue);
+            ApplyAllCustomParamsToStationRangeCommand = new RelayCommand(ApplyAllCustomParamsToStationRange);
             ValidateCommand = new RelayCommand(RunValidation);
             ExecutePlacementCommand = new RelayCommand(ExecutePlacement);
             CloseCommand = new RelayCommand(() => RequestClose?.Invoke());
@@ -969,10 +975,80 @@ namespace InfraBIM.CulvertTool.ViewModels
                 AllAvailableFamilies.Add(wrapper);
             }
 
+            InitPrecastBarrelComponents(forceRefresh: true);
+            InitCastInPlaceBarrelComponents(forceRefresh: true);
             InitOutletComponents(forceRefresh: true);
             InitApronComponents(forceRefresh: true);
             InitManholeComponents(forceRefresh: true);
             ApplyAssemblyTemplate(SelectedCulvertTemplateType ?? "CỐNG HỘP ĐÚC SẴN");
+        }
+
+        private void InitPrecastBarrelComponents(bool forceRefresh = false)
+        {
+            if (!forceRefresh && PrecastBarrelComponents.Count > 0) return;
+            PrecastBarrelComponents.Clear();
+
+            PrecastBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đúc sẵn",
+                CategoryType = "Thân cống hộp đúc sẵn",
+                SelectedSymbol = FindSymbol("TNN_CH_THAN CONG", "1.5x1.5") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(f => f.Symbol.FamilyName.Contains("TNN_CH")),
+                OffsetZ = 0.0,
+                Note = "Đốt thân cống hộp đúc sẵn"
+            });
+            PrecastBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đúc sẵn",
+                CategoryType = "Bê tông lót thân cống",
+                SelectedSymbol = FindSymbol("TNN_CH_BE TONG LOT") ?? FindSymbol("TNN_CH_DEM CONG"),
+                OffsetZ = -0.10,
+                Note = "Lớp bê tông lót thân cống đúc sẵn"
+            });
+            PrecastBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đúc sẵn",
+                CategoryType = "Đá dăm đệm thân cống",
+                SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM"),
+                OffsetZ = -0.20,
+                Note = "Lớp đá dăm đệm thân cống đúc sẵn"
+            });
+        }
+
+        private void InitCastInPlaceBarrelComponents(bool forceRefresh = false)
+        {
+            if (!forceRefresh && CastInPlaceBarrelComponents.Count > 0) return;
+            CastInPlaceBarrelComponents.Clear();
+
+            CastInPlaceBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đổ tại chỗ",
+                CategoryType = "Thân cống hộp đổ tại chỗ",
+                SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(f => f.Symbol.FamilyName.Contains("TNN_CH")),
+                OffsetZ = 0.0,
+                Note = "Đốt thân cống hộp đổ tại chỗ (2x3x2)"
+            });
+            CastInPlaceBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đổ tại chỗ",
+                CategoryType = "Bê tông lót thân cống",
+                SelectedSymbol = FindSymbol("TNN_CH_BE TONG LOT_2x3x2") ?? FindSymbol("TNN_CH_DEM CONG_2x3x2") ?? FindSymbol("TNN_CH_BE TONG LOT"),
+                OffsetZ = -0.10,
+                Note = "Lớp đệm / bê tông lót thân cống đổ tại chỗ"
+            });
+            CastInPlaceBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đổ tại chỗ",
+                CategoryType = "Đá dăm đệm thân cống",
+                SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM_2x3x2") ?? FindSymbol("TNN_CH_DA DAM DEM"),
+                OffsetZ = -0.20,
+                Note = "Lớp đá dăm đệm thân cống đổ tại chỗ"
+            });
         }
 
         private void InitOutletComponents(bool forceRefresh = false)
@@ -1136,6 +1212,10 @@ namespace InfraBIM.CulvertTool.ViewModels
             string type = templateType?.ToUpperInvariant() ?? "CỐNG HỘP ĐÚC SẴN";
             SelectedCulvertTemplateType = type;
 
+            foreach (var c in BarrelComponents)
+            {
+                c.PropertyChanged -= OnAssemblyComponentPropertyChanged;
+            }
             BarrelComponents.Clear();
 
             if (type.Contains("ĐỔ TẠI CHỖ") || type.Contains("DO TAI CHO"))
@@ -1145,33 +1225,14 @@ namespace InfraBIM.CulvertTool.ViewModels
                 L_Std = 4.0;
                 Khe_Ho = 0.02;
 
-                BarrelComponents.Add(new CulvertComponentItem
+                if (CastInPlaceBarrelComponents.Count == 0)
                 {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Thân cống hộp đổ tại chỗ",
-                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(f => f.Symbol.FamilyName.Contains("TNN_CH")),
-                    OffsetZ = 0.0,
-                    Note = "Đốt thân cống hộp đổ tại chỗ (2x3x2)"
-                });
-                BarrelComponents.Add(new CulvertComponentItem
+                    InitCastInPlaceBarrelComponents(forceRefresh: true);
+                }
+                foreach (var item in CastInPlaceBarrelComponents)
                 {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Bê tông lót thân cống",
-                    SelectedSymbol = FindSymbol("TNN_CH_BE TONG LOT_2x3x2") ?? FindSymbol("TNN_CH_DEM CONG_2x3x2") ?? FindSymbol("TNN_CH_BE TONG LOT"),
-                    OffsetZ = -0.10,
-                    Note = "Lớp đệm / bê tông lót thân cống đổ tại chỗ"
-                });
-                BarrelComponents.Add(new CulvertComponentItem
-                {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Đá dăm đệm thân cống",
-                    SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM_2x3x2") ?? FindSymbol("TNN_CH_DA DAM DEM"),
-                    OffsetZ = -0.20,
-                    Note = "Lớp đá dăm đệm thân cống đổ tại chỗ"
-                });
+                    BarrelComponents.Add(item);
+                }
             }
             else // CỐNG HỘP ĐÚC SẴN (Mặc định)
             {
@@ -1180,33 +1241,14 @@ namespace InfraBIM.CulvertTool.ViewModels
                 L_Std = 1.0;
                 Khe_Ho = 0.01;
 
-                BarrelComponents.Add(new CulvertComponentItem
+                if (PrecastBarrelComponents.Count == 0)
                 {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Thân cống hộp đúc sẵn",
-                    SelectedSymbol = FindSymbol("TNN_CH_THAN CONG", "1.5x1.5") ?? FindSymbol("TNN_CH_THAN CONG") ?? AllAvailableFamilies.FirstOrDefault(f => f.Symbol.FamilyName.Contains("TNN_CH")),
-                    OffsetZ = 0.0,
-                    Note = "Đốt thân cống hộp đúc sẵn"
-                });
-                BarrelComponents.Add(new CulvertComponentItem
+                    InitPrecastBarrelComponents(forceRefresh: true);
+                }
+                foreach (var item in PrecastBarrelComponents)
                 {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Bê tông lót thân cống",
-                    SelectedSymbol = FindSymbol("TNN_CH_BE TONG LOT") ?? FindSymbol("TNN_CH_DEM CONG"),
-                    OffsetZ = -0.10,
-                    Note = "Lớp bê tông lót thân cống đúc sẵn"
-                });
-                BarrelComponents.Add(new CulvertComponentItem
-                {
-                    IsActive = true,
-                    GroupType = "Thân cống",
-                    CategoryType = "Đá dăm đệm thân cống",
-                    SelectedSymbol = FindSymbol("TNN_CH_DA DAM DEM"),
-                    OffsetZ = -0.20,
-                    Note = "Lớp đá dăm đệm thân cống đúc sẵn"
-                });
+                    BarrelComponents.Add(item);
+                }
             }
 
             SyncAllAssemblyComponents();
@@ -1261,14 +1303,17 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             foreach (var comp in ActiveAssignedFamiliesForTab02)
             {
-                bool isBarrel = comp.GroupType == "Thân cống" || comp.GroupType?.Contains("Thân") == true || BarrelComponents.Contains(comp);
+                bool isPrecast = comp.GroupType == "Cống đúc sẵn" || comp.CategoryType.Contains("đúc sẵn") || PrecastBarrelComponents.Contains(comp);
+                bool isCastInPlace = comp.GroupType == "Cống đổ tại chỗ" || comp.CategoryType.Contains("đổ tại chỗ") || CastInPlaceBarrelComponents.Contains(comp);
                 bool isOutlet = comp.GroupType == "Cửa xả" || comp.GroupType?.Contains("Cửa") == true || OutletComponents.Contains(comp);
                 bool isApron = comp.GroupType == "Sân gia cố" || comp.GroupType?.Contains("Gia cố") == true || comp.GroupType?.Contains("Sân") == true || ApronComponents.Contains(comp);
                 bool isManhole = comp.GroupType == "Hố ga (Hộp nối)" || comp.GroupType?.Contains("Hố") == true || comp.GroupType?.Contains("Hộp") == true || ManholeComponents.Contains(comp);
 
                 bool pass = false;
                 if (f == "All") pass = true;
-                else if (f == "Barrel" && isBarrel) pass = true;
+                else if (f == "Precast" && isPrecast) pass = true;
+                else if (f == "CastInPlace" && isCastInPlace) pass = true;
+                else if (f == "Barrel" && (isPrecast || isCastInPlace)) pass = true;
                 else if (f == "Outlet" && isOutlet) pass = true;
                 else if (f == "Apron" && isApron) pass = true;
                 else if (f == "Manhole" && isManhole) pass = true;
@@ -1293,16 +1338,21 @@ namespace InfraBIM.CulvertTool.ViewModels
         {
             ActiveAssignedFamiliesForTab02.Clear();
 
-            // Gom nhóm theo Family và GroupType để Cửa xả chỉ hiện 1 mục và Sân gia cố chỉ hiện 1 mục
-            // Đúng yêu cầu: "tùy biến của cửa xả giống nhau, tùy biến của sân gia cố giống nhau"
             var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var comp in AssemblyComponents)
+            var allCompsToInspect = new List<CulvertComponentItem>();
+            allCompsToInspect.AddRange(PrecastBarrelComponents);
+            allCompsToInspect.AddRange(CastInPlaceBarrelComponents);
+            allCompsToInspect.AddRange(OutletComponents);
+            allCompsToInspect.AddRange(ApronComponents);
+            allCompsToInspect.AddRange(ManholeComponents);
+
+            foreach (var comp in allCompsToInspect)
             {
                 if (comp.IsActive && comp.SelectedSymbol != null)
                 {
                     string fam = comp.SelectedSymbol.Symbol?.FamilyName ?? comp.CategoryType;
-                    string key = $"{comp.GroupType}_{fam}";
+                    string key = $"{comp.GroupType}_{fam}_{comp.CategoryType}";
                     if (!seenKeys.Contains(key))
                     {
                         seenKeys.Add(key);
@@ -1928,6 +1978,35 @@ namespace InfraBIM.CulvertTool.ViewModels
             UpdateBatchTableForSelectedParam();
 
             MessageBox.Show($"Đã gán giá trị '{BatchApplyValue}' cho tham số '{pName}' của Family '{SelectedParamForBatch.FamilyName}' (Phạm vi cống STT {BatchFromSTT} - {BatchToSTT}, {count} cống).", "Hoàn thành", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        public void ApplyAllCustomParamsToStationRange()
+        {
+            var paramsToApply = FilteredParameterMappings
+                .Where(p => p.IsSelected && !string.IsNullOrWhiteSpace(p.CustomValue))
+                .ToList();
+
+            if (paramsToApply.Count == 0)
+            {
+                MessageBox.Show("Không có tham số nào có giá trị tùy chỉnh để gán cho các lý trình.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            int count = 0;
+            foreach (var r in AllCulvertRows)
+            {
+                if (r.STT >= BatchFromSTT && r.STT <= BatchToSTT)
+                {
+                    foreach (var p in paramsToApply)
+                    {
+                        r.SetParamOverride(p.InternalName, p.CustomValue);
+                    }
+                    count++;
+                }
+            }
+
+            UpdateBatchTableForSelectedParam();
+            MessageBox.Show($"Đã gán thành công {paramsToApply.Count} tham số tùy biến cho {count} lý trình (Phạm vi STT {BatchFromSTT} đến {BatchToSTT}).", "Hoàn tất gán tham số", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         #endregion
 
