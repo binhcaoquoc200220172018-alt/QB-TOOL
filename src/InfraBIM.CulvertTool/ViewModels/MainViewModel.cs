@@ -129,6 +129,173 @@ namespace InfraBIM.CulvertTool.ViewModels
         #endregion
 
         #region Properties - Geometry & Double Culvert Spacing (Decimal Text Inputs)
+        // 1. CỐNG HỘP ĐÚC SẴN (PRECAST)
+        private double _lStdPrecast = 1.0;
+        public double L_Std_Precast
+        {
+            get => _lStdPrecast;
+            set
+            {
+                if (SetProperty(ref _lStdPrecast, value))
+                {
+                    _lStdPrecastText = value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(L_Std_Precast_Text));
+                    _lStd = value;
+                    _lStdText = _lStdPrecastText;
+                    OnPropertyChanged(nameof(L_Std));
+                    OnPropertyChanged(nameof(L_Std_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        private string _lStdPrecastText = "1.00";
+        public string L_Std_Precast_Text
+        {
+            get => _lStdPrecastText;
+            set
+            {
+                if (SetProperty(ref _lStdPrecastText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v > 0)
+                    {
+                        _lStdPrecast = v;
+                        _lStd = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
+        }
+
+        private double _kheHoPrecast = 0.01;
+        public double Khe_Ho_Precast
+        {
+            get => _kheHoPrecast;
+            set
+            {
+                if (SetProperty(ref _kheHoPrecast, value))
+                {
+                    _kheHoPrecastText = value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(Khe_Ho_Precast_Text));
+                    _kheHo = value;
+                    _kheHoText = _kheHoPrecastText;
+                    OnPropertyChanged(nameof(Khe_Ho));
+                    OnPropertyChanged(nameof(Khe_Ho_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        private string _kheHoPrecastText = "0.01";
+        public string Khe_Ho_Precast_Text
+        {
+            get => _kheHoPrecastText;
+            set
+            {
+                if (SetProperty(ref _kheHoPrecastText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v >= 0)
+                    {
+                        _kheHoPrecast = v;
+                        _kheHo = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
+        }
+
+        private int _selectedArrayModeIndexPrecast = 1;
+        public int SelectedArrayModeIndex_Precast
+        {
+            get => _selectedArrayModeIndexPrecast;
+            set
+            {
+                if (SetProperty(ref _selectedArrayModeIndexPrecast, value))
+                {
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        // 2. CỐNG HỘP ĐỔ TẠI CHỖ (CAST-IN-PLACE)
+        private double _lStdCastInPlace = 4.0;
+        public double L_Std_CastInPlace
+        {
+            get => _lStdCastInPlace;
+            set
+            {
+                if (SetProperty(ref _lStdCastInPlace, value))
+                {
+                    _lStdCastInPlaceText = value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(L_Std_CastInPlace_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        private string _lStdCastInPlaceText = "4.00";
+        public string L_Std_CastInPlace_Text
+        {
+            get => _lStdCastInPlaceText;
+            set
+            {
+                if (SetProperty(ref _lStdCastInPlaceText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v > 0)
+                    {
+                        _lStdCastInPlace = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
+        }
+
+        private double _kheHoCastInPlace = 0.02;
+        public double Khe_Ho_CastInPlace
+        {
+            get => _kheHoCastInPlace;
+            set
+            {
+                if (SetProperty(ref _kheHoCastInPlace, value))
+                {
+                    _kheHoCastInPlaceText = value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(Khe_Ho_CastInPlace_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        private string _kheHoCastInPlaceText = "0.02";
+        public string Khe_Ho_CastInPlace_Text
+        {
+            get => _kheHoCastInPlaceText;
+            set
+            {
+                if (SetProperty(ref _kheHoCastInPlaceText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v >= 0)
+                    {
+                        _kheHoCastInPlace = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
+        }
+
+        private int _selectedArrayModeIndexCastInPlace = 1;
+        public int SelectedArrayModeIndex_CastInPlace
+        {
+            get => _selectedArrayModeIndexCastInPlace;
+            set
+            {
+                if (SetProperty(ref _selectedArrayModeIndexCastInPlace, value))
+                {
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        // Thuộc tính tương thích ngược
         private double _lStd = 1.0;
         public double L_Std
         {
@@ -640,6 +807,9 @@ namespace InfraBIM.CulvertTool.ViewModels
         public RelayCommand ScanFamilyParamsCommand { get; }
         public RelayCommand BatchApplyCommand { get; }
         public RelayCommand ApplyAllCustomParamsToStationRangeCommand { get; }
+        public RelayCommand CopyCustomParamsToOtherComponentsCommand { get; }
+        public RelayCommand SelectAllParamsForCopyCommand { get; }
+        public RelayCommand UnselectAllParamsForCopyCommand { get; }
         public RelayCommand ValidateCommand { get; }
         public RelayCommand ExecutePlacementCommand { get; }
         public RelayCommand CloseCommand { get; }
@@ -693,6 +863,9 @@ namespace InfraBIM.CulvertTool.ViewModels
             FilterTab02GroupCommand = new RelayCommand<string>(FilterTab02Group);
             BatchApplyCommand = new RelayCommand(ApplyBatchValue);
             ApplyAllCustomParamsToStationRangeCommand = new RelayCommand(ApplyAllCustomParamsToStationRange);
+            CopyCustomParamsToOtherComponentsCommand = new RelayCommand(CopyCustomParamsToOtherComponents);
+            SelectAllParamsForCopyCommand = new RelayCommand(SelectAllParamsForCopy);
+            UnselectAllParamsForCopyCommand = new RelayCommand(UnselectAllParamsForCopy);
             ValidateCommand = new RelayCommand(RunValidation);
             ExecutePlacementCommand = new RelayCommand(ExecutePlacement);
             CloseCommand = new RelayCommand(() => RequestClose?.Invoke());
@@ -2031,6 +2204,134 @@ namespace InfraBIM.CulvertTool.ViewModels
             UpdateBatchTableForSelectedParam();
             MessageBox.Show($"Đã gán thành công {paramsToApply.Count} tham số tùy biến cho {count} lý trình (Phạm vi STT {BatchFromSTT} đến {BatchToSTT}).", "Hoàn tất gán tham số", MessageBoxButton.OK, MessageBoxImage.Information);
         }
+
+        public void SelectAllParamsForCopy()
+        {
+            foreach (var m in FilteredParameterMappings)
+            {
+                m.IsSelected = true;
+            }
+        }
+
+        public void UnselectAllParamsForCopy()
+        {
+            foreach (var m in FilteredParameterMappings)
+            {
+                m.IsSelected = false;
+            }
+        }
+
+        public void CopyCustomParamsToOtherComponents()
+        {
+            if (SelectedComponentForTab02?.SelectedSymbol?.Symbol == null)
+            {
+                MessageBox.Show("Vui lòng chọn một cấu kiện nguồn trước khi thực hiện sao chép.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var srcComp = SelectedComponentForTab02;
+            string srcGroup = srcComp.GroupType ?? string.Empty;
+            string srcCat = srcComp.CategoryType ?? string.Empty;
+
+            // Xác định danh sách các cấu kiện mục tiêu trong cùng cụm (Cửa xả, Sân gia cố, Cống đúc sẵn, Cống đổ tại chỗ, v.v.)
+            List<CulvertComponentItem> targetComps = new();
+            if (srcGroup.Contains("Cửa") || srcCat.Contains("Cửa") || OutletComponents.Contains(srcComp))
+            {
+                targetComps = OutletComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+            }
+            else if (srcGroup.Contains("Gia cố") || srcCat.Contains("Gia cố") || srcCat.Contains("Sân") || ApronComponents.Contains(srcComp))
+            {
+                targetComps = ApronComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+            }
+            else if (PrecastBarrelComponents.Contains(srcComp))
+            {
+                targetComps = PrecastBarrelComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+            }
+            else if (CastInPlaceBarrelComponents.Contains(srcComp))
+            {
+                targetComps = CastInPlaceBarrelComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+            }
+            else
+            {
+                targetComps = ActiveAssignedFamiliesForTab02.Where(c => c != srcComp && c.GroupType == srcGroup && c.IsActive && c.SelectedSymbol != null).ToList();
+            }
+
+            if (targetComps.Count == 0)
+            {
+                MessageBox.Show($"Không tìm thấy cấu kiện khác trong cùng cụm '{srcGroup}' để sao chép tham số.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Lấy danh sách tham số nguồn được chọn (hoặc tất cả tham số có giá trị tùy biến nếu chưa tick chọn)
+            var itemsToCopy = FilteredParameterMappings
+                .Where(m => m.IsSelected && !string.IsNullOrWhiteSpace(m.CustomValue))
+                .ToList();
+
+            if (itemsToCopy.Count == 0)
+            {
+                itemsToCopy = FilteredParameterMappings.Where(m => m.IsSelected).ToList();
+            }
+
+            if (itemsToCopy.Count == 0)
+            {
+                itemsToCopy = FilteredParameterMappings.Where(m => !string.IsNullOrWhiteSpace(m.CustomValue)).ToList();
+            }
+
+            if (itemsToCopy.Count == 0)
+            {
+                MessageBox.Show("Vui lòng tick chọn ít nhất 1 tham số trong bảng hoặc nhập giá trị tùy biến cần sao chép.", "Chưa chọn tham số", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            int copiedParams = 0;
+            foreach (var tgt in targetComps)
+            {
+                string tgtCat = tgt.CategoryType;
+                string tgtFam = tgt.SelectedSymbol?.Symbol?.FamilyName ?? string.Empty;
+
+                foreach (var srcItem in itemsToCopy)
+                {
+                    var tgtItem = ParameterMappings.FirstOrDefault(m =>
+                        (string.Equals(m.CategoryName, tgtCat, StringComparison.OrdinalIgnoreCase) ||
+                         (string.IsNullOrEmpty(m.CategoryName) && string.Equals(m.FamilyName, tgtFam, StringComparison.OrdinalIgnoreCase))) &&
+                        string.Equals(m.InternalName, srcItem.InternalName, StringComparison.OrdinalIgnoreCase));
+
+                    if (tgtItem != null)
+                    {
+                        tgtItem.CustomValue = srcItem.CustomValue;
+                        tgtItem.IsSelected = true;
+                        copiedParams++;
+                    }
+                    else
+                    {
+                        // Clone nếu cấu kiện đích chưa quét
+                        var cloned = new ParameterMappingItem
+                        {
+                            STT = ParameterMappings.Count + 1,
+                            IsSelected = true,
+                            CategoryName = tgtCat,
+                            FamilyName = tgtFam,
+                            InternalName = srcItem.InternalName,
+                            DisplayName = srcItem.DisplayName,
+                            GroupName = srcItem.GroupName,
+                            IsDimension = srcItem.IsDimension,
+                            IsOther = srcItem.IsOther,
+                            IsVisibility = srcItem.IsVisibility,
+                            DataType = srcItem.DataType,
+                            DefaultValue = srcItem.DefaultValue,
+                            CustomValue = srcItem.CustomValue,
+                            MappedField = srcItem.MappedField,
+                            IsInstance = srcItem.IsInstance
+                        };
+                        ParameterMappings.Add(cloned);
+                        copiedParams++;
+                    }
+                }
+            }
+
+            FilterParameterMappings();
+            MessageBox.Show($"Đã sao chép thành công {itemsToCopy.Count} tham số sang {targetComps.Count} cấu kiện khác trong cụm '{srcGroup}'!\n(Các cấu kiện đã nhận thông số: {string.Join(", ", targetComps.Select(t => t.CategoryType))})", "Sao chép hoàn tất", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
         #endregion
 
         #region Custom BIM Parameters Methods (Tab 03)
@@ -2221,7 +2522,8 @@ namespace InfraBIM.CulvertTool.ViewModels
             ExecutionStatus = "Đang dựng mô hình trong Revit...";
 
             var rowsToBuild = AllCulvertRows.Where(r => r.IsSelected && !r.HasError).ToList();
-            var mode = (SelectedArrayModeIndex == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay;
+            var modePrecast = (SelectedArrayModeIndex_Precast == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay;
+            var modeCastInPlace = (SelectedArrayModeIndex_CastInPlace == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay;
             bool useSurveyPoint = (SelectedCoordSysIndex == 0);
 
             _eventHandler.SetAction(app =>
@@ -2238,12 +2540,14 @@ namespace InfraBIM.CulvertTool.ViewModels
                     OutletComponents.ToList(),
                     ApronComponents.ToList(),
                     ManholeComponents.ToList(),
-                    L_Std,
-                    Khe_Ho,
+                    L_Std_Precast,
+                    Khe_Ho_Precast,
+                    modePrecast,
+                    L_Std_CastInPlace,
+                    Khe_Ho_CastInPlace,
+                    modeCastInPlace,
                     B_Box,
                     KhoangCachTimDefault,
-                    mode,
-                    IsCastInPlaceMode,
                     useSurveyPoint,
                     ComponentMaterials);
 

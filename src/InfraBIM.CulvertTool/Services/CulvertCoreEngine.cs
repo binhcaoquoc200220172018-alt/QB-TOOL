@@ -72,6 +72,51 @@ namespace InfraBIM.CulvertTool.Services
             bool useSurveyPoint = true,
             IEnumerable<CulvertMaterialItem>? materialSettings = null)
         {
+            return BuildAllCulvertsV2(
+                doc,
+                culvertList,
+                bimConfig,
+                customBimParams,
+                familyParameterMappings,
+                precastBarrelComponents,
+                castInPlaceBarrelComponents,
+                outletComponents,
+                apronComponents,
+                manholeComponents,
+                lStdM,
+                jointGapM,
+                arrayMode,
+                lStdM,
+                jointGapM,
+                arrayMode,
+                bBoxM,
+                defaultKhoangCachTim,
+                useSurveyPoint,
+                materialSettings);
+        }
+
+        public static (int SuccessCount, int ErrorCount, List<string> Logs) BuildAllCulvertsV2(
+            Document doc,
+            IList<CulvertRowData> culvertList,
+            BimInfoConfig bimConfig,
+            IEnumerable<CustomBimParameterItem>? customBimParams,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            IList<CulvertComponentItem> precastBarrelComponents,
+            IList<CulvertComponentItem> castInPlaceBarrelComponents,
+            IList<CulvertComponentItem> outletComponents,
+            IList<CulvertComponentItem> apronComponents,
+            IList<CulvertComponentItem> manholeComponents,
+            double lStdPrecastM,
+            double jointGapPrecastM,
+            CulvertArrayMode arrayModePrecast,
+            double lStdCastInPlaceM,
+            double jointGapCastInPlaceM,
+            CulvertArrayMode arrayModeCastInPlace,
+            double bBoxM,
+            double defaultKhoangCachTim,
+            bool useSurveyPoint = true,
+            IEnumerable<CulvertMaterialItem>? materialSettings = null)
+        {
             var logs = new List<string>();
             int successCount = 0;
             int errorCount = 0;
@@ -89,6 +134,11 @@ namespace InfraBIM.CulvertTool.Services
                 // 1. Kích hoạt tất cả Family Symbol được dùng trước khi rải
                 using (var tAct = new Transaction(doc, "Kích hoạt Family Symbols"))
                 {
+                    var failOptsAct = tAct.GetFailureHandlingOptions();
+                    failOptsAct.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
+                    failOptsAct.SetClearAfterRollback(true);
+                    tAct.SetFailureHandlingOptions(failOptsAct);
+
                     tAct.Start();
                     var allComps = (precastBarrelComponents ?? new List<CulvertComponentItem>())
                         .Concat(castInPlaceBarrelComponents ?? new List<CulvertComponentItem>())
@@ -119,6 +169,11 @@ namespace InfraBIM.CulvertTool.Services
                     {
                         try
                         {
+                            var failOpts = subT.GetFailureHandlingOptions();
+                            failOpts.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
+                            failOpts.SetClearAfterRollback(true);
+                            subT.SetFailureHandlingOptions(failOpts);
+
                             subT.Start();
 
                             // Phân định dòng cống này thuộc loại Đúc sẵn hay Đổ tại chỗ
@@ -131,6 +186,9 @@ namespace InfraBIM.CulvertTool.Services
                                 (row.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
 
                             var targetBarrelList = isRowCastInPlace ? castInPlaceBarrelComponents : precastBarrelComponents;
+                            double curLStd = isRowCastInPlace ? lStdCastInPlaceM : lStdPrecastM;
+                            double curJointGap = isRowCastInPlace ? jointGapCastInPlaceM : jointGapPrecastM;
+                            CulvertArrayMode curArrayMode = isRowCastInPlace ? arrayModeCastInPlace : arrayModePrecast;
 
                             // Tự động nhận diện / bảo toàn Family tương ứng cho từng dòng cống
                             var curBarrel = ResolveComponentsForCulvert(doc, targetBarrelList, row);
@@ -148,11 +206,11 @@ namespace InfraBIM.CulvertTool.Services
                                 curOutlet,
                                 curApron,
                                 curManhole,
-                                lStdM,
-                                jointGapM,
+                                curLStd,
+                                curJointGap,
                                 bBoxM,
                                 defaultKhoangCachTim,
-                                arrayMode,
+                                curArrayMode,
                                 isRowCastInPlace,
                                 useSurveyPoint,
                                 materialSettings);
@@ -236,6 +294,7 @@ namespace InfraBIM.CulvertTool.Services
                         refPt.Position = points[i];
                     }
                 }
+                try { doc.Regenerate(); } catch { }
                 return inst;
             }
             else
@@ -700,9 +759,9 @@ namespace InfraBIM.CulvertTool.Services
 
                 string suffix = isUpstream ? "TL" : "HL";
                 string tenCK = $"{comp.CategoryType}_{suffix}";
-                BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "CỬA XẢ THƯỢNG LƯU" : "CỬA XẢ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z);
-                BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, "Cửa xả");
-                BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Cửa xả");
+                try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "CỬA XẢ THƯỢNG LƯU" : "CỬA XẢ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z); } catch { }
+                try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, comp.CategoryType ?? "Cửa xả"); } catch { }
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Cửa xả"); } catch { }
                 TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "");
             }
         }
@@ -787,9 +846,9 @@ namespace InfraBIM.CulvertTool.Services
 
                 string suffix = isUpstream ? "TL" : "HL";
                 string tenCK = $"{comp.CategoryType}_{suffix}";
-                BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "SÂN GIA CỐ THƯỢNG LƯU" : "SÂN GIA CỐ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z);
-                BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, "Sân gia cố");
-                BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Sân gia cố");
+                try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "SÂN GIA CỐ THƯỢNG LƯU" : "SÂN GIA CỐ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z); } catch { }
+                try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, comp.CategoryType ?? "Sân gia cố"); } catch { }
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Sân gia cố"); } catch { }
                 TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "");
             }
         }
@@ -1232,6 +1291,35 @@ namespace InfraBIM.CulvertTool.Services
             {
                 BimMaterialService.ApplyMaterialToInstance(doc, inst, item);
             }
+        }
+    }
+
+    /// <summary>
+    /// Bộ xử lý cảnh báo tự động triệt tiêu các thông báo Warning/Failures modal của Revit
+    /// Giúp tiến trình dựng hình không bị chặn lại bởi các hộp thoại thông báo lỗi phụ của Family
+    /// </summary>
+    public class SuppressAllWarningsFailuresPreprocessor : IFailuresPreprocessor
+    {
+        public FailureProcessingResult PreprocessFailures(FailuresAccessor failuresAccessor)
+        {
+            var failureMessages = failuresAccessor.GetFailureMessages();
+            foreach (var fmsg in failureMessages)
+            {
+                var severity = fmsg.GetSeverity();
+                if (severity == FailureSeverity.Warning)
+                {
+                    failuresAccessor.DeleteWarning(fmsg);
+                }
+                else if (severity == FailureSeverity.Error)
+                {
+                    if (failuresAccessor.IsFailureResolutionPermitted(fmsg))
+                    {
+                        failuresAccessor.ResolveFailure(fmsg);
+                        return FailureProcessingResult.ProceedWithCommit;
+                    }
+                }
+            }
+            return FailureProcessingResult.Continue;
         }
     }
 }

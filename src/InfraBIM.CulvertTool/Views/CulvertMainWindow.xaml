@@ -660,35 +660,55 @@
                             </TabControl>
                         </GroupBox>
 
-                        <!-- KHUNG 3: THIẾT LẬP RẢI ĐỐT & HÌNH HỌC -->
-                        <GroupBox Header="3. THIẾT LẬP RẢI ĐỐT &amp; HÌNH HỌC" Grid.Column="2">
-                            <StackPanel Margin="1">
-                                <Border Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="Đang chọn: " Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
-                                        <TextBlock Text="{Binding SelectedCulvertTemplateType}" Foreground="{StaticResource CyanLight}" FontWeight="Bold" FontSize="11.5"/>
-                                    </StackPanel>
-                                </Border>
+                        <!-- KHUNG 3: THIẾT LẬP RẢI ĐỐT & HÌNH HỌC (TÁCH ĐỘC LẬP ĐÚC SẴN & ĐỔ TẠI CHỖ) -->
+                        <GroupBox Header="3. THIẾT LẬP RẢI ĐỐT &amp; HÌNH HỌC (ĐÚC SẴN &amp; ĐỔ TẠI CHỖ)" Grid.Column="2">
+                            <TabControl Background="Transparent" BorderThickness="0" Margin="0,1,0,0">
+                                <!-- SUB-TAB 1: RẢI CỐNG ĐÚC SẴN -->
+                                <TabItem Header="📦 ĐÚC SẴN" Padding="8,3" FontSize="11">
+                                    <StackPanel Margin="1,4,1,1">
+                                        <Grid Margin="0,2,0,5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Margin="1">
+                                                <TextBlock Text="L đốt điển hình (m):" Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
+                                                <TextBox Text="{Binding L_Std_Precast_Text, UpdateSourceTrigger=PropertyChanged}" ToolTip="Chiều dài đốt cống đúc sẵn chuẩn (m)"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="1">
+                                                <TextBlock Text="Khe hở nối (m):" Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
+                                                <TextBox Text="{Binding Khe_Ho_Precast_Text, UpdateSourceTrigger=PropertyChanged}" ToolTip="Khe hở mối nối cống đúc sẵn (0.01m)"/>
+                                            </StackPanel>
+                                        </Grid>
 
-                                <Grid Margin="0,2,0,5">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Margin="1">
-                                        <TextBlock Text="L đốt điển hình (m):" Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
-                                        <TextBox Text="{Binding L_Std_Text, UpdateSourceTrigger=PropertyChanged}" ToolTip="Chiều dài đốt cống chuẩn (m)"/>
+                                        <TextBlock Text="Phương thức rải đốt:" Margin="0,3,0,2" Foreground="{StaticResource TextMuted}"/>
+                                        <ComboBox ItemsSource="{Binding ArrayModes}" SelectedIndex="{Binding SelectedArrayModeIndex_Precast}"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="1" Margin="1">
-                                        <TextBlock Text="Khe hở mối nối (m):" Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
-                                        <TextBox Text="{Binding Khe_Ho_Text, UpdateSourceTrigger=PropertyChanged}" ToolTip="Khe hở mối nối cống (0.01m cống hộp đúc sẵn; 0.02m khe co giãn cống đổ tại chỗ)"/>
+                                </TabItem>
+
+                                <!-- SUB-TAB 2: RẢI CỐNG ĐỔ TẠI CHỖ -->
+                                <TabItem Header="🏗️ ĐỔ TẠI CHỖ" Padding="8,3" FontSize="11">
+                                    <StackPanel Margin="1,4,1,1">
+                                        <Grid Margin="0,2,0,5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Margin="1">
+                                                <TextBlock Text="L đốt điển hình (m):" Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
+                                                <TextBox Text="{Binding L_Std_CastInPlace_Text, UpdateSourceTrigger=PropertyChanged}" ToolTip="Chiều dài đốt cống đổ tại chỗ chuẩn (m)"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="1">
+                                                <TextBlock Text="Khe co giãn (m):" Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
+                                                <TextBox Text="{Binding Khe_Ho_CastInPlace_Text, UpdateSourceTrigger=PropertyChanged}" ToolTip="Khe co giãn cống đổ tại chỗ (0.02m)"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <TextBlock Text="Phương thức rải đốt:" Margin="0,3,0,2" Foreground="{StaticResource TextMuted}"/>
+                                        <ComboBox ItemsSource="{Binding ArrayModes}" SelectedIndex="{Binding SelectedArrayModeIndex_CastInPlace}"/>
                                     </StackPanel>
-                                </Grid>
-
-                                <TextBlock Text="Phương thức rải đốt:" Margin="0,3,0,2" Foreground="{StaticResource TextMuted}"/>
-                                <ComboBox ItemsSource="{Binding ArrayModes}" SelectedIndex="{Binding SelectedArrayModeIndex}"/>
-
-                            </StackPanel>
+                                </TabItem>
+                            </TabControl>
                         </GroupBox>
                     </Grid>
 
@@ -894,7 +914,10 @@
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
-                                    <Button Grid.Column="2" Content="🔄 Quét tham số" Command="{Binding ScanFamilyParamsCommand}" Margin="5,0,0,0" Padding="12,4" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="5,0,0,0">
+                                        <Button Content="🔄 Quét tham số" Command="{Binding ScanFamilyParamsCommand}" Margin="0,0,4,0" Padding="10,4" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
+                                        <Button Content="📋 SAO CHÉP SANG CẤU KIỆN CÙNG CỤM (CỬA XẢ / SÂN GIA CỐ)" Command="{Binding CopyCustomParamsToOtherComponentsCommand}" Padding="10,4" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" ToolTip="Quét chọn/tick tham số ở bảng bên dưới rồi bấm sao chép để áp dụng ngay sang tất cả cấu kiện khác trong cùng cụm (Cửa xả / Sân gia cố)"/>
+                                    </StackPanel>
                                 </Grid>
 
                                 <!-- 3. BỘ LỌC THAM SỐ ĐƠN GIẢN THEO KHUNG ĐỎ (TẤT CẢ / DIMENSIONS / OTHER) -->
@@ -952,6 +975,12 @@
                                             <Border Width="1" Background="{StaticResource NavyBorder}" Margin="2,2,8,2"/>
                                             <CheckBox Content="🏷️ Type" IsChecked="{Binding ShowTypeParams}" Foreground="{StaticResource TextWhite}" VerticalAlignment="Center" Margin="0,0,6,0" ToolTip="Hiển thị thuộc tính Loại (Type)"/>
                                             <CheckBox Content="⚡ Instance" IsChecked="{Binding ShowInstanceParams}" Foreground="{StaticResource MintLight}" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Hiển thị thuộc tính Biến thể (Instance)"/>
+
+                                            <!-- Chọn để sao chép tham số -->
+                                            <Border Width="1" Background="{StaticResource NavyBorder}" Margin="2,2,8,2"/>
+                                            <TextBlock Text="Chọn chép:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                            <Button Content="☑️ Tất cả" Command="{Binding SelectAllParamsForCopyCommand}" Margin="0,0,4,0" Padding="6,2" FontSize="11" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Chọn tất cả tham số để sao chép"/>
+                                            <Button Content="◻️ Bỏ chọn" Command="{Binding UnselectAllParamsForCopyCommand}" Margin="0,0,8,0" Padding="6,2" FontSize="11" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Bỏ chọn tất cả tham số"/>
                                         </StackPanel>
 
                                         <!-- Ô tìm kiếm tham số nhanh -->
@@ -977,6 +1006,7 @@
                                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                                       ScrollViewer.CanContentScroll="True">
                                 <DataGrid.Columns>
+                                    <DataGridCheckBoxColumn Header="Chọn" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="50" MinWidth="45"/>
                                     <DataGridTextColumn Header="STT" Binding="{Binding STT}" IsReadOnly="True" Width="55" MinWidth="45" FontWeight="Bold"/>
                                     <DataGridTextColumn Header="Tham số (Family Order)" Binding="{Binding InternalName}" IsReadOnly="True" Width="260" MinWidth="180" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
                                     <DataGridTextColumn Header="Nhóm tham số" Binding="{Binding GroupName}" IsReadOnly="True" Width="140" MinWidth="110"/>

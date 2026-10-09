@@ -175,34 +175,29 @@ namespace InfraBIM.CulvertTool.Services
                         string cleaned = valStr.Replace("mm", "").Replace("m", "").Replace("°", "").Trim();
                         if (double.TryParse(cleaned, out double dVal))
                         {
-                            double internalVal = dVal;
-                            try
+                            double internalVal;
+                            bool isAngle = (m.DataType != null && m.DataType.IndexOf("Angle", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                           pNameUpper.Contains("GOC") || pNameUpper.Contains("GX") || pNameUpper.Contains("ANGLE");
+
+                            if (isAngle)
                             {
-                                var dt = p.Definition.GetDataType();
-                                if (dt == SpecTypeId.Length)
-                                {
-                                    internalVal = (Math.Abs(dVal) >= 10.0)
-                                        ? UnitUtils.ConvertToInternalUnits(dVal, UnitTypeId.Millimeters)
-                                        : UnitUtils.ConvertToInternalUnits(dVal, UnitTypeId.Meters);
-                                }
-                                else if (dt == SpecTypeId.Angle)
-                                {
-                                    internalVal = UnitUtils.ConvertToInternalUnits(dVal, UnitTypeId.Degrees);
-                                }
+                                // Góc nhập vào là độ (Degrees) -> chuyển sang Radians chuẩn Revit DB
+                                internalVal = dVal * Math.PI / 180.0;
                             }
-                            catch
+                            else
                             {
+                                // Chiều dài: nếu >= 10 coi là mm, < 10 coi là mét
                                 internalVal = (Math.Abs(dVal) >= 10.0)
                                     ? UnitUtils.ConvertToInternalUnits(dVal, UnitTypeId.Millimeters)
                                     : UnitUtils.ConvertToInternalUnits(dVal, UnitTypeId.Meters);
                             }
 
-                            p.Set(internalVal);
+                            try { p.Set(internalVal); } catch { }
                         }
                     }
                     else if (p.StorageType == StorageType.String)
                     {
-                        p.Set(valStr);
+                        try { p.Set(valStr); } catch { }
                     }
                     else if (p.StorageType == StorageType.Integer)
                     {
