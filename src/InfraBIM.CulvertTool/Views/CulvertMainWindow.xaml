@@ -916,7 +916,7 @@
                                     </ComboBox>
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="5,0,0,0">
                                         <Button Content="🔄 Quét tham số" Command="{Binding ScanFamilyParamsCommand}" Margin="0,0,4,0" Padding="10,4" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
-                                        <Button Content="📋 SAO CHÉP SANG CẤU KIỆN CÙNG CỤM (CỬA XẢ / SÂN GIA CỐ)" Command="{Binding CopyCustomParamsToOtherComponentsCommand}" Padding="10,4" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" ToolTip="Quét chọn/tick tham số ở bảng bên dưới rồi bấm sao chép để áp dụng ngay sang tất cả cấu kiện khác trong cùng cụm (Cửa xả / Sân gia cố)"/>
+                                        <Button Content="📋 SAO CHÉP GIÁ TRỊ ĐÃ NHẬP SANG CÙNG CỤM (CỬA XẢ / SÂN GIA CỐ)" Command="{Binding CopyCustomParamsToOtherComponentsCommand}" Padding="10,4" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" ToolTip="Sao chép các giá trị số liệu bạn đã nhập ở cột 'Giá trị tùy biến' sang các cấu kiện khác trong cùng cụm (Cửa xả / Sân gia cố). Chỉ sao chép giá trị số liệu, không sao chép tham số và giữ nguyên các biến Yes/No."/>
                                     </StackPanel>
                                 </Grid>
 
@@ -976,11 +976,11 @@
                                             <CheckBox Content="🏷️ Type" IsChecked="{Binding ShowTypeParams}" Foreground="{StaticResource TextWhite}" VerticalAlignment="Center" Margin="0,0,6,0" ToolTip="Hiển thị thuộc tính Loại (Type)"/>
                                             <CheckBox Content="⚡ Instance" IsChecked="{Binding ShowInstanceParams}" Foreground="{StaticResource MintLight}" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Hiển thị thuộc tính Biến thể (Instance)"/>
 
-                                            <!-- Chọn để sao chép tham số -->
+                                            <!-- Chọn để sao chép giá trị -->
                                             <Border Width="1" Background="{StaticResource NavyBorder}" Margin="2,2,8,2"/>
-                                            <TextBlock Text="Chọn chép:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                            <Button Content="☑️ Tất cả" Command="{Binding SelectAllParamsForCopyCommand}" Margin="0,0,4,0" Padding="6,2" FontSize="11" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Chọn tất cả tham số để sao chép"/>
-                                            <Button Content="◻️ Bỏ chọn" Command="{Binding UnselectAllParamsForCopyCommand}" Margin="0,0,8,0" Padding="6,2" FontSize="11" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Bỏ chọn tất cả tham số"/>
+                                            <TextBlock Text="Chọn giá trị:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                            <Button Content="☑️ Tất cả" Command="{Binding SelectAllParamsForCopyCommand}" Margin="0,0,4,0" Padding="6,2" FontSize="11" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Chọn tất cả các giá trị số liệu đã nhập để sao chép"/>
+                                            <Button Content="◻️ Bỏ chọn" Command="{Binding UnselectAllParamsForCopyCommand}" Margin="0,0,8,0" Padding="6,2" FontSize="11" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Bỏ chọn tất cả giá trị"/>
                                         </StackPanel>
 
                                         <!-- Ô tìm kiếm tham số nhanh -->
