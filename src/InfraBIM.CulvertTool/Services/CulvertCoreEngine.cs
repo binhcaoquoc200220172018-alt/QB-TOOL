@@ -493,8 +493,17 @@ namespace InfraBIM.CulvertTool.Services
                         var fresh = copy.SelectedSymbol.GetFreshSymbol(doc);
                         if (fresh != null)
                         {
-                            copy.SelectedSymbol = new FamilySymbolWrapper(fresh);
+                            copy.SelectedSymbol.Symbol = fresh;
                             ActivateSymbol(fresh);
+                        }
+                        else
+                        {
+                            var matchSym = ResolveFamilyForCulvert(allSymbols, loaiCong, cauKien, ghiChu, row.SoCua, row.KhauDo, copy.CategoryType ?? "");
+                            if (matchSym != null)
+                            {
+                                copy.SelectedSymbol = new FamilySymbolWrapper(matchSym);
+                                ActivateSymbol(matchSym);
+                            }
                         }
                     }
                     else
@@ -758,14 +767,19 @@ namespace InfraBIM.CulvertTool.Services
 
             foreach (var comp in outletComponents)
             {
-                if (!comp.IsActive || comp.SelectedSymbol?.Symbol == null) continue;
+                if (!comp.IsActive || comp.SelectedSymbol == null) continue;
 
-                var sym = comp.SelectedSymbol.Symbol;
+                var sym = comp.SelectedSymbol.GetFreshSymbol(doc);
+                if (sym == null) continue;
+
                 string catUpper = (comp.CategoryType ?? "").ToUpperInvariant();
                 FamilySymbol targetSym = sym;
 
                 // Tự động nhận diện FamilySymbol tương ứng cho 5 bộ phận Cửa xả
-                if (sym.Family != null)
+                Family? symFam = null;
+                try { if (sym.IsValidObject) symFam = sym.Family; } catch { }
+
+                if (symFam != null && symFam.IsValidObject)
                 {
                     string targetTypeName = string.Empty;
                     if (catUpper.Contains("TƯỜNG ĐẦU") || catUpper.Contains("TUONG DAU")) targetTypeName = "TUONG DAU";
@@ -776,14 +790,18 @@ namespace InfraBIM.CulvertTool.Services
 
                     if (!string.IsNullOrEmpty(targetTypeName))
                     {
-                        foreach (ElementId symId in sym.Family.GetFamilySymbolIds())
+                        try
                         {
-                            if (doc.GetElement(symId) is FamilySymbol fs && fs.Name.IndexOf(targetTypeName, StringComparison.OrdinalIgnoreCase) >= 0)
+                            foreach (ElementId symId in symFam.GetFamilySymbolIds())
                             {
-                                targetSym = fs;
-                                break;
+                                if (doc.GetElement(symId) is FamilySymbol fs && fs.IsValidObject && fs.Name.IndexOf(targetTypeName, StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    targetSym = fs;
+                                    break;
+                                }
                             }
                         }
+                        catch { }
                     }
                 }
 
@@ -865,26 +883,35 @@ namespace InfraBIM.CulvertTool.Services
 
             foreach (var comp in apronComponents)
             {
-                if (!comp.IsActive || comp.SelectedSymbol?.Symbol == null) continue;
+                if (!comp.IsActive || comp.SelectedSymbol == null) continue;
 
-                var sym = comp.SelectedSymbol.Symbol;
+                var sym = comp.SelectedSymbol.GetFreshSymbol(doc);
+                if (sym == null) continue;
+
                 string catUpper = (comp.CategoryType ?? "").ToUpperInvariant();
                 FamilySymbol targetSym = sym;
 
-                if (sym.Family != null)
+                Family? symFam = null;
+                try { if (sym.IsValidObject) symFam = sym.Family; } catch { }
+
+                if (symFam != null && symFam.IsValidObject)
                 {
                     string targetTypeName = string.Empty;
                     if (catUpper.Contains("LÓT") || catUpper.Contains("LOT") || catUpper.Contains("BTL")) targetTypeName = "BE TONG LOT";
                     else targetTypeName = "SAN GIA CO";
 
-                    foreach (ElementId symId in sym.Family.GetFamilySymbolIds())
+                    try
                     {
-                        if (doc.GetElement(symId) is FamilySymbol fs && fs.Name.IndexOf(targetTypeName, StringComparison.OrdinalIgnoreCase) >= 0)
+                        foreach (ElementId symId in symFam.GetFamilySymbolIds())
                         {
-                            targetSym = fs;
-                            break;
+                            if (doc.GetElement(symId) is FamilySymbol fs && fs.IsValidObject && fs.Name.IndexOf(targetTypeName, StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                targetSym = fs;
+                                break;
+                            }
                         }
                     }
+                    catch { }
                 }
 
                 ActivateSymbol(targetSym);
@@ -959,14 +986,17 @@ namespace InfraBIM.CulvertTool.Services
             // Lấy bề rộng ngoài thực tế của Hộp nối (HOP NOI CONG DOC)
             // Kích thước thực tế của Family là 2.10m (thay vì 1.50m) để mép BTL/đá dừng chính xác sát mép hộp nối (Hình 4, 5)
             double actualManholeB_M = 2.10;
-            var manholeComp = manholeComponents.FirstOrDefault(c => c.IsActive && c.SelectedSymbol?.Symbol != null);
-            if (manholeComp?.SelectedSymbol?.Symbol != null)
+            var manholeComp = manholeComponents.FirstOrDefault(c => c.IsActive && c.SelectedSymbol != null);
+            if (manholeComp?.SelectedSymbol != null)
             {
-                var mSym = manholeComp.SelectedSymbol.Symbol;
-                var pB = mSym.LookupParameter("HOP NOI CONG_B") ?? mSym.LookupParameter("B_BOX") ?? mSym.LookupParameter("B");
-                if (pB != null && pB.StorageType == StorageType.Double && pB.AsDouble() > 0.1)
+                var mSym = manholeComp.SelectedSymbol.GetFreshSymbol(doc);
+                if (mSym != null)
                 {
-                    actualManholeB_M = UnitUtils.ConvertFromInternalUnits(pB.AsDouble(), UnitTypeId.Meters);
+                    var pB = mSym.LookupParameter("HOP NOI CONG_B") ?? mSym.LookupParameter("B_BOX") ?? mSym.LookupParameter("B");
+                    if (pB != null && pB.StorageType == StorageType.Double && pB.AsDouble() > 0.1)
+                    {
+                        actualManholeB_M = UnitUtils.ConvertFromInternalUnits(pB.AsDouble(), UnitTypeId.Meters);
+                    }
                 }
             }
             if (actualManholeB_M <= 0.1)
@@ -1080,8 +1110,8 @@ namespace InfraBIM.CulvertTool.Services
         private static bool IsBeddingComponent(CulvertComponentItem comp)
         {
             string cat = (comp.CategoryType ?? "").ToUpperInvariant();
-            string fam = (comp.SelectedSymbol?.Symbol?.FamilyName ?? "").ToUpperInvariant();
-            string name = (comp.SelectedSymbol?.Symbol?.Name ?? "").ToUpperInvariant();
+            string fam = (comp.SelectedSymbol?.FamilyName ?? "").ToUpperInvariant();
+            string name = (comp.SelectedSymbol?.TypeName ?? "").ToUpperInvariant();
             string full = $"{cat} {fam} {name}";
 
             return full.Contains("BE TONG LOT") || full.Contains("BÊ TÔNG LÓT") || full.Contains("BTL") ||
@@ -1110,9 +1140,11 @@ namespace InfraBIM.CulvertTool.Services
 
             foreach (var comp in beddingComponents)
             {
-                if (!comp.IsActive || comp.SelectedSymbol?.Symbol == null) continue;
+                if (!comp.IsActive || comp.SelectedSymbol == null) continue;
 
-                var sym = comp.SelectedSymbol.Symbol;
+                var sym = comp.SelectedSymbol.GetFreshSymbol(doc);
+                if (sym == null) continue;
+
                 ActivateSymbol(sym);
 
                 double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
@@ -1172,9 +1204,11 @@ namespace InfraBIM.CulvertTool.Services
 
             foreach (var comp in manholeComponents)
             {
-                if (!comp.IsActive || comp.SelectedSymbol?.Symbol == null) continue;
+                if (!comp.IsActive || comp.SelectedSymbol == null) continue;
 
-                var sym = comp.SelectedSymbol.Symbol;
+                var sym = comp.SelectedSymbol.GetFreshSymbol(doc);
+                if (sym == null) continue;
+
                 ActivateSymbol(sym);
 
                 double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
@@ -1318,9 +1352,11 @@ namespace InfraBIM.CulvertTool.Services
 
             foreach (var comp in barrelComponents)
             {
-                if (!comp.IsActive || comp.SelectedSymbol?.Symbol == null) continue;
+                if (!comp.IsActive || comp.SelectedSymbol == null) continue;
 
-                var sym = comp.SelectedSymbol.Symbol;
+                var sym = comp.SelectedSymbol.GetFreshSymbol(doc);
+                if (sym == null) continue;
+
                 ActivateSymbol(sym);
 
                 double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);

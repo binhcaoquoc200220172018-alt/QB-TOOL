@@ -2014,9 +2014,9 @@ namespace InfraBIM.CulvertTool.ViewModels
         #region Tab 02 Parameter Mapping Methods
         private void EnsureComponentParametersScanned(CulvertComponentItem comp)
         {
-            if (comp?.SelectedSymbol?.Symbol == null || Doc == null) return;
-            string cat = comp.CategoryType;
-            var sym = comp.SelectedSymbol.Symbol;
+            var sym = comp?.SelectedSymbol?.GetFreshSymbol(Doc);
+            if (sym == null || Doc == null) return;
+            string cat = comp!.CategoryType;
 
             bool hasParams = ParameterMappings.Any(m => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase));
             if (!hasParams)
@@ -2036,23 +2036,24 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         private void OnSelectedFamilyForTab02Changed()
         {
-            if (SelectedComponentForTab02?.SelectedSymbol?.Symbol == null)
+            var sym = SelectedComponentForTab02?.SelectedSymbol?.GetFreshSymbol(Doc);
+            if (sym == null)
             {
                 FilterParameterMappings();
                 return;
             }
 
-            EnsureComponentParametersScanned(SelectedComponentForTab02);
+            EnsureComponentParametersScanned(SelectedComponentForTab02!);
             FilterParameterMappings();
         }
 
         private void FilterParameterMappings()
         {
             FilteredParameterMappings.Clear();
-            if (SelectedComponentForTab02?.SelectedSymbol?.Symbol == null) return;
+            var sym = SelectedComponentForTab02?.SelectedSymbol?.GetFreshSymbol(Doc);
+            if (sym == null) return;
 
-            var sym = SelectedComponentForTab02.SelectedSymbol.Symbol;
-            string cat = SelectedComponentForTab02.CategoryType;
+            string cat = SelectedComponentForTab02!.CategoryType;
 
             foreach (var m in ParameterMappings)
             {
@@ -2122,14 +2123,14 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         private void ScanCurrentSelectedFamilyParameters()
         {
-            if (SelectedComponentForTab02?.SelectedSymbol?.Symbol == null)
+            var sym = SelectedComponentForTab02?.SelectedSymbol?.GetFreshSymbol(Doc);
+            if (sym == null)
             {
                 MessageBox.Show("Vui lòng chọn một Family trong danh sách để quét tham số.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            var sym = SelectedComponentForTab02.SelectedSymbol.Symbol;
-            string cat = SelectedComponentForTab02.CategoryType;
+            string cat = SelectedComponentForTab02!.CategoryType;
 
             _eventHandler.SetAction(app =>
             {
@@ -2246,13 +2247,14 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         public void CopyCustomParamsToOtherComponents()
         {
-            if (SelectedComponentForTab02?.SelectedSymbol?.Symbol == null)
+            var sym = SelectedComponentForTab02?.SelectedSymbol?.GetFreshSymbol(Doc);
+            if (sym == null)
             {
                 MessageBox.Show("Vui lòng chọn một cấu kiện nguồn trước khi thực hiện sao chép.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            var srcComp = SelectedComponentForTab02;
+            var srcComp = SelectedComponentForTab02!;
             string srcGroup = srcComp.GroupType ?? string.Empty;
             string srcCat = srcComp.CategoryType ?? string.Empty;
 

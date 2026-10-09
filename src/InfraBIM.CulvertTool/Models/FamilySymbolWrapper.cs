@@ -17,8 +17,22 @@ namespace InfraBIM.CulvertTool.Models
         {
             get
             {
-                if (_symbol != null && _symbol.IsValidObject) return _symbol;
-                return _symbol;
+                if (_symbol != null)
+                {
+                    try
+                    {
+                        if (_symbol.IsValidObject)
+                        {
+                            var dummy = _symbol.Id;
+                            return _symbol;
+                        }
+                    }
+                    catch
+                    {
+                        _symbol = null;
+                    }
+                }
+                return null;
             }
             set => _symbol = value;
         }
@@ -26,39 +40,120 @@ namespace InfraBIM.CulvertTool.Models
         public FamilySymbolWrapper(FamilySymbol sym)
         {
             _symbol = sym;
-            Id = sym.Id;
-            FamilyName = sym.FamilyName ?? string.Empty;
-            TypeName = sym.Name ?? string.Empty;
+
+            ElementId id = ElementId.InvalidElementId;
+            string famName = string.Empty;
+            string typeName = string.Empty;
+
+            try
+            {
+                if (sym.IsValidObject)
+                {
+                    id = sym.Id;
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (sym.IsValidObject)
+                {
+                    famName = sym.FamilyName ?? string.Empty;
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (sym.IsValidObject)
+                {
+                    typeName = sym.Name ?? string.Empty;
+                }
+            }
+            catch { }
+
+            Id = id;
+            FamilyName = famName;
+            TypeName = typeName;
+            DisplayName = $"{FamilyName} : {TypeName}";
+        }
+
+        public FamilySymbolWrapper(ElementId id, string familyName, string typeName)
+        {
+            _symbol = null;
+            Id = id ?? ElementId.InvalidElementId;
+            FamilyName = familyName ?? string.Empty;
+            TypeName = typeName ?? string.Empty;
             DisplayName = $"{FamilyName} : {TypeName}";
         }
 
         public FamilySymbol? GetFreshSymbol(Document? doc)
         {
-            if (_symbol != null && _symbol.IsValidObject) return _symbol;
+            if (_symbol != null)
+            {
+                try
+                {
+                    if (_symbol.IsValidObject)
+                    {
+                        var testId = _symbol.Id;
+                        if (doc != null && doc.IsValidObject)
+                        {
+                            var elem = doc.GetElement(testId);
+                            if (elem is FamilySymbol fs && fs.IsValidObject)
+                            {
+                                _symbol = fs;
+                                return fs;
+                            }
+                        }
+                        else
+                        {
+                            return _symbol;
+                        }
+                    }
+                }
+                catch
+                {
+                    _symbol = null;
+                }
+            }
+
             if (doc != null && doc.IsValidObject)
             {
                 if (Id != null && Id != ElementId.InvalidElementId)
                 {
-                    if (doc.GetElement(Id) is FamilySymbol elem && elem.IsValidObject)
+                    try
                     {
-                        _symbol = elem;
-                        return elem;
+                        if (doc.GetElement(Id) is FamilySymbol elem && elem.IsValidObject)
+                        {
+                            _symbol = elem;
+                            return elem;
+                        }
                     }
+                    catch { }
                 }
 
                 // Fallback: Tìm theo FamilyName và TypeName
-                var match = new FilteredElementCollector(doc)
-                    .OfClass(typeof(FamilySymbol))
-                    .Cast<FamilySymbol>()
-                    .FirstOrDefault(f => string.Equals(f.FamilyName, FamilyName, StringComparison.OrdinalIgnoreCase) &&
-                                         string.Equals(f.Name, TypeName, StringComparison.OrdinalIgnoreCase));
-                if (match != null && match.IsValidObject)
+                if (!string.IsNullOrEmpty(FamilyName) || !string.IsNullOrEmpty(TypeName))
                 {
-                    _symbol = match;
-                    return match;
+                    try
+                    {
+                        var match = new FilteredElementCollector(doc)
+                            .OfClass(typeof(FamilySymbol))
+                            .Cast<FamilySymbol>()
+                            .FirstOrDefault(f =>
+                                (string.IsNullOrEmpty(FamilyName) || string.Equals(f.FamilyName, FamilyName, StringComparison.OrdinalIgnoreCase)) &&
+                                (string.IsNullOrEmpty(TypeName) || string.Equals(f.Name, TypeName, StringComparison.OrdinalIgnoreCase)));
+                        if (match != null && match.IsValidObject)
+                        {
+                            _symbol = match;
+                            return match;
+                        }
+                    }
+                    catch { }
                 }
             }
-            return _symbol;
+
+            return null;
         }
 
         public override string ToString() => DisplayName;

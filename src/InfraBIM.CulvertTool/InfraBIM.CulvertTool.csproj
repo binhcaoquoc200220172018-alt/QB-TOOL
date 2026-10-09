@@ -46,6 +46,7 @@
       <TargetAddinDir>$(RevitAddinDir)\DV_TOOL_HTKT</TargetAddinDir>
     </PropertyGroup>
     <MakeDir Directories="$(TargetAddinDir)" Condition="!Exists('$(TargetAddinDir)')" />
+    <Exec Command="powershell -Command &quot;Get-ChildItem '$(TargetAddinDir)' -Filter '*.old' -ErrorAction SilentlyContinue | ForEach-Object { try { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue } catch {} }; if (Test-Path '$(TargetAddinDir)\DV_TOOL_HTKT.dll') { try { Move-Item '$(TargetAddinDir)\DV_TOOL_HTKT.dll' ('$(TargetAddinDir)\DV_TOOL_HTKT.' + [System.Guid]::NewGuid().ToString('N') + '.old') -Force } catch {} }&quot;" IgnoreExitCode="true" ContinueOnError="true" />
     <ItemGroup>
       <OutputFiles Include="$(TargetDir)**\*.*" />
     </ItemGroup>
