@@ -2554,7 +2554,18 @@ namespace InfraBIM.CulvertTool.ViewModels
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     ExecutionStatus = $"Hoàn tất: Tạo thành công {result.SuccessCount}/{rowsToBuild.Count} cống.";
-                    MessageBox.Show($"Quá trình dựng cống hoàn thành!\n- Thành công: {result.SuccessCount}\n- Thất bại: {result.ErrorCount}", "Kết quả thực hiện", MessageBoxButton.OK, MessageBoxImage.Information);
+                    if (result.ErrorCount > 0)
+                    {
+                        string errSummary = string.Join("\n", result.Logs.Where(l => l.Contains("❌")));
+                        MessageBox.Show($"Quá trình dựng cống hoàn thành!\n- Thành công: {result.SuccessCount}\n- Thất bại: {result.ErrorCount}\n\nChi tiết lỗi:\n{errSummary}\n\n(Xem thêm log đầy đủ tại: culvert_build_error.log)", "Kết quả thực hiện", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Quá trình dựng cống hoàn thành!\n- Thành công: {result.SuccessCount}\n- Thất bại: {result.ErrorCount}", "Kết quả thực hiện", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+
+                    // Tự động làm mới Preview 3D để trích xuất hình học thực từ các đối tượng vừa tạo trong Revit
+                    try { UpdatePreviewGeometry(); } catch { }
                 });
             });
 

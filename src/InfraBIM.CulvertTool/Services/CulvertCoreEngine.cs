@@ -223,7 +223,18 @@ namespace InfraBIM.CulvertTool.Services
                         {
                             subT.RollBack();
                             errorCount++;
-                            logs.Add($"❌ Lỗi khi tạo cống STT {row.STT}: {ex.Message}");
+                            string errDetail = $"❌ Lỗi khi tạo cống STT {row.STT} ({row.LyTrinh}): {ex.GetType().Name} - {ex.Message}";
+                            if (ex.InnerException != null)
+                            {
+                                errDetail += $" -> {ex.InnerException.Message}";
+                            }
+                            logs.Add(errDetail);
+                            try
+                            {
+                                string logPath = System.IO.Path.Combine(@"C:\Users\ADMIN\Desktop\PHAT TRIEN TOOL_HTKT", "culvert_build_error.log");
+                                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {errDetail}\nStack Trace:\n{ex.StackTrace}\n\n");
+                            }
+                            catch { }
                         }
                     }
                 }
@@ -233,6 +244,28 @@ namespace InfraBIM.CulvertTool.Services
 
 
             return (successCount, errorCount, logs);
+        }
+
+        private static void SafeRotate(Document doc, ElementId? elemId, XYZ axisOrigin, double angleRad)
+        {
+            if (doc == null || elemId == null || elemId == ElementId.InvalidElementId) return;
+            if (Math.Abs(angleRad) < 0.0001 || Math.Abs(angleRad - 2 * Math.PI) < 0.0001) return;
+
+            try
+            {
+                ElementTransformUtils.RotateElement(doc, elemId, Line.CreateBound(axisOrigin, axisOrigin + XYZ.BasisZ), angleRad);
+            }
+            catch
+            {
+                try
+                {
+                    if (doc.GetElement(elemId) is FamilyInstance inst && inst.Location is LocationPoint lp)
+                    {
+                        lp.Rotate(Line.CreateBound(axisOrigin, axisOrigin + XYZ.BasisZ), angleRad);
+                    }
+                }
+                catch { }
+            }
         }
 
         private static void ActivateSymbol(FamilySymbol? sym)
@@ -285,19 +318,47 @@ namespace InfraBIM.CulvertTool.Services
 
             if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
             {
-                FamilyInstance inst = AdaptiveComponentInstanceUtils.CreateAdaptiveComponentInstance(doc, sym);
-                IList<ElementId> placePointIds = AdaptiveComponentInstanceUtils.GetInstancePlacementPointElementRefIds(inst);
-                for (int i = 0; i < Math.Min(points.Count, placePointIds.Count); i++)
+                try
                 {
-                    if (doc.GetElement(placePointIds[i]) is ReferencePoint refPt)
+                    FamilyInstance inst = AdaptiveComponentInstanceUtils.CreateAdaptiveComponentInstance(doc, sym);
+                    IList<ElementId> placePointIds = AdaptiveComponentInstanceUtils.GetInstancePlacementPointElementRefIds(inst);
+                    for (int i = 0; i < Math.Min(points.Count, placePointIds.Count); i++)
                     {
-                        refPt.Position = points[i];
+                        if (doc.GetElement(placePointIds[i]) is ReferencePoint refPt)
+                        {
+                            refPt.Position = points[i];
+                        }
+                    }
+                    try { doc.Regenerate(); } catch { }
+                    return inst;
+                }
+                catch
+                {
+                    // Fallback thử đảo ngược thứ tự điểm nếu Family định nghĩa chiều ngược lại
+                    if (points.Count >= 2)
+                    {
+                        try
+                        {
+                            var reversed = points.Reverse().ToList();
+                            FamilyInstance instRev = AdaptiveComponentInstanceUtils.CreateAdaptiveComponentInstance(doc, sym);
+                            IList<ElementId> placePointIds = AdaptiveComponentInstanceUtils.GetInstancePlacementPointElementRefIds(instRev);
+                            for (int i = 0; i < Math.Min(reversed.Count, placePointIds.Count); i++)
+                            {
+                                if (doc.GetElement(placePointIds[i]) is ReferencePoint refPt)
+                                {
+                                    refPt.Position = reversed[i];
+                                }
+                            }
+                            try { doc.Regenerate(); } catch { }
+                            return instRev;
+                        }
+                        catch { }
                     }
                 }
-                try { doc.Regenerate(); } catch { }
-                return inst;
             }
-            else
+
+            // Fallback nếu không phải Adaptive hoặc tạo Adaptive thất bại: Đặt theo Point-Based an toàn
+            try
             {
                 XYZ midPt = points[0];
                 if (points.Count > 1)
@@ -306,6 +367,9 @@ namespace InfraBIM.CulvertTool.Services
                 }
                 return CreateInstanceSafe(doc, midPt, sym);
             }
+            catch { }
+
+            return null;
         }
 
         private static void SetOutletVisibilitySafe(FamilyInstance inst, string catType)
@@ -731,38 +795,46 @@ namespace InfraBIM.CulvertTool.Services
                 XYZ pB_off = pB + offZ;
 
                 FamilyInstance? inst = null;
-                if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(targetSym))
+                try
                 {
-                    inst = CreateAdaptiveInstanceSafe(doc, targetSym, new[] { pA_off, pB_off });
+                    if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(targetSym))
+                    {
+                        inst = CreateAdaptiveInstanceSafe(doc, targetSym, new[] { pA_off, pB_off });
+                    }
+                    else
+                    {
+                        inst = CreateInstanceSafe(doc, pA_off, targetSym);
+                        double rotOut = Math.Atan2(uOut.Y, uOut.X);
+                        SafeRotate(doc, inst.Id, pA_off, rotOut);
+                    }
                 }
-                else
-                {
-                    inst = CreateInstanceSafe(doc, pA_off, targetSym);
-                    double rotOut = Math.Atan2(uOut.Y, uOut.X);
-                    ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(pA_off, pA_off + XYZ.BasisZ), rotOut);
-                }
+                catch { }
 
                 if (inst == null) continue;
 
-                var pGx = inst.LookupParameter("CH_GX");
-                if (pGx != null && !pGx.IsReadOnly && pGx.StorageType == StorageType.Double)
+                try
                 {
-                    pGx.Set(Math.PI / 2.0);
+                    var pGx = inst.LookupParameter("CH_GX");
+                    if (pGx != null && !pGx.IsReadOnly && pGx.StorageType == StorageType.Double)
+                    {
+                        pGx.Set(Math.PI / 2.0);
+                    }
+                    var pGxC = inst.LookupParameter("A_GOC XIENG");
+                    if (pGxC != null && !pGxC.IsReadOnly && pGxC.StorageType == StorageType.Double)
+                    {
+                        pGxC.Set(0.0);
+                    }
                 }
-                var pGxC = inst.LookupParameter("A_GOC XIENG");
-                if (pGxC != null && !pGxC.IsReadOnly && pGxC.StorageType == StorageType.Double)
-                {
-                    pGxC.Set(0.0);
-                }
+                catch { }
 
-                SetOutletVisibilitySafe(inst, comp.CategoryType ?? "");
+                try { SetOutletVisibilitySafe(inst, comp.CategoryType ?? ""); } catch { }
 
                 string suffix = isUpstream ? "TL" : "HL";
                 string tenCK = $"{comp.CategoryType}_{suffix}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "CỬA XẢ THƯỢNG LƯU" : "CỬA XẢ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z); } catch { }
                 try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, comp.CategoryType ?? "Cửa xả"); } catch { }
                 try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Cửa xả"); } catch { }
-                TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "");
+                try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
             }
         }
 
@@ -823,33 +895,41 @@ namespace InfraBIM.CulvertTool.Services
                 XYZ pB_off = pB + offZ;
 
                 FamilyInstance? inst = null;
-                if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(targetSym))
+                try
                 {
-                    inst = CreateAdaptiveInstanceSafe(doc, targetSym, new[] { pA_off, pB_off });
+                    if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(targetSym))
+                    {
+                        inst = CreateAdaptiveInstanceSafe(doc, targetSym, new[] { pA_off, pB_off });
+                    }
+                    else
+                    {
+                        inst = CreateInstanceSafe(doc, pA_off, targetSym);
+                        double rotOut = Math.Atan2(uOut.Y, uOut.X);
+                        SafeRotate(doc, inst.Id, pA_off, rotOut);
+                    }
                 }
-                else
-                {
-                    inst = CreateInstanceSafe(doc, pA_off, targetSym);
-                    double rotOut = Math.Atan2(uOut.Y, uOut.X);
-                    ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(pA_off, pA_off + XYZ.BasisZ), rotOut);
-                }
+                catch { }
 
                 if (inst == null) continue;
 
-                var pGxC = inst.LookupParameter("CH_SGC_GX");
-                if (pGxC != null && !pGxC.IsReadOnly && pGxC.StorageType == StorageType.Double)
+                try
                 {
-                    pGxC.Set(0.0);
+                    var pGxC = inst.LookupParameter("CH_SGC_GX");
+                    if (pGxC != null && !pGxC.IsReadOnly && pGxC.StorageType == StorageType.Double)
+                    {
+                        pGxC.Set(0.0);
+                    }
                 }
+                catch { }
 
-                SetOutletVisibilitySafe(inst, comp.CategoryType ?? "");
+                try { SetOutletVisibilitySafe(inst, comp.CategoryType ?? ""); } catch { }
 
                 string suffix = isUpstream ? "TL" : "HL";
                 string tenCK = $"{comp.CategoryType}_{suffix}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "SÂN GIA CỐ THƯỢNG LƯU" : "SÂN GIA CỐ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z); } catch { }
                 try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, comp.CategoryType ?? "Sân gia cố"); } catch { }
                 try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Sân gia cố"); } catch { }
-                TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "");
+                try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
             }
         }
 
@@ -1041,34 +1121,38 @@ namespace InfraBIM.CulvertTool.Services
                 XYZ ptB = pSegEnd + offZ;
 
                 FamilyInstance? inst = null;
-                if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
+                try
                 {
-                    inst = CreateAdaptiveInstanceSafe(doc, sym, new[] { ptA, ptB });
-                }
-                else
-                {
-                    XYZ ptMid = (ptA + ptB) * 0.5;
-                    inst = CreateInstanceSafe(doc, ptMid, sym);
-                    ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptMid, ptMid + XYZ.BasisZ), rotAngle);
-
-                    foreach (var pName in possibleLenParams)
+                    if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
                     {
-                        Parameter p = inst.LookupParameter(pName);
-                        if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+                        inst = CreateAdaptiveInstanceSafe(doc, sym, new[] { ptA, ptB });
+                    }
+                    else
+                    {
+                        XYZ ptMid = (ptA + ptB) * 0.5;
+                        inst = CreateInstanceSafe(doc, ptMid, sym);
+                        SafeRotate(doc, inst.Id, ptMid, rotAngle);
+
+                        foreach (var pName in possibleLenParams)
                         {
-                            p.Set(lenSegFeet);
-                            break;
+                            Parameter p = inst.LookupParameter(pName);
+                            if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+                            {
+                                p.Set(lenSegFeet);
+                                break;
+                            }
                         }
                     }
                 }
+                catch { }
 
                 if (inst == null) continue;
 
                 string tenCauKien = $"{comp.CategoryType}_DOAN_{segIndex}";
-                BimParameterService.SetElementBimProperties(inst, bimConfig, tenCauKien, comp.CategoryType ?? "", null, null, null, null, null);
-                BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType ?? "");
-                BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống");
-                TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "");
+                try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCauKien, comp.CategoryType ?? "", null, null, null, null, null); } catch { }
+                try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType ?? ""); } catch { }
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống"); } catch { }
+                try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
             }
         }
 
@@ -1096,14 +1180,21 @@ namespace InfraBIM.CulvertTool.Services
                 double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
                 XYZ ptComp = ptPlace + new XYZ(0, 0, offFeetZ);
 
-                FamilyInstance inst = CreateInstanceSafe(doc, ptComp, sym);
-                ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptComp, ptComp + XYZ.BasisZ), rotAngle);
+                FamilyInstance? inst = null;
+                try
+                {
+                    inst = CreateInstanceSafe(doc, ptComp, sym);
+                    SafeRotate(doc, inst.Id, ptComp, rotAngle);
+                }
+                catch { }
+
+                if (inst == null) continue;
 
                 string tenCK = $"{comp.CategoryType}_{manholeIndex}";
-                BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, $"HỐ GA {manholeIndex}", null, null, ptComp.X, ptComp.Y, ptComp.Z);
-                BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, "Hố ga");
-                BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Hố ga");
-                TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "");
+                try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, $"HỐ GA {manholeIndex}", null, null, ptComp.X, ptComp.Y, ptComp.Z); } catch { }
+                try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, "Hố ga"); } catch { }
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Hố ga"); } catch { }
+                try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
             }
         }
 
@@ -1238,38 +1329,50 @@ namespace InfraBIM.CulvertTool.Services
                 XYZ ptB = ptEnd + offZ;
 
                 FamilyInstance? inst = null;
-                if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
+                try
                 {
-                    inst = CreateAdaptiveInstanceSafe(doc, sym, new[] { ptA, ptB });
+                    if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
+                    {
+                        inst = CreateAdaptiveInstanceSafe(doc, sym, new[] { ptA, ptB });
+                    }
+                    else
+                    {
+                        XYZ ptMid = (ptA + ptB) * 0.5;
+                        inst = CreateInstanceSafe(doc, ptMid, sym);
+                        SafeRotate(doc, inst.Id, ptMid, angle);
+                    }
                 }
-                else
-                {
-                    XYZ ptMid = (ptA + ptB) * 0.5;
-                    inst = CreateInstanceSafe(doc, ptMid, sym);
-                    ElementTransformUtils.RotateElement(doc, inst.Id, Line.CreateBound(ptMid, ptMid + XYZ.BasisZ), angle);
-                }
+                catch { }
 
                 if (inst == null) continue;
 
-                // Đảm bảo không khoét vai kê trên thân cống tiêu chuẩn (Sửa lỗi Hình 2)
-                SetParamYesNo(inst, "CO VAI KE", 0);
-                SetParamYesNo(inst, "CO_VAI_KE", 0);
-
-                foreach (var pName in possibleLenParams)
+                try
                 {
-                    Parameter p = inst.LookupParameter(pName);
-                    if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+                    // Đảm bảo không khoét vai kê trên thân cống tiêu chuẩn (Sửa lỗi Hình 2)
+                    SetParamYesNo(inst, "CO VAI KE", 0);
+                    SetParamYesNo(inst, "CO_VAI_KE", 0);
+                }
+                catch { }
+
+                try
+                {
+                    foreach (var pName in possibleLenParams)
                     {
-                        p.Set(lenFeet);
-                        break;
+                        Parameter p = inst.LookupParameter(pName);
+                        if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+                        {
+                            p.Set(lenFeet);
+                            break;
+                        }
                     }
                 }
+                catch { }
 
                 string nameSub = $"{tenCauKien}_{comp.CategoryType}";
-                BimParameterService.SetElementBimProperties(inst, bimConfig, nameSub, comp.CategoryType, zDau, zCuoi, null, null, null);
-                BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType);
-                BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống");
-                TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType);
+                try { BimParameterService.SetElementBimProperties(inst, bimConfig, nameSub, comp.CategoryType, zDau, zCuoi, null, null, null); } catch { }
+                try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType); } catch { }
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống"); } catch { }
+                try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType); } catch { }
             }
         }
 
