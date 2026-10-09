@@ -138,6 +138,10 @@ namespace InfraBIM.CulvertTool.Models
 
         public bool IsBooleanType => IsVisibility || (DataType != null && DataType.Contains("Yes/No"));
 
+        public bool IsYesNoParameter => IsBooleanType || IsVisibility ||
+            (!string.IsNullOrEmpty(DataType) && DataType.IndexOf("Yes/No", System.StringComparison.OrdinalIgnoreCase) >= 0) ||
+            string.Equals(GroupName, "Visibility", System.StringComparison.OrdinalIgnoreCase);
+
         public static List<string> BooleanOptions { get; } = new() { "Có", "Không" };
 
         public event PropertyChangedEventHandler? PropertyChanged;

@@ -98,14 +98,27 @@ namespace InfraBIM.CulvertTool.Services
             {
                 if (!m.IsSelected) continue;
 
-                // Kiểm tra khớp theo Category hoặc FamilyName
+                // Kiểm tra khớp theo Category (ưu tiên cao nhất nếu m.CategoryName đã được gán cấu kiện cụ thể)
                 bool matchCat = !string.IsNullOrEmpty(m.CategoryName) && 
                                 (categoryName.IndexOf(m.CategoryName, StringComparison.OrdinalIgnoreCase) >= 0 ||
                                  m.CategoryName.IndexOf(categoryName, StringComparison.OrdinalIgnoreCase) >= 0);
                 bool matchFam = !string.IsNullOrEmpty(m.FamilyName) && 
                                 string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase);
 
-                if (!matchCat && !matchFam) continue;
+                bool isMatch = !string.IsNullOrEmpty(m.CategoryName) ? matchCat : matchFam;
+                if (!isMatch) continue;
+
+                // Không bao giờ can thiệp tham số Yes/No kiểm soát hiển thị nội bộ của cụm Cửa xả & Sân gia cố
+                if (m.IsYesNoParameter)
+                {
+                    if (famName.IndexOf("CX", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        famName.IndexOf("SGC", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        categoryName.IndexOf("Cửa xả", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        categoryName.IndexOf("Sân gia cố", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        continue;
+                    }
+                }
 
                 string pNameUpper = (m.InternalName ?? "").ToUpperInvariant();
 

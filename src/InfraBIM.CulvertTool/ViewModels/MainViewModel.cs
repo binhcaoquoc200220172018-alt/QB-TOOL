@@ -2012,6 +2012,91 @@ namespace InfraBIM.CulvertTool.ViewModels
         #endregion
 
         #region Tab 02 Parameter Mapping Methods
+        private bool _isSyncingClusterParams = false;
+
+        private void OnParameterItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (_isSyncingClusterParams) return;
+            if (e.PropertyName != nameof(ParameterMappingItem.CustomValue)) return;
+            if (sender is not ParameterMappingItem changedItem) return;
+
+            // TUYỆT ĐỐI KHÔNG sao chép / đồng bộ tham số kiểu Yes/No
+            if (changedItem.IsYesNoParameter) return;
+
+            // Tự động đồng bộ sang các cấu kiện khác trong cùng cụm (Cửa xả hoặc Sân gia cố)
+            SyncCustomParamToCluster(changedItem);
+        }
+
+        private void EnsureComponentParametersScanned(CulvertComponentItem comp)
+        {
+            if (comp?.SelectedSymbol?.Symbol == null || Doc == null) return;
+            string cat = comp.CategoryType;
+            var sym = comp.SelectedSymbol.Symbol;
+
+            bool hasParams = ParameterMappings.Any(m => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase));
+            if (!hasParams)
+            {
+                var scanned = FamilyParameterScannerService.ScanParametersForFamily(Doc, sym, cat);
+                foreach (var p in scanned)
+                {
+                    // Tham số Yes/No mặc định không tick chọn sao chép
+                    if (p.IsYesNoParameter)
+                    {
+                        p.IsSelected = false;
+                    }
+                    p.PropertyChanged += OnParameterItemPropertyChanged;
+                    ParameterMappings.Add(p);
+                }
+            }
+        }
+
+        private void SyncCustomParamToCluster(ParameterMappingItem srcItem)
+        {
+            if (SelectedComponentForTab02 == null) return;
+            var srcComp = SelectedComponentForTab02;
+            string srcGroup = srcComp.GroupType ?? string.Empty;
+            string srcCat = srcComp.CategoryType ?? string.Empty;
+
+            List<CulvertComponentItem> targetComps = new();
+            if (srcGroup.Contains("Cửa") || srcCat.Contains("Cửa") || OutletComponents.Contains(srcComp))
+            {
+                targetComps = OutletComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+            }
+            else if (srcGroup.Contains("Gia cố") || srcCat.Contains("Gia cố") || srcCat.Contains("Sân") || ApronComponents.Contains(srcComp))
+            {
+                targetComps = ApronComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+            }
+            else
+            {
+                return; // Chỉ áp dụng tự động đồng bộ cho Cụm Cửa xả và Cụm Sân gia cố theo yêu cầu
+            }
+
+            if (targetComps.Count == 0) return;
+
+            _isSyncingClusterParams = true;
+            try
+            {
+                foreach (var tgt in targetComps)
+                {
+                    EnsureComponentParametersScanned(tgt);
+                    string tgtCat = tgt.CategoryType;
+
+                    var tgtItem = ParameterMappings.FirstOrDefault(m =>
+                        string.Equals(m.CategoryName, tgtCat, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(m.InternalName, srcItem.InternalName, StringComparison.OrdinalIgnoreCase));
+
+                    if (tgtItem != null && !tgtItem.IsYesNoParameter)
+                    {
+                        tgtItem.CustomValue = srcItem.CustomValue;
+                    }
+                }
+            }
+            finally
+            {
+                _isSyncingClusterParams = false;
+            }
+        }
+
         private void OnSelectedFamilyForTab02Changed()
         {
             if (SelectedComponentForTab02?.SelectedSymbol?.Symbol == null)
@@ -2020,20 +2105,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 return;
             }
 
-            var sym = SelectedComponentForTab02.SelectedSymbol.Symbol;
-            string cat = SelectedComponentForTab02.CategoryType;
-
-            // Nếu chưa có tham số nào của Family này trong ParameterMappings, tự động quét ngay
-            bool hasParams = ParameterMappings.Any(m => m.FamilyName == sym.FamilyName || m.CategoryName == cat);
-            if (!hasParams)
-            {
-                var scanned = FamilyParameterScannerService.ScanParametersForFamily(Doc, sym, cat);
-                foreach (var p in scanned)
-                {
-                    ParameterMappings.Add(p);
-                }
-            }
-
+            EnsureComponentParametersScanned(SelectedComponentForTab02);
             FilterParameterMappings();
         }
 
@@ -2047,10 +2119,12 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             foreach (var m in ParameterMappings)
             {
-                bool matchFam = string.Equals(m.FamilyName, sym.FamilyName, StringComparison.OrdinalIgnoreCase);
-                bool matchCat = string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase);
+                // Khớp chính xác theo CategoryName của cấu kiện đang chọn (nếu có), fallback theo FamilyName
+                bool match = !string.IsNullOrEmpty(m.CategoryName)
+                    ? string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase)
+                    : string.Equals(m.FamilyName, sym.FamilyName, StringComparison.OrdinalIgnoreCase);
 
-                if (matchFam || (string.IsNullOrEmpty(m.FamilyName) && matchCat))
+                if (match)
                 {
                     // 1. Lọc theo Phân nhóm chuẩn Revit trong khung đỏ (Hình 1, 2, 3: Dimensions vs Other)
                     if (string.Equals(Tab02ParamCategoryFilter, "Dimensions", StringComparison.OrdinalIgnoreCase))
@@ -2127,12 +2201,17 @@ namespace InfraBIM.CulvertTool.ViewModels
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {
-                    // Xóa tham số cũ của Family này để quét mới nhất
-                    var toRemove = ParameterMappings.Where(m => string.Equals(m.FamilyName, sym.FamilyName, StringComparison.OrdinalIgnoreCase) || m.CategoryName == cat).ToList();
+                    // Xóa tham số cũ của cấu kiện này để quét mới nhất
+                    var toRemove = ParameterMappings.Where(m => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase)).ToList();
                     foreach (var item in toRemove) ParameterMappings.Remove(item);
 
                     foreach (var p in scanned)
                     {
+                        if (p.IsYesNoParameter)
+                        {
+                            p.IsSelected = false;
+                        }
+                        p.PropertyChanged += OnParameterItemPropertyChanged;
                         ParameterMappings.Add(p);
                     }
 
@@ -2209,7 +2288,15 @@ namespace InfraBIM.CulvertTool.ViewModels
         {
             foreach (var m in FilteredParameterMappings)
             {
-                m.IsSelected = true;
+                // Chỉ chọn các tham số hình học/kích thước, tuyệt đối không chọn Yes/No
+                if (!m.IsYesNoParameter)
+                {
+                    m.IsSelected = true;
+                }
+                else
+                {
+                    m.IsSelected = false;
+                }
             }
         }
 
@@ -2238,18 +2325,22 @@ namespace InfraBIM.CulvertTool.ViewModels
             if (srcGroup.Contains("Cửa") || srcCat.Contains("Cửa") || OutletComponents.Contains(srcComp))
             {
                 targetComps = OutletComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+                srcGroup = "Cửa xả";
             }
             else if (srcGroup.Contains("Gia cố") || srcCat.Contains("Gia cố") || srcCat.Contains("Sân") || ApronComponents.Contains(srcComp))
             {
                 targetComps = ApronComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+                srcGroup = "Sân gia cố";
             }
             else if (PrecastBarrelComponents.Contains(srcComp))
             {
                 targetComps = PrecastBarrelComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+                srcGroup = "Cống đúc sẵn";
             }
             else if (CastInPlaceBarrelComponents.Contains(srcComp))
             {
                 targetComps = CastInPlaceBarrelComponents.Where(c => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
+                srcGroup = "Cống đổ tại chỗ";
             }
             else
             {
@@ -2262,75 +2353,54 @@ namespace InfraBIM.CulvertTool.ViewModels
                 return;
             }
 
-            // Lấy danh sách tham số nguồn được chọn (hoặc tất cả tham số có giá trị tùy biến nếu chưa tick chọn)
-            var itemsToCopy = FilteredParameterMappings
-                .Where(m => m.IsSelected && !string.IsNullOrWhiteSpace(m.CustomValue))
+            // Lấy danh sách tham số nguồn: CHỈ LẤY THAM SỐ HÌNH HỌC/KÍCH THƯỚC, TUYỆT ĐỐI LOẠI TRỪ YES/NO
+            var candidateItems = FilteredParameterMappings
+                .Where(m => !m.IsYesNoParameter && !string.IsNullOrWhiteSpace(m.CustomValue))
                 .ToList();
 
+            var itemsToCopy = candidateItems.Where(m => m.IsSelected).ToList();
             if (itemsToCopy.Count == 0)
             {
-                itemsToCopy = FilteredParameterMappings.Where(m => m.IsSelected).ToList();
+                itemsToCopy = candidateItems;
             }
 
             if (itemsToCopy.Count == 0)
             {
-                itemsToCopy = FilteredParameterMappings.Where(m => !string.IsNullOrWhiteSpace(m.CustomValue)).ToList();
-            }
-
-            if (itemsToCopy.Count == 0)
-            {
-                MessageBox.Show("Vui lòng tick chọn ít nhất 1 tham số trong bảng hoặc nhập giá trị tùy biến cần sao chép.", "Chưa chọn tham số", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Không có tham số hình học nào có giá trị tùy biến để sao chép.\n(Lưu ý: Các tham số kiểu Yes/No như CX_BE TONG LOT, CX_DA DAM DEM... được tự động loại trừ để bảo toàn mô hình).", "Chưa có thông số hợp lệ", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
+            _isSyncingClusterParams = true;
             int copiedParams = 0;
-            foreach (var tgt in targetComps)
+            try
             {
-                string tgtCat = tgt.CategoryType;
-                string tgtFam = tgt.SelectedSymbol?.Symbol?.FamilyName ?? string.Empty;
-
-                foreach (var srcItem in itemsToCopy)
+                foreach (var tgt in targetComps)
                 {
-                    var tgtItem = ParameterMappings.FirstOrDefault(m =>
-                        (string.Equals(m.CategoryName, tgtCat, StringComparison.OrdinalIgnoreCase) ||
-                         (string.IsNullOrEmpty(m.CategoryName) && string.Equals(m.FamilyName, tgtFam, StringComparison.OrdinalIgnoreCase))) &&
-                        string.Equals(m.InternalName, srcItem.InternalName, StringComparison.OrdinalIgnoreCase));
+                    EnsureComponentParametersScanned(tgt);
+                    string tgtCat = tgt.CategoryType;
 
-                    if (tgtItem != null)
+                    foreach (var srcItem in itemsToCopy)
                     {
-                        tgtItem.CustomValue = srcItem.CustomValue;
-                        tgtItem.IsSelected = true;
-                        copiedParams++;
-                    }
-                    else
-                    {
-                        // Clone nếu cấu kiện đích chưa quét
-                        var cloned = new ParameterMappingItem
+                        var tgtItem = ParameterMappings.FirstOrDefault(m =>
+                            string.Equals(m.CategoryName, tgtCat, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(m.InternalName, srcItem.InternalName, StringComparison.OrdinalIgnoreCase));
+
+                        if (tgtItem != null && !tgtItem.IsYesNoParameter)
                         {
-                            STT = ParameterMappings.Count + 1,
-                            IsSelected = true,
-                            CategoryName = tgtCat,
-                            FamilyName = tgtFam,
-                            InternalName = srcItem.InternalName,
-                            DisplayName = srcItem.DisplayName,
-                            GroupName = srcItem.GroupName,
-                            IsDimension = srcItem.IsDimension,
-                            IsOther = srcItem.IsOther,
-                            IsVisibility = srcItem.IsVisibility,
-                            DataType = srcItem.DataType,
-                            DefaultValue = srcItem.DefaultValue,
-                            CustomValue = srcItem.CustomValue,
-                            MappedField = srcItem.MappedField,
-                            IsInstance = srcItem.IsInstance
-                        };
-                        ParameterMappings.Add(cloned);
-                        copiedParams++;
+                            tgtItem.CustomValue = srcItem.CustomValue;
+                            tgtItem.IsSelected = true;
+                            copiedParams++;
+                        }
                     }
                 }
             }
+            finally
+            {
+                _isSyncingClusterParams = false;
+            }
 
             FilterParameterMappings();
-            MessageBox.Show($"Đã sao chép thành công {itemsToCopy.Count} tham số sang {targetComps.Count} cấu kiện khác trong cụm '{srcGroup}'!\n(Các cấu kiện đã nhận thông số: {string.Join(", ", targetComps.Select(t => t.CategoryType))})", "Sao chép hoàn tất", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show($"Đã sao chép thành công {itemsToCopy.Count} tham số hình học sang {targetComps.Count} cấu kiện khác trong cụm '{srcGroup}'!\n(Đã tự động loại trừ toàn bộ tham số kiểu Yes/No để bảo toàn hiển thị và cấu trúc Family).\n\nDanh sách các cấu kiện đã cập nhật:\n• {string.Join("\n• ", targetComps.Select(t => t.CategoryType))}", "Sao chép hoàn tất", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         #endregion
 
