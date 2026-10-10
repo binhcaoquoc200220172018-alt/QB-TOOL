@@ -1021,9 +1021,73 @@ namespace InfraBIM.CulvertTool.Services
             PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, outletInstances);
             PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, outletInstances);
 
+            // 2b. Xác định chiều dày/chiều dài móng tường đầu (CX_L1) từ thiết lập tham số, Family hoặc mặc định 1.30m
+            double cxL1M = 1.30;
+            var mappingL1 = familyParameterMappings?.FirstOrDefault(m => 
+                string.Equals(m.InternalName, "CX_L1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(m.InternalName, "L1", StringComparison.OrdinalIgnoreCase));
+            if (mappingL1 != null && !string.IsNullOrWhiteSpace(mappingL1.CustomValue))
+            {
+                string valStrL1 = data.GetParamOverride(mappingL1.InternalName, mappingL1.CustomValue);
+                if (double.TryParse(valStrL1.Replace("mm", "").Replace("m", "").Trim(), out double dValL1))
+                {
+                    cxL1M = (Math.Abs(dValL1) >= 10.0) ? dValL1 / 1000.0 : dValL1;
+                }
+            }
+            if (cxL1M <= 0.05 && data.ParameterOverrides != null)
+            {
+                foreach (var kvp in data.ParameterOverrides)
+                {
+                    if (kvp.Key.IndexOf("CX_L1", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        string.Equals(kvp.Key, "L1", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (double.TryParse(kvp.Value.Replace("mm", "").Replace("m", "").Trim(), out double dValL1))
+                        {
+                            cxL1M = (Math.Abs(dValL1) >= 10.0) ? dValL1 / 1000.0 : dValL1;
+                            if (cxL1M > 0.05) break;
+                        }
+                    }
+                }
+            }
+            if (cxL1M <= 0.05)
+            {
+                var outletSampleComp = outletComponents.FirstOrDefault(c => c.IsActive && c.SelectedSymbol != null);
+                if (outletSampleComp?.SelectedSymbol != null)
+                {
+                    var oSym = outletSampleComp.SelectedSymbol.GetFreshSymbol(doc);
+                    if (oSym != null)
+                    {
+                        var pL1 = oSym.LookupParameter("CX_L1") ?? oSym.LookupParameter("L1");
+                        if (pL1 != null && pL1.StorageType == StorageType.Double && pL1.AsDouble() > 0.05)
+                        {
+                            cxL1M = UnitUtils.ConvertFromInternalUnits(pL1.AsDouble(), UnitTypeId.Meters);
+                        }
+                    }
+                }
+            }
+            if (cxL1M <= 0.05)
+            {
+                var sampleOInst = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .FirstOrDefault(fi => fi.Symbol != null && (fi.Symbol.FamilyName.Contains("SAN CONG") || fi.Symbol.FamilyName.Contains("CUA XA")));
+                if (sampleOInst != null)
+                {
+                    var pL1 = sampleOInst.LookupParameter("CX_L1") ?? sampleOInst.LookupParameter("L1");
+                    if (pL1 != null && pL1.StorageType == StorageType.Double && pL1.AsDouble() > 0.05)
+                    {
+                        cxL1M = UnitUtils.ConvertFromInternalUnits(pL1.AsDouble(), UnitTypeId.Meters);
+                    }
+                }
+            }
+            if (cxL1M <= 0.05)
+            {
+                cxL1M = 1.30;
+            }
+
             // 3. Đặt Sân gia cố Thượng lưu & Hạ lưu:
-            // YÊU CẦU 1 (Hình 1): Điểm 1 của Sân gia cố adaptive đặt đúng tại vị trí mép chân khay của Sân cống (đúng khoảng cách lSanCongM = 2.16m từ tim P1/P2)
-            double lOuterCX_M = lSanCongM;
+            // YÊU CẦU 2: Điểm 1 của SGC phải đặt ở Điểm 1 của Excel nhưng dịch chuyển một đoạn CX_L1 + CX_L san cong
+            double lOuterCX_M = cxL1M + lSanCongM;
             double lOuterCX_Feet = UnitUtils.ConvertToInternalUnits(lOuterCX_M, UnitTypeId.Meters);
 
             XYZ uOutTL = -new XYZ(u.X, u.Y, 0).Normalize();
@@ -1483,9 +1547,9 @@ namespace InfraBIM.CulvertTool.Services
                 // Rải từ P1 đến P2, đốt cuối co dãn bù trừ sát P2
                 if (totalLengthFeet > 0)
                 {
-                    LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, p1, totalLengthFeet, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                    LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, p1, p2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                         bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, zCuoiCulvert, 1, branchSuffix, materialSettings,
-                        createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal);
+                        createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
                     PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, totalLengthFeet, u, rotAngle,
                         bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
@@ -1494,8 +1558,8 @@ namespace InfraBIM.CulvertTool.Services
             else if (data.SoHopNoi == 1)
             {
                 // TH3: 1 hộp nối
-                // Đoạn 1: Rải từ P1 đến mép thành trong hộp nối (đốt bù trừ sát hộp nối)
-                // Đoạn 2: Rải từ P2 đến mép thành trong hộp nối (đốt bù trừ sát hộp nối)
+                // Đoạn 1: Rải từ P1 đến mép thành trong hộp nối (đốt bù trừ co dãn sát mép thành trong hộp nối)
+                // Đoạn 2: Rải từ mép thành trong hộp nối đến P2 (đốt bù trừ co dãn sát mép thành trong hộp nối)
                 double b1M = (data.B_HT1 > 1.8) ? data.B_HT1 : actualManholeB_M;
                 double distHN1M = data.KC_HN1;
                 if (distHN1M <= (b1M / 2.0) + 0.2)
@@ -1516,36 +1580,37 @@ namespace InfraBIM.CulvertTool.Services
                 double rOut1Feet = b1Feet / 2.0;
                 double rIn1Feet = Math.Max(0.1, rOut1Feet - wallTFeet);
 
-                // Đoạn 1: P1 -> mép thành trong Hộp 1
-                double len1_barrel = Math.Max(0.0, distHN1Feet - rIn1Feet);
-                int dotCount1 = LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, p1, len1_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                XYZ pHN1_in_up = pHN1 - u * rIn1Feet;
+                XYZ pHN1_in_dn = pHN1 + u * rIn1Feet;
+                XYZ pHN1_out_up = pHN1 - u * rOut1Feet;
+                XYZ pHN1_out_dn = pHN1 + u * rOut1Feet;
+
+                // Đoạn 1: P1 -> mép thành trong Hộp 1 (đốt bù trừ co dãn khóa cứng tại pHN1_in_up)
+                int dotCount1 = LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, p1, pHN1_in_up, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
-                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal);
+                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
                 // BTL & đá dăm Đoạn 1: đến mép ngoài hộp nối
-                double len1_bedding = Math.Max(0.0, distHN1Feet - rOut1Feet);
+                double len1_bedding = Math.Max(0.0, (pHN1_out_up - p1).GetLength());
                 PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, len1_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
 
-                // Đoạn 2: Từ mép thành trong Hộp 1 đến P2 (rải hướng về hộp nối, đốt bù trừ sát hộp nối: isReverseBuffer = true)
-                XYZ pStart2_barrel = pHN1 + u * rIn1Feet;
-                double len2_barrel = Math.Max(0.0, totalLengthFeet - distHN1Feet - rIn1Feet);
-                LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, pStart2_barrel, len2_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                // Đoạn 2: Từ mép thành trong Hộp 1 đến P2 (đốt bù trừ co dãn bắt đầu từ mép thành trong: isReverseBuffer = true)
+                LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, pHN1_in_dn, p2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, null, zCuoiCulvert, dotCount1 + 1, branchSuffix, materialSettings,
-                    createdBarrels, isReverseBuffer: true, isVaiKeGlobal: isVaiKeGlobal);
+                    createdBarrels, isReverseBuffer: true, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
                 // BTL & đá dăm Đoạn 2: từ mép ngoài hộp nối đến P2
-                XYZ pStart2_bedding = pHN1 + u * rOut1Feet;
-                double len2_bedding = Math.Max(0.0, totalLengthFeet - distHN1Feet - rOut1Feet);
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pStart2_bedding, len2_bedding, u, rotAngle,
+                double len2_bedding = Math.Max(0.0, (p2 - pHN1_out_dn).GetLength());
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN1_out_dn, len2_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdBeddings);
             }
             else // data.SoHopNoi >= 2
             {
                 // TH2: 2 hộp nối
-                // Đoạn 1: Từ P1 đến mép thành trong hộp nối 1 (đốt bù trừ sát hộp 1)
-                // Đoạn 2: Từ mép thành trong hộp nối 1 đến mép thành trong hộp nối 2 (đốt bù trừ sát hộp 2)
-                // Đoạn 3: Từ P2 đến mép thành trong hộp nối 2 (đốt bù trừ sát hộp 2, isReverseBuffer = true)
+                // Đoạn 1: Từ P1 đến mép thành trong hộp nối 1 (đốt bù trừ co dãn sát mép thành trong Hộp 1)
+                // Đoạn 2: Từ mép thành trong hộp nối 1 đến mép thành trong hộp nối 2 (đốt bù trừ co dãn sát mép thành trong Hộp 2)
+                // Đoạn 3: Từ mép thành trong hộp nối 2 đến P2 (đốt bù trừ co dãn bắt đầu từ mép thành trong Hộp 2: isReverseBuffer = true)
                 double b1M = (data.B_HT1 > 1.8) ? data.B_HT1 : actualManholeB_M;
                 double b2M = (data.B_HT2 > 1.8) ? data.B_HT2 : actualManholeB_M;
                 double distHN1M = data.KC_HN1;
@@ -1580,38 +1645,41 @@ namespace InfraBIM.CulvertTool.Services
                 double rOut2Feet = b2Feet / 2.0;
                 double rIn2Feet = Math.Max(0.1, rOut2Feet - wallTFeet);
 
-                // Đoạn 1: Từ P1 đến mép thành trong hộp nối 1
-                double len1_barrel = Math.Max(0.0, distHN1Feet - rIn1Feet);
-                int dotCount1 = LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, p1, len1_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
-                    bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
-                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal);
+                XYZ pHN1_in_up = pHN1 - u * rIn1Feet;
+                XYZ pHN1_in_dn = pHN1 + u * rIn1Feet;
+                XYZ pHN1_out_up = pHN1 - u * rOut1Feet;
+                XYZ pHN1_out_dn = pHN1 + u * rOut1Feet;
 
-                double len1_bedding = Math.Max(0.0, distHN1Feet - rOut1Feet);
+                XYZ pHN2_in_up = pHN2 - u * rIn2Feet;
+                XYZ pHN2_in_dn = pHN2 + u * rIn2Feet;
+                XYZ pHN2_out_up = pHN2 - u * rOut2Feet;
+                XYZ pHN2_out_dn = pHN2 + u * rOut2Feet;
+
+                // Đoạn 1: Từ P1 đến mép thành trong hộp nối 1 (đốt bù trừ co dãn khóa cứng tại pHN1_in_up)
+                int dotCount1 = LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, p1, pHN1_in_up, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                    bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
+                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
+
+                double len1_bedding = Math.Max(0.0, (pHN1_out_up - p1).GetLength());
                 PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, len1_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
 
-                // Đoạn 2: Từ mép thành trong hộp nối 1 đến mép thành trong hộp nối 2
-                XYZ pStart2_barrel = pHN1 + u * rIn1Feet;
-                double len2_barrel = Math.Max(0.0, (pHN2 - pHN1).GetLength() - rIn1Feet - rIn2Feet);
-                int dotCount2 = LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, pStart2_barrel, len2_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                // Đoạn 2: Từ mép thành trong hộp nối 1 đến mép thành trong hộp nối 2 (đốt bù trừ co dãn khóa cứng tại pHN2_in_up)
+                int dotCount2 = LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, pHN1_in_dn, pHN2_in_up, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings,
-                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal);
+                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                XYZ pStart2_bedding = pHN1 + u * rOut1Feet;
-                double len2_bedding = Math.Max(0.0, (pHN2 - pHN1).GetLength() - rOut1Feet - rOut2Feet);
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pStart2_bedding, len2_bedding, u, rotAngle,
+                double len2_bedding = Math.Max(0.0, (pHN2_out_up - pHN1_out_dn).GetLength());
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN1_out_dn, len2_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdBeddings);
 
-                // Đoạn 3: Từ mép thành trong hộp nối 2 đến P2 (đốt bù trừ sát hộp 2: isReverseBuffer = true)
-                XYZ pStart3_barrel = pHN2 + u * rIn2Feet;
-                double len3_barrel = Math.Max(0.0, distHN2Feet - rIn2Feet);
-                LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, pStart3_barrel, len3_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                // Đoạn 3: Từ mép thành trong hộp nối 2 đến P2 (đốt bù trừ co dãn bắt đầu từ mép thành trong Hộp 2: isReverseBuffer = true)
+                LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, pHN2_in_dn, p2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, null, zCuoiCulvert, dotCount2 + 1, branchSuffix, materialSettings,
-                    createdBarrels, isReverseBuffer: true, isVaiKeGlobal: isVaiKeGlobal);
+                    createdBarrels, isReverseBuffer: true, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                XYZ pStart3_bedding = pHN2 + u * rOut2Feet;
-                double len3_bedding = Math.Max(0.0, distHN2Feet - rOut2Feet);
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pStart3_bedding, len3_bedding, u, rotAngle,
+                double len3_bedding = Math.Max(0.0, (p2 - pHN2_out_dn).GetLength());
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN2_out_dn, len3_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 3, materialSettings, createdBeddings);
             }
         }
@@ -1743,11 +1811,11 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
-        private static int LayAdaptiveSegmentsV2(
+        private static int LayAdaptiveSegmentsBetweenPoints(
             Document doc,
             IList<CulvertComponentItem> barrelComponents,
             XYZ pStart,
-            double L,
+            XYZ pEnd,
             double lStd,
             double jointGap,
             XYZ u,
@@ -1764,20 +1832,24 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<CulvertMaterialItem>? materialSettings = null,
             List<FamilyInstance>? createdBarrels = null,
             bool isReverseBuffer = false,
-            bool isVaiKeGlobal = false)
+            bool isVaiKeGlobal = false,
+            bool noVaiKeAtStart = true,
+            bool noVaiKeAtEnd = true)
         {
+            XYZ v = pEnd - pStart;
+            double L = v.GetLength();
             if (L <= 0.001) return startDotIdx - 1;
 
             int dotIdx = startDotIdx;
 
-            if (mode == CulvertArrayMode.CenterOut)
+            if (mode == CulvertArrayMode.CenterOut && !isReverseBuffer)
             {
                 int n = (int)Math.Floor(L / lStd);
                 double rem = L - (n * lStd);
                 double lBien = rem / 2.0;
 
-                double minSegLen = UnitUtils.ConvertToInternalUnits(0.30, UnitTypeId.Meters);
-                if (lBien > 0.001 && lBien < minSegLen && n >= 2)
+                double minSegLenCenterOut = UnitUtils.ConvertToInternalUnits(0.30, UnitTypeId.Meters);
+                if (lBien > 0.001 && lBien < minSegLenCenterOut && n >= 2)
                 {
                     n -= 2;
                     lBien += lStd;
@@ -1794,12 +1866,13 @@ namespace InfraBIM.CulvertTool.Services
                 {
                     bool isFirst = true;
                     bool isLast = (totalDots == 1);
-                    bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+                    bool hasVaiKe = isVaiKeGlobal && (!isFirst || !noVaiKeAtStart) && (!isLast || !noVaiKeAtEnd);
 
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
                     XYZ ptA = pStart + u * curDist;
-                    XYZ ptB = ptA + u * lBien;
-                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, (totalDots == 1) ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
+                    XYZ ptB = (totalDots == 1) ? pEnd : (ptA + u * lBien);
+                    double actualLen = (ptB - ptA).GetLength();
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, actualLen, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, (totalDots == 1) ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
                     curDist += lBien + jointGap;
                     placedCount++;
                 }
@@ -1809,124 +1882,113 @@ namespace InfraBIM.CulvertTool.Services
                 {
                     bool isFirst = (placedCount == 0);
                     bool isLast = (placedCount == totalDots - 1);
-                    bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+                    bool hasVaiKe = isVaiKeGlobal && (!isFirst || !noVaiKeAtStart) && (!isLast || !noVaiKeAtEnd);
 
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
                     XYZ ptA = pStart + u * curDist;
-                    XYZ ptB = ptA + u * lStd;
-                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, isLast ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
+                    XYZ ptB = isLast ? pEnd : (ptA + u * lStd);
+                    double actualLen = (ptB - ptA).GetLength();
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, actualLen, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, isLast ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
                     curDist += lStd + jointGap;
                     placedCount++;
                 }
 
                 // Đốt biên 2
-                if (lBien > 0.001)
+                if (lBien > 0.001 && placedCount < totalDots)
                 {
                     bool isFirst = (placedCount == 0);
                     bool isLast = true;
-                    bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+                    bool hasVaiKe = isVaiKeGlobal && (!isFirst || !noVaiKeAtStart) && (!isLast || !noVaiKeAtEnd);
 
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
                     XYZ ptA = pStart + u * curDist;
-                    XYZ ptB = ptA + u * lBien;
-                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, zCuoiM, materialSettings, createdBarrels, hasVaiKe);
+                    XYZ ptB = pEnd;
+                    double actualLen = (ptB - ptA).GetLength();
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, actualLen, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, zCuoiM, materialSettings, createdBarrels, hasVaiKe);
                 }
-            }
-            else // OneWay
-            {
-                // Chia chiều dài đoạn rải thành danh sách đốt chuẩn và đốt co dãn bù trừ hợp lý
-                // Triệt tiêu hoàn toàn lỗi sinh đốt vụn 2cm thừa thãi (như Hình 3, 4, 5)
-                List<double> segLens = CalculateSegmentLengths(L, lStd, isReverseBuffer);
-                int totalDots = segLens.Count;
-                if (totalDots == 0) return startDotIdx - 1;
 
-                double curDist = 0.0;
-                for (int i = 0; i < totalDots; i++)
+                return dotIdx - 1;
+            }
+
+            // Thuật toán OneWay chính xác:
+            // Đảm bảo đốt cống co dãn bù trừ khớp tuyệt đối với mép thành trong hộp nối và triệt tiêu sai số cộng dồn
+            double pitch = lStd + jointGap;
+            double minSegLen = UnitUtils.ConvertToInternalUnits(0.40, UnitTypeId.Meters);
+
+            if (L <= lStd + 0.05)
+            {
+                // Chỉ có 1 đốt duy nhất kết nối trọn vẹn pStart -> pEnd (đốt co dãn)
+                bool hasVaiKe = isVaiKeGlobal && !noVaiKeAtStart && !noVaiKeAtEnd;
+                string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
+                PlaceBarrelComponents(doc, barrelComponents, pStart, pEnd, L, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, zCuoiM, materialSettings, createdBarrels, hasVaiKe);
+                return dotIdx - 1;
+            }
+
+            int N = (int)Math.Floor((L - minSegLen) / pitch);
+            if (N < 0) N = 0;
+
+            if (!isReverseBuffer)
+            {
+                // Buffer ở cuối đoạn (khóa cứng tại pEnd - ví dụ mép thành trong hộp nối hoặc Cửa xả P2)
+                // Các đốt chuẩn đi trước từ pStart
+                for (int i = 0; i < N; i++)
                 {
-                    double segLen = segLens[i];
                     bool isFirst = (i == 0);
-                    bool isLast = (i == totalDots - 1);
-                    bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+                    bool hasVaiKe = isVaiKeGlobal && (!isFirst || !noVaiKeAtStart);
 
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    XYZ ptA = pStart + u * curDist;
-                    XYZ ptB = ptA + u * segLen;
+                    XYZ ptA = pStart + u * (i * pitch);
+                    XYZ ptB = ptA + u * lStd;
 
                     double? zDauSeg = isFirst ? zDauM : null;
-                    double? zCuoiSeg = isLast ? zCuoiM : null;
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauSeg, null, materialSettings, createdBarrels, hasVaiKe);
+                }
 
-                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, segLen, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauSeg, zCuoiSeg, materialSettings, createdBarrels, hasVaiKe);
-                    curDist += segLen + jointGap;
+                // Đốt co dãn bù trừ cuối cùng kết thúc CHÍNH XÁC tại pEnd (khóa cứng mép thành trong hộp nối cống)
+                XYZ ptALast = pStart + u * (N * pitch);
+                XYZ ptBLast = pEnd; // KHÓA CỨNG VÀO pEnd - TRIỆT TIÊU ĐÂM XUYÊN VÀO HỘP NỐI
+                double segLenLast = (ptBLast - ptALast).GetLength();
+
+                if (segLenLast > 0.001)
+                {
+                    bool hasVaiKe = isVaiKeGlobal && !noVaiKeAtEnd;
+                    string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
+                    PlaceBarrelComponents(doc, barrelComponents, ptALast, ptBLast, segLenLast, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (N == 0) ? zDauM : null, zCuoiM, materialSettings, createdBarrels, hasVaiKe);
+                }
+            }
+            else
+            {
+                // Buffer ở đầu đoạn (khóa cứng tại pStart - ví dụ mép thành trong hộp nối phía hạ lưu)
+                // Đốt co dãn bù trừ bắt đầu CHÍNH XÁC từ pStart
+                double lBuffer = L - (N * pitch);
+                XYZ ptA0 = pStart; // KHÓA CỨNG VÀO pStart - mép thành trong hộp nối
+                XYZ ptB0 = (N == 0) ? pEnd : (ptA0 + u * lBuffer);
+                double segLen0 = (ptB0 - ptA0).GetLength();
+
+                if (segLen0 > 0.001)
+                {
+                    bool hasVaiKe = isVaiKeGlobal && !noVaiKeAtStart && (N > 0 || !noVaiKeAtEnd);
+                    string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
+                    PlaceBarrelComponents(doc, barrelComponents, ptA0, ptB0, segLen0, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, (N == 0) ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
+                }
+
+                // Các đốt chuẩn tiếp theo dẫn tới pEnd
+                for (int i = 0; i < N; i++)
+                {
+                    bool isLast = (i == N - 1);
+                    bool hasVaiKe = isVaiKeGlobal && (!isLast || !noVaiKeAtEnd);
+
+                    string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
+                    XYZ ptA = pStart + u * (lBuffer + jointGap + i * pitch);
+                    XYZ ptB = isLast ? pEnd : (ptA + u * lStd); // Đốt cuối khóa cứng vào pEnd!
+                    double segLen = (ptB - ptA).GetLength();
+
+                    double? zCuoiSeg = isLast ? zCuoiM : null;
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, segLen, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, zCuoiSeg, materialSettings, createdBarrels, hasVaiKe);
                 }
             }
 
             return dotIdx - 1;
-        }
-
-        private static List<double> CalculateSegmentLengths(double L, double lStd, bool isReverseBuffer)
-        {
-            var lengths = new List<double>();
-            if (L <= 0.001) return lengths;
-
-            if (L <= lStd + 0.05)
-            {
-                lengths.Add(L);
-                return lengths;
-            }
-
-            int n = (int)Math.Floor(L / lStd);
-            double rem = L - (n * lStd);
-
-            // Ngưỡng đốt cống tối thiểu (0.40m):
-            // Nếu phần dư < 0.40m (ví dụ 2cm, 5cm), gộp vào đốt chuẩn cuối cùng
-            // để tạo thành đốt co dãn bù trừ thực tế (ví dụ 1.02m), không tạo đốt vụn riêng!
-            double minSegLen = UnitUtils.ConvertToInternalUnits(0.40, UnitTypeId.Meters);
-
-            int numStd;
-            double bufferLen;
-
-            if (rem < 0.001)
-            {
-                numStd = n;
-                bufferLen = 0.0;
-            }
-            else if (rem < minSegLen && n >= 1)
-            {
-                numStd = n - 1;
-                bufferLen = lStd + rem;
-            }
-            else
-            {
-                numStd = n;
-                bufferLen = rem;
-            }
-
-            if (isReverseBuffer)
-            {
-                // Đốt co dãn bù trừ nằm ở đầu đoạn (sát mép thành trong hộp nối)
-                if (bufferLen > 0.001)
-                {
-                    lengths.Add(bufferLen);
-                }
-                for (int i = 0; i < numStd; i++)
-                {
-                    lengths.Add(lStd);
-                }
-            }
-            else
-            {
-                // Các đốt chuẩn đi trước, đốt co dãn bù trừ nằm ở cuối đoạn (sát mép thành trong hộp nối)
-                for (int i = 0; i < numStd; i++)
-                {
-                    lengths.Add(lStd);
-                }
-                if (bufferLen > 0.001)
-                {
-                    lengths.Add(bufferLen);
-                }
-            }
-
-            return lengths;
         }
 
         private static string FormatDotName(string pattern, int index, string branchSuffix)
