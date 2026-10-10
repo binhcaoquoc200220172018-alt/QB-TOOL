@@ -1022,10 +1022,8 @@ namespace InfraBIM.CulvertTool.Services
             PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, outletInstances);
 
             // 3. Đặt Sân gia cố Thượng lưu & Hạ lưu:
-            // YÊU CẦU 2 (Hình 2): Điểm 1 của Sân gia cố adaptive phải đặt đúng tại mép ngoài cùng của Cửa xả (sau dầm chân khay)
-            // Chiều dài tổng từ P1/P2 đến mép ngoài: Móng tường đầu = 1.30m + Sân cống & dầm chân khay (lSanCongM) = 3.46m
-            double lMongCX_M = 1.30;
-            double lOuterCX_M = lMongCX_M + lSanCongM;
+            // YÊU CẦU 1 (Hình 1): Điểm 1 của Sân gia cố adaptive đặt đúng tại vị trí mép chân khay của Sân cống (đúng khoảng cách lSanCongM = 2.16m từ tim P1/P2)
+            double lOuterCX_M = lSanCongM;
             double lOuterCX_Feet = UnitUtils.ConvertToInternalUnits(lOuterCX_M, UnitTypeId.Meters);
 
             XYZ uOutTL = -new XYZ(u.X, u.Y, 0).Normalize();
@@ -1775,7 +1773,16 @@ namespace InfraBIM.CulvertTool.Services
             if (mode == CulvertArrayMode.CenterOut)
             {
                 int n = (int)Math.Floor(L / lStd);
-                double lBien = (L - (n * lStd)) / 2.0;
+                double rem = L - (n * lStd);
+                double lBien = rem / 2.0;
+
+                double minSegLen = UnitUtils.ConvertToInternalUnits(0.30, UnitTypeId.Meters);
+                if (lBien > 0.001 && lBien < minSegLen && n >= 2)
+                {
+                    n -= 2;
+                    lBien += lStd;
+                }
+
                 int totalDots = n + (lBien > 0.001 ? 2 : 0);
                 if (totalDots == 0) return startDotIdx - 1;
 
@@ -1827,77 +1834,99 @@ namespace InfraBIM.CulvertTool.Services
             }
             else // OneWay
             {
-                int n = (int)Math.Floor(L / lStd);
-                double lDu = L - (n * lStd);
-                int totalDots = n + (lDu > 0.001 ? 1 : 0);
+                // Chia chiều dài đoạn rải thành danh sách đốt chuẩn và đốt co dãn bù trừ hợp lý
+                // Triệt tiêu hoàn toàn lỗi sinh đốt vụn 2cm thừa thãi (như Hình 3, 4, 5)
+                List<double> segLens = CalculateSegmentLengths(L, lStd, isReverseBuffer);
+                int totalDots = segLens.Count;
                 if (totalDots == 0) return startDotIdx - 1;
 
                 double curDist = 0.0;
-                int placedCount = 0;
-
-                if (isReverseBuffer)
+                for (int i = 0; i < totalDots; i++)
                 {
-                    // TH2 & TH3: Đốt co dãn bù trừ nằm sát mép thành trong hộp nối (ở đầu đoạn rải)
-                    if (lDu > 0.001)
-                    {
-                        bool isFirst = true;
-                        bool isLast = (totalDots == 1);
-                        bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+                    double segLen = segLens[i];
+                    bool isFirst = (i == 0);
+                    bool isLast = (i == totalDots - 1);
+                    bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
 
-                        string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                        XYZ ptA = pStart + u * curDist;
-                        XYZ ptB = ptA + u * lDu;
-                        PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lDu, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, (totalDots == 1) ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
-                        curDist += lDu + jointGap;
-                        placedCount++;
-                    }
+                    string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
+                    XYZ ptA = pStart + u * curDist;
+                    XYZ ptB = ptA + u * segLen;
 
-                    for (int i = 0; i < n; i++)
-                    {
-                        bool isFirst = (placedCount == 0);
-                        bool isLast = (placedCount == totalDots - 1);
-                        bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+                    double? zDauSeg = isFirst ? zDauM : null;
+                    double? zCuoiSeg = isLast ? zCuoiM : null;
 
-                        string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                        XYZ ptA = pStart + u * curDist;
-                        XYZ ptB = ptA + u * lStd;
-                        PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, isLast ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
-                        curDist += lStd + jointGap;
-                        placedCount++;
-                    }
-                }
-                else
-                {
-                    // Rải chuẩn thuận từ đầu đoạn: các đốt chuẩn đi trước, đốt co dãn bù trừ ở cuối đoạn
-                    for (int i = 0; i < n; i++)
-                    {
-                        bool isFirst = (placedCount == 0);
-                        bool isLast = (placedCount == totalDots - 1);
-                        bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
-
-                        string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                        XYZ ptA = pStart + u * curDist;
-                        XYZ ptB = ptA + u * lStd;
-                        PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, isLast ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
-                        curDist += lStd + jointGap;
-                        placedCount++;
-                    }
-
-                    if (lDu > 0.001)
-                    {
-                        bool isFirst = (placedCount == 0);
-                        bool isLast = true;
-                        bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
-
-                        string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                        XYZ ptA = pStart + u * curDist;
-                        XYZ ptB = ptA + u * lDu;
-                        PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lDu, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, zCuoiM, materialSettings, createdBarrels, hasVaiKe);
-                    }
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, segLen, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauSeg, zCuoiSeg, materialSettings, createdBarrels, hasVaiKe);
+                    curDist += segLen + jointGap;
                 }
             }
 
             return dotIdx - 1;
+        }
+
+        private static List<double> CalculateSegmentLengths(double L, double lStd, bool isReverseBuffer)
+        {
+            var lengths = new List<double>();
+            if (L <= 0.001) return lengths;
+
+            if (L <= lStd + 0.05)
+            {
+                lengths.Add(L);
+                return lengths;
+            }
+
+            int n = (int)Math.Floor(L / lStd);
+            double rem = L - (n * lStd);
+
+            // Ngưỡng đốt cống tối thiểu (0.40m):
+            // Nếu phần dư < 0.40m (ví dụ 2cm, 5cm), gộp vào đốt chuẩn cuối cùng
+            // để tạo thành đốt co dãn bù trừ thực tế (ví dụ 1.02m), không tạo đốt vụn riêng!
+            double minSegLen = UnitUtils.ConvertToInternalUnits(0.40, UnitTypeId.Meters);
+
+            int numStd;
+            double bufferLen;
+
+            if (rem < 0.001)
+            {
+                numStd = n;
+                bufferLen = 0.0;
+            }
+            else if (rem < minSegLen && n >= 1)
+            {
+                numStd = n - 1;
+                bufferLen = lStd + rem;
+            }
+            else
+            {
+                numStd = n;
+                bufferLen = rem;
+            }
+
+            if (isReverseBuffer)
+            {
+                // Đốt co dãn bù trừ nằm ở đầu đoạn (sát mép thành trong hộp nối)
+                if (bufferLen > 0.001)
+                {
+                    lengths.Add(bufferLen);
+                }
+                for (int i = 0; i < numStd; i++)
+                {
+                    lengths.Add(lStd);
+                }
+            }
+            else
+            {
+                // Các đốt chuẩn đi trước, đốt co dãn bù trừ nằm ở cuối đoạn (sát mép thành trong hộp nối)
+                for (int i = 0; i < numStd; i++)
+                {
+                    lengths.Add(lStd);
+                }
+                if (bufferLen > 0.001)
+                {
+                    lengths.Add(bufferLen);
+                }
+            }
+
+            return lengths;
         }
 
         private static string FormatDotName(string pattern, int index, string branchSuffix)
