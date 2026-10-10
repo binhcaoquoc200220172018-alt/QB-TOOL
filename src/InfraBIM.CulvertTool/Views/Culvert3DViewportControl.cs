@@ -500,14 +500,15 @@ namespace InfraBIM.CulvertTool.Views
 
             // 2. VẼ THÂN CỐNG TỪNG ĐỐT RỖNG RUỘT 3D CHUẨN XÁC THEO ĐỘ DỐC THỰC TẾ (HÌNH 2)
             const double jointGap = 0.02; // Khe nối 20mm giữa các đốt cống
+            double ngamSan = geom.L_Ngam;
             foreach (var seg in geom.Segments)
             {
                 double x0 = seg.StartDistanceM + (jointGap / 2.0);
                 double x1 = seg.EndDistanceM - (jointGap / 2.0);
                 if (x1 <= x0) continue;
 
-                double y0 = -Drop(x0);
-                double y1 = -Drop(x1);
+                double y0 = -Drop(x0) - ngamSan;
+                double y1 = -Drop(x1) - ngamSan;
 
                 Material segMat = seg.IsStandard
                     ? MatStdSegment
@@ -536,14 +537,14 @@ namespace InfraBIM.CulvertTool.Views
                 {
                     double jx0 = seg.EndDistanceM - (jointGap / 2.0);
                     double jx1 = seg.EndDistanceM + (jointGap / 2.0);
-                    double jy0 = -Drop(jx0);
-                    double jy1 = -Drop(jx1);
+                    double jy0 = -Drop(jx0) - ngamSan;
+                    double jy1 = -Drop(jx1) - ngamSan;
                     AddSlopedBoxMesh(_rootModelGroup, jx0, jy0 - tSlab - 0.02, jy0 + bH + tSlab + 0.02, jx1, jy1 - tSlab - 0.02, jy1 + bH + tSlab + 0.02, -wOut / 2.0 - 0.02, wOut / 2.0 + 0.02, MatJoint);
                 }
             }
 
             // Vẽ đường tim cống Magenta rực rỡ xuyên qua tâm cống như Hình 2
-            BuildCenterline3D(_rootModelGroup, totalL, bH, Drop);
+            BuildCenterline3D(_rootModelGroup, totalL, bH, Drop, ngamSan);
 
             // 3. VẼ HỘP NỐI CỐNG (HỐ GA) 3D MÀU XANH DƯƠNG NHƯ HÌNH 2
             foreach (var mh in geom.Manholes)
@@ -552,7 +553,7 @@ namespace InfraBIM.CulvertTool.Views
                 double wMh = Math.Max(mh.WidthM, 1.2);
                 double xMh0 = xMh - (wMh / 2.0);
                 double xMh1 = xMh + (wMh / 2.0);
-                double yMh = -Drop(xMh);
+                double yMh = -Drop(xMh) - ngamSan;
                 double mhW = wOut + 0.45;                // Hộp nối rộng hơn thân cống
                 double mhTopY = yMh + bH + tSlab + 0.45; // Nhô cao hơn đỉnh cống 0.45m
                 double mhBotY = yMh - tSlab - 0.20;      // Đáy hố ga hạ sâu hơn đáy cống
@@ -581,12 +582,12 @@ namespace InfraBIM.CulvertTool.Views
             // B. Hạ lưu (P2, X = totalL)
             BuildInletOutlet3D(_rootModelGroup, totalL, -Drop(totalL), wOut, bH, tSlab, tWall, isUpstream: false);
 
-            // 5. VẼ SÂN GIA CỐ 3M & DẦM CHÂN KHAY KÈM LỚP BÊ TÔNG LÓT (KHỚP 100% FAMILY TNN_CX_SAN GIA CO)
-            // A. Thượng lưu (nối liền mạch từ mép sân cống thượng lưu ra 3m)
-            BuildApronAssembly3D(_rootModelGroup, 0.0, 0.0, wOut, tSlab, isUpstream: true, _showBedding);
+            // 5. VẼ SÂN GIA CỐ & DẦM CHÂN KHAY KÈM LỚP BÊ TÔNG LÓT (KHỚP 100% FAMILY TNN_CX_SAN GIA CO VÀ BẢN VẼ CAD)
+            // A. Thượng lưu (nối liền mạch từ mép sân cống thượng lưu ra L_SGC_TL)
+            BuildApronAssembly3D(_rootModelGroup, 0.0, 0.0, wOut, tSlab, isUpstream: true, _showBedding, geom.L_SGC_TL);
 
-            // B. Hạ lưu (nối liền mạch từ mép sân cống hạ lưu ra 3m)
-            BuildApronAssembly3D(_rootModelGroup, totalL, -Drop(totalL), wOut, tSlab, isUpstream: false, _showBedding);
+            // B. Hạ lưu (nối liền mạch từ mép sân cống hạ lưu ra L_SGC_HL)
+            BuildApronAssembly3D(_rootModelGroup, totalL, -Drop(totalL), wOut, tSlab, isUpstream: false, _showBedding, geom.L_SGC_HL);
 
             // 6. VẼ BÊ TÔNG LÓT & ĐÁ DĂM ĐỆM (NGẮT QUÃNG CHUẨN XÁC TẠI HỘP NỐI)
             if (_showBedding)
@@ -601,7 +602,7 @@ namespace InfraBIM.CulvertTool.Views
         private static void BuildInletOutlet3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double bH, double tSlab, double tWall, bool isUpstream)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            double apronLen = 1.35; // Chiều dài sân cống chuẩn theo Family TNN_CX_SAN CONG (1.35m)
+            double apronLen = 2.16; // Chiều dài sân cống chuẩn theo CAD/Family TNN_CX_SAN CONG (1.76m sân + 0.40m khay cống = 2.16m)
             double xApronEdge = xCenter + (dir * apronLen);
             double postW = 0.35;
             double hwThick = 0.40;
@@ -719,10 +720,10 @@ namespace InfraBIM.CulvertTool.Views
                 MatCrushedStone);
         }
 
-        private static void BuildApronAssembly3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double tSlab, bool isUpstream, bool showBedding)
+        private static void BuildApronAssembly3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double tSlab, bool isUpstream, bool showBedding, double sgcLengthM = 3.0)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            double apronLen = 1.35; // Chiều dài sân cống chính
+            double apronLen = 2.16; // Chiều dài sân cống chính khớp 100% CAD (1.76m sân + 0.40m khay cống = 2.16m)
             double xApronEdge = xCenter + (dir * apronLen); // Điểm tiếp giáp 0 gap giữa Sân cống và Sân gia cố
 
             double postW = 0.35;
@@ -730,17 +731,17 @@ namespace InfraBIM.CulvertTool.Views
             double wApronStart = wOut + (2 * postW);
             double wApronEnd = wApronStart + (2 * wingFlare);
 
-            // Sân gia cố dài 3.0m chuẩn theo Family TNN_CX_SAN GIA CO (Hình 4)
-            double sgcLen = 3.0;
+            // Sân gia cố theo chiều dài khai báo trong Excel (mặc định 3.0m)
+            double sgcLen = sgcLengthM > 0.05 ? sgcLengthM : 3.0;
             double xSgcEnd = xApronEdge + (dir * sgcLen);
             double sgcFlare = 0.60; // Sân gia cố mở rộng nhẹ ra hai bên theo bờ taluy
             double wSgcEnd = wApronEnd + (2 * sgcFlare);
 
-            double sgcThick = 0.25;      // Đan lát đá hộc xây vữa M100 dày 25cm (Hình 4)
+            double sgcThick = 0.25;      // Đan lát đá hộc xây vữa M100 dày 25cm (Hình CAD)
             double sgcBtlThick = 0.10;   // BTL SGC dày 100mm
             double sgcStoneThick = 0.15; // Đá dăm SGC dày 150mm
-            double toeDepth = 0.65;      // Dầm chân khay cắm sâu 65cm thẳng đứng xuống dưới (Hình 4)
-            double toeThick = 0.40;      // Bề dày dầm chân khay 40cm (Hình 4)
+            double toeDepth = 1.00;      // Dầm chân khay cắm sâu 1.00m thẳng đứng xuống dưới (Hình CAD: 100cm)
+            double toeThick = 0.40;      // Bề dày dầm chân khay 40cm (Hình CAD: 40cm)
 
             // 1. Bản sân gia cố (TNN_CX_SGC_SAN GIA CO - Hình 4): 
             // Mặt trên phẳng ngang cao độ đáy cống, nối liền mạch từ xApronEdge ra xSgcEnd (3m)
@@ -804,20 +805,26 @@ namespace InfraBIM.CulvertTool.Views
 
         private static void BuildBeddingLayers(Model3DGroup group, CulvertPreviewGeometry geom, double totalL, double wOut, double tSlab, Func<double, double> dropFunc)
         {
+            double ngamSan = geom.L_Ngam;
+            double lMongCX = 0.0; // BTL và đá dăm cống hộp bắt đầu sau mép đá dăm đệm cửa xả (tại P1) và kéo dài đến P2 (Hình 3)
+            double xStartBedding = Math.Min(lMongCX, totalL / 2.0);
+            double xEndBedding = Math.Max(totalL - lMongCX, totalL / 2.0);
+            if (xEndBedding <= xStartBedding) return;
+
             // Xác định các đoạn rải BTL & Đá dăm (loại trừ các vị trí hộp nối)
             var spans = new List<(double Start, double End)>();
             if (geom.Manholes.Count == 0)
             {
-                spans.Add((0.0, totalL));
+                spans.Add((xStartBedding, xEndBedding));
             }
             else
             {
-                double curX = 0.0;
+                double curX = xStartBedding;
                 foreach (var mh in geom.Manholes)
                 {
                     double mhW = Math.Max(mh.WidthM, 1.2);
-                    double mhStart = Math.Max(0.0, mh.DistanceFromP1M - (mhW / 2.0) - 0.05);
-                    double mhEnd = Math.Min(totalL, mh.DistanceFromP1M + (mhW / 2.0) + 0.05);
+                    double mhStart = Math.Max(xStartBedding, mh.DistanceFromP1M - (mhW / 2.0) - 0.05);
+                    double mhEnd = Math.Min(xEndBedding, mh.DistanceFromP1M + (mhW / 2.0) + 0.05);
 
                     if (mhStart > curX + 0.1)
                     {
@@ -825,9 +832,9 @@ namespace InfraBIM.CulvertTool.Views
                     }
                     curX = Math.Max(curX, mhEnd);
                 }
-                if (curX < totalL - 0.1)
+                if (curX < xEndBedding - 0.1)
                 {
-                    spans.Add((curX, totalL));
+                    spans.Add((curX, xEndBedding));
                 }
             }
 
@@ -840,8 +847,8 @@ namespace InfraBIM.CulvertTool.Views
             {
                 double x0 = span.Start;
                 double x1 = span.End;
-                double y0 = -dropFunc(x0) - tSlab;
-                double y1 = -dropFunc(x1) - tSlab;
+                double y0 = -dropFunc(x0) - ngamSan - tSlab;
+                double y1 = -dropFunc(x1) - ngamSan - tSlab;
 
                 // 1. Lớp Bê tông lót (Lean concrete layer) dày 100mm
                 AddSolidBoxMesh(group, x0, y0 - btlThick, -btlW / 2.0, x1, y1, btlW / 2.0, MatBTL);
@@ -908,7 +915,7 @@ namespace InfraBIM.CulvertTool.Views
         #endregion
 
         #region Mesh Generation Helpers (Boxes, Walls, Quads)
-        private static void BuildCenterline3D(Model3DGroup group, double totalL, double bH, Func<double, double> dropFunc)
+        private static void BuildCenterline3D(Model3DGroup group, double totalL, double bH, Func<double, double> dropFunc, double yOffset = 0.0)
         {
             if (totalL <= 0.1) return;
             double r = 0.025; // Đường tim cống bán kính 25mm
@@ -919,8 +926,8 @@ namespace InfraBIM.CulvertTool.Views
             for (double x = startX; x < endX; x += step)
             {
                 double xNext = Math.Min(x + step, endX);
-                double y0 = -dropFunc(x) + (bH / 2.0);
-                double y1 = -dropFunc(xNext) + (bH / 2.0);
+                double y0 = -dropFunc(x) - yOffset + (bH / 2.0);
+                double y1 = -dropFunc(xNext) - yOffset + (bH / 2.0);
                 AddSlopedBoxMesh(group, x, y0 - r, y0 + r, xNext, y1 - r, y1 + r, -r, r, MatCenterline);
             }
         }

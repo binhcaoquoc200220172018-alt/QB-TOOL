@@ -109,7 +109,7 @@ namespace InfraBIM.CulvertTool.Services
                 if (!isMatch) continue;
 
                 // Không bao giờ can thiệp tham số Yes/No kiểm soát hiển thị nội bộ của cụm Cửa xả & Sân gia cố
-                if (m.IsYesNoParameter)
+                if (m.IsYesNoParameter || m.IsVisibility)
                 {
                     if (famName.IndexOf("CX", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         famName.IndexOf("SGC", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -130,6 +130,9 @@ namespace InfraBIM.CulvertTool.Services
                     pNameUpper.StartsWith("A4") || pNameUpper.StartsWith("A5") || pNameUpper.StartsWith("A6") ||
                     pNameUpper.StartsWith("A7") || pNameUpper.Contains("'")) continue;
 
+                // Bỏ qua CO VAI KE vì giá trị Yes/No đã được thuật toán rải tính toán chính xác theo từng vị trí đốt cống
+                if (pNameUpper == "CO VAI KE" || pNameUpper == "CO_VAI_KE" || pNameUpper.Contains("VAI KE") || pNameUpper.Contains("VAI_KE")) continue;
+
                 // Hỗ trợ cả Instance parameter (trên inst) và Type parameter (trên inst.Symbol)
                 Parameter? p = inst.LookupParameter(m.InternalName);
                 bool isTypeParam = false;
@@ -140,34 +143,49 @@ namespace InfraBIM.CulvertTool.Services
                 }
                 if (p == null || p.IsReadOnly) continue;
 
-                // TUYỆT ĐỐI KHÔNG ghi đè tham số dạng TYPE của Cửa xả & Sân gia cố
-                // Vì mỗi Type (TNN_CX_TUONG DAU, TNN_CX_SAN CONG, TNN_CX_TUONG CANH...) đã được Family định nghĩa sẵn đúng cấu kiện.
-                // Việc ghi đè Type param sẽ gây xung đột hình học trong Revit và phát sinh lỗi "Can't make type TNN_CX_SAN CONG".
-                bool hasExplicitMapping = !string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến";
+                // Đối với tham số dạng Type của Cửa xả & Sân gia cố:
+                // CHỈ BỎ QUA các tham số kiểm soát hiển thị (Yes/No / Visibility),
+                // TUYỆT ĐỐI CHO PHÉP ghi nhận các tham số kích thước hình học (Double/Length) mà người dùng đã tùy chỉnh!
                 if (isTypeParam)
                 {
-                    if (famName.IndexOf("CX", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        famName.IndexOf("SGC", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        categoryName.IndexOf("Cửa xả", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        categoryName.IndexOf("Sân gia cố", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        m.IsVisibility || pNameUpper.StartsWith("CX_") || pNameUpper.StartsWith("TD_") || pNameUpper.StartsWith("SGC_"))
+                    bool isVisName = pNameUpper == "CX_TUONG DAU" || pNameUpper == "CX_TUONG CANH" || 
+                                     pNameUpper == "CX_SAN CONG" || pNameUpper == "CX_BE TONG LOT" || 
+                                     pNameUpper == "CX_DA DAM DEM" || pNameUpper == "TD_BE TONG LOT" || 
+                                     pNameUpper == "TD_DA DAM DEM" || pNameUpper.Contains("_SH") || 
+                                     pNameUpper.Contains("YESNO");
+
+                    if (m.IsVisibility || m.IsYesNoParameter || isVisName)
                     {
                         continue;
                     }
-
-                    if (!hasExplicitMapping)
-                        continue;
                 }
+
+                bool hasExplicitMapping = !string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến";
 
                 // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, sau đó lấy giá trị tùy chỉnh riêng của cống
                 string valStr = data.GetParamOverride(m.InternalName, m.CustomValue);
                 if (hasExplicitMapping)
                 {
-                    if (m.MappedField == "KhauDo") valStr = data.KhauDo;
+                    if (m.MappedField == "KhauDo")
+                    {
+                        valStr = data.KhauDo;
+                        if (p.StorageType == StorageType.Double)
+                        {
+                            string kd = (data.KhauDo ?? "").Trim();
+                            if (kd.StartsWith("D", StringComparison.OrdinalIgnoreCase))
+                                kd = kd.Substring(1);
+                            var parts = kd.Split('x', 'X', '*', '-');
+                            if (parts.Length > 0 && double.TryParse(parts[0], out double bVal))
+                            {
+                                valStr = (bVal >= 10.0 ? bVal : bVal * 1000.0).ToString();
+                            }
+                        }
+                    }
                     else if (m.MappedField == "ChieuDai") valStr = data.ChieuDai.ToString("F2");
                     else if (m.MappedField == "DoDoc") valStr = data.DoDoc.ToString("F2");
                     else if (m.MappedField == "GocXoay") valStr = data.GocXoay.ToString("F2");
                     else if (m.MappedField == "L_Ngam_San") valStr = data.L_Ngam_San.ToString("F2");
+                    else if (m.MappedField == "B_san") valStr = data.KhauDo;
                     else if (m.MappedField == "KC_HN1") valStr = data.KC_HN1.ToString("F2");
                     else if (m.MappedField == "KC_HN2") valStr = data.KC_HN2.ToString("F2");
                     else if (m.MappedField == "KhoangCachTim") valStr = data.KhoangCachTim.ToString("F2");

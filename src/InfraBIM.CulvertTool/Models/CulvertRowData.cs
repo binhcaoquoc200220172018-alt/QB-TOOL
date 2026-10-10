@@ -72,6 +72,10 @@ namespace InfraBIM.CulvertTool.Models
         // Bổ sung: Khoảng cách giữa 2 tim cống tròn đôi (m)
         public double KhoangCachTim { get; set; } = 2.0;
 
+        // Chiều dài Sân gia cố Thượng lưu và Hạ lưu (m) - Family Adaptive 2 điểm
+        public double L_SGC_TL { get; set; } = 3.0;
+        public double L_SGC_HL { get; set; } = 3.0;
+
         // Cột cuối: Ghi chú loại cống rải tự động
         public string GhiChu { get; set; } = string.Empty;
 

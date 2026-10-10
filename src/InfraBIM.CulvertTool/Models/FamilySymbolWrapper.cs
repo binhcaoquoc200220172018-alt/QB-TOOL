@@ -47,7 +47,7 @@ namespace InfraBIM.CulvertTool.Models
 
             try
             {
-                if (sym.IsValidObject)
+                if (sym != null && sym.IsValidObject)
                 {
                     id = sym.Id;
                 }
@@ -56,7 +56,7 @@ namespace InfraBIM.CulvertTool.Models
 
             try
             {
-                if (sym.IsValidObject)
+                if (sym != null && sym.IsValidObject)
                 {
                     famName = sym.FamilyName ?? string.Empty;
                 }
@@ -65,7 +65,7 @@ namespace InfraBIM.CulvertTool.Models
 
             try
             {
-                if (sym.IsValidObject)
+                if (sym != null && sym.IsValidObject)
                 {
                     typeName = sym.Name ?? string.Empty;
                 }

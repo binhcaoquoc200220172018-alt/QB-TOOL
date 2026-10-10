@@ -148,6 +148,8 @@ namespace InfraBIM.CulvertTool.Services
                 int colB_HT2 = FindCol(new[] { "B_HT2", "B_HN2", "BERONG_HT2", "BERONG_HN2", "B HỐ THU 2", "B HO THU 2" }, colMap.ContainsKey("B_HT2") ? colMap["B_HT2"] : (19 + offsetCK));
                 int colL_Ngam = FindCol(new[] { "L_NGAM_SAN", "L_NGAM", "NGAM_SAN" }, 20 + offsetCK);
                 int colKheHo = FindCol(new[] { "KHE_HO_HN", "KHE_HO", "KHEHO" }, 21 + offsetCK);
+                int colL_SGC_TL = FindCol(new[] { "L_SGC_TL", "L SGC TL", "LSGC_TL", "L_SANGIACO_TL", "L SÂN GIA CỐ TL", "L SAN GIA CO TL", "L_SGC_THUONGLUU" }, -1);
+                int colL_SGC_HL = FindCol(new[] { "L_SGC_HL", "L SGC HL", "LSGC_HL", "L_SANGIACO_HL", "L SÂN GIA CỐ HL", "L SAN GIA CO HL", "L_SGC_HALUU" }, -1);
                 int colGhiChu = FindCol(new[] { "GHICHU", "GHI CHÚ", "GHI CHU", "LOAI RAI", "LOAIRAI", "PHAN LOAI", "CHUNGLOAI" }, 22 + offsetCK);
 
                 for (int r = headerRow + 1; r <= lastRow; r++)
@@ -234,6 +236,19 @@ namespace InfraBIM.CulvertTool.Services
                     item.L_Ngam_San = ParseDouble(row.Cell(colL_Ngam), 0.30);
                     item.Khe_Ho_HN = ParseDouble(row.Cell(colKheHo), 0.05);
 
+                    // Chiều dài Sân gia cố Thượng lưu & Hạ lưu (m) - Mặc định 3.0m
+                    if (colL_SGC_TL > 0)
+                    {
+                        item.L_SGC_TL = ParseDouble(row.Cell(colL_SGC_TL), 3.0);
+                    }
+                    if (item.L_SGC_TL <= 0.01) item.L_SGC_TL = 3.0;
+
+                    if (colL_SGC_HL > 0)
+                    {
+                        item.L_SGC_HL = ParseDouble(row.Cell(colL_SGC_HL), 3.0);
+                    }
+                    if (item.L_SGC_HL <= 0.01) item.L_SGC_HL = 3.0;
+
                     // Cột GhiChu (Quyết định loại rải cống tự động)
                     if (colGhiChu > 0)
                     {
@@ -290,13 +305,13 @@ namespace InfraBIM.CulvertTool.Services
             {
                 var ws = workbook.Worksheets.Add("DuLieuCongNgang");
 
-                // Headers chuẩn hóa (23 cột bao gồm CauKien và GhiChu)
+                // Headers chuẩn hóa (25 cột bao gồm CauKien, L_SGC_TL, L_SGC_HL và GhiChu)
                 string[] headers = new[]
                 {
                     "STT", "LyTrinh", "LoaiCong", "CauKien", "SoCua", "KhauDo",
                     "X1", "Y1", "Z1", "X2", "Y2", "Z2",
                     "ChieuDai", "DoDoc", "GocXoay", "SoHopNoi",
-                    "KC_HN1", "KC_HN2", "B_HT1", "B_HT2", "L_Ngam_San", "Khe_Ho_HN", "GhiChu"
+                    "KC_HN1", "KC_HN2", "B_HT1", "B_HT2", "L_Ngam_San", "Khe_Ho_HN", "L_SGC_TL", "L_SGC_HL", "GhiChu"
                 };
 
                 for (int col = 0; col < headers.Length; col++)
@@ -320,7 +335,7 @@ namespace InfraBIM.CulvertTool.Services
                     587234.120, 1194562.890, 265.140,
                     587248.560, 1194558.120, 264.840,
                     15.21, 2.00, 108.30, 2,
-                    5.38, 4.20, 1.50, 1.50, 0.30, 0.05, "Cống tròn đôi đúc sẵn"
+                    5.38, 4.20, 1.50, 1.50, 0.30, 0.05, 3.00, 3.00, "Cống tròn đôi đúc sẵn"
                 };
 
                 // Dòng mẫu 2: Cống tròn đơn 1D1000 đúc sẵn (Km1+680.00)
@@ -330,7 +345,7 @@ namespace InfraBIM.CulvertTool.Services
                     587420.350, 1194605.100, 266.500,
                     587432.800, 1194601.200, 266.250,
                     13.05, 1.92, 107.40, 0,
-                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, "Cống tròn đúc sẵn"
+                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, 3.00, 3.00, "Cống tròn đúc sẵn"
                 };
 
                 // Dòng mẫu 3: Cống hộp đơn 1.5x1.5 đúc sẵn (Km2+100.20)
@@ -340,7 +355,7 @@ namespace InfraBIM.CulvertTool.Services
                     587750.800, 1194710.450, 268.000,
                     587768.200, 1194704.900, 267.650,
                     18.25, 1.92, 107.70, 0,
-                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, "Cống hộp đúc sẵn"
+                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, 3.00, 3.00, "Cống hộp đúc sẵn"
                 };
 
                 // Dòng mẫu 4: Cống hộp đôi 2.5x2.0 đổ tại chỗ (Km2+550.00)
@@ -350,7 +365,7 @@ namespace InfraBIM.CulvertTool.Services
                     588120.400, 1194830.150, 269.800,
                     588142.100, 1194823.300, 269.360,
                     22.75, 1.93, 107.50, 2,
-                    6.50, 5.80, 1.60, 1.60, 0.35, 0.05, "Cống hộp đổ tại chỗ"
+                    6.50, 5.80, 1.60, 1.60, 0.35, 0.05, 3.00, 3.00, "Cống hộp đổ tại chỗ"
                 };
 
                 for (int c = 0; c < row1.Length; c++) ws.Cell(2, c + 1).Value = XLCellValue.FromObject(row1[c]);
@@ -466,7 +481,10 @@ namespace InfraBIM.CulvertTool.Services
             int colB_HT2 = FindCol(new[] { "B_HT2", "B_HN2", "BERONG_HT2", "BERONG_HN2", "B HỐ THU 2" }, 18 + offsetCK);
             int colL_Ngam = FindCol(new[] { "L_NGAM_SAN", "L_NGAM", "NGAM_SAN" }, 19 + offsetCK);
             int colKheHo = FindCol(new[] { "KHE_HO_HN", "KHE_HO", "KHEHO" }, 20 + offsetCK);
-            int colGhiChu = FindCol(new[] { "GHICHU", "GHI CHÚ", "GHI CHU", "LOAI RAI", "LOAIRAI" }, 21 + offsetCK);
+            int colL_SGC_TL = FindCol(new[] { "L_SGC_TL", "L SGC TL", "L_SANGIACO_TL", "L SÂN GIA CỐ TL", "L_SGC_UPSTREAM" }, 21 + offsetCK);
+            int colL_SGC_HL = FindCol(new[] { "L_SGC_HL", "L SGC HL", "L_SANGIACO_HL", "L SÂN GIA CỐ HL", "L_SGC_DOWNSTREAM" }, 22 + offsetCK);
+            int offsetSGC = (colL_SGC_TL >= 0 || colL_SGC_HL >= 0) ? 2 : 0;
+            int colGhiChu = FindCol(new[] { "GHICHU", "GHI CHÚ", "GHI CHU", "LOAI RAI", "LOAIRAI" }, 21 + offsetCK + offsetSGC);
 
             for (int r = headerLineIdx + 1; r < lines.Count; r++)
             {
@@ -534,6 +552,18 @@ namespace InfraBIM.CulvertTool.Services
 
                 item.L_Ngam_San = ParseDoubleString(GetCell(colL_Ngam), 0.30);
                 item.Khe_Ho_HN = ParseDoubleString(GetCell(colKheHo), 0.05);
+
+                if (colL_SGC_TL >= 0)
+                {
+                    item.L_SGC_TL = ParseDoubleString(GetCell(colL_SGC_TL), 3.0);
+                }
+                if (item.L_SGC_TL <= 0.01) item.L_SGC_TL = 3.0;
+
+                if (colL_SGC_HL >= 0)
+                {
+                    item.L_SGC_HL = ParseDoubleString(GetCell(colL_SGC_HL), 3.0);
+                }
+                if (item.L_SGC_HL <= 0.01) item.L_SGC_HL = 3.0;
 
                 if (colGhiChu >= 0)
                 {

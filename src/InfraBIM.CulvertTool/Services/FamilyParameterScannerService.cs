@@ -581,6 +581,14 @@ namespace InfraBIM.CulvertTool.Services
 
         private static string DeduceDefaultMappedField(string paramName)
         {
+            // Các tham số Cửa xả & Sân gia cố mặc định là Tùy biến để ưu tiên nhận số liệu người dùng nhập
+            if (paramName.StartsWith("CX_", StringComparison.OrdinalIgnoreCase) ||
+                paramName.StartsWith("TD_", StringComparison.OrdinalIgnoreCase) ||
+                paramName.StartsWith("SGC_", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Tùy biến";
+            }
+
             string lower = paramName.ToLowerInvariant();
             if (lower.Contains("khau_do") || lower.Contains("khaudo") || lower.Contains("b_cong") || lower.Contains("d_cong"))
                 return "KhauDo";

@@ -749,6 +749,8 @@
                                 <DataGridTextColumn Header="B_HT2 (m)" Binding="{Binding B_HT2, StringFormat={}{0:0.00}}" Width="105" MinWidth="95"/>
                                 <DataGridTextColumn Header="Ngàm sân (m)" Binding="{Binding L_Ngam_San, StringFormat={}{0:0.00}}" Width="110" MinWidth="100"/>
                                 <DataGridTextColumn Header="Khe hở HN (m)" Binding="{Binding Khe_Ho_HN, StringFormat={}{0:0.00}}" Width="110" MinWidth="100"/>
+                                <DataGridTextColumn Header="L SGC TL (m)" Binding="{Binding L_SGC_TL, StringFormat={}{0:0.00}}" Width="110" MinWidth="95"/>
+                                <DataGridTextColumn Header="L SGC HL (m)" Binding="{Binding L_SGC_HL, StringFormat={}{0:0.00}}" Width="110" MinWidth="95"/>
                                 <DataGridTextColumn Header="Ghi chú loại cống" Binding="{Binding GhiChu}" Width="150" MinWidth="130" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
                                 <DataGridTextColumn Header="Trạng thái" Binding="{Binding StatusNote}" Width="240" MinWidth="200"/>
                             </DataGrid.Columns>

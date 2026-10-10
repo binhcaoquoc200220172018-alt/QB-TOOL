@@ -112,6 +112,9 @@ namespace InfraBIM.CulvertTool.Models
         public double OffsetZ_BTL_San { get; set; } = -0.10;
         public double OffsetZ_BTL_HN { get; set; } = -0.30;
 
+        public double L_SGC_TL { get; set; } = 3.0;
+        public double L_SGC_HL { get; set; } = 3.0;
+
         public PreviewApronItem ApronTL { get; set; } = new();
         public PreviewApronItem ApronHL { get; set; } = new();
         public List<PreviewSegmentItem> Segments { get; } = new();

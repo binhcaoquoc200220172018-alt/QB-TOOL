@@ -17,6 +17,7 @@ cad_*.txt
 dims_with_points.txt
 test_cad_out.txt
 inspect_culvert.txt
+*.log
 
 # Revit backups
 *.00*.rfa

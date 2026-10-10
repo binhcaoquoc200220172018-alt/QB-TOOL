@@ -140,6 +140,10 @@ namespace InfraBIM.CulvertTool.Services
                     tAct.SetFailureHandlingOptions(failOptsAct);
 
                     tAct.Start();
+
+                    EnsureOutletTypesExist(doc, outletComponents);
+                    EnsureApronTypesExist(doc, apronComponents);
+
                     var allComps = (precastBarrelComponents ?? new List<CulvertComponentItem>())
                         .Concat(castInPlaceBarrelComponents ?? new List<CulvertComponentItem>())
                         .Concat(outletComponents ?? new List<CulvertComponentItem>())
@@ -457,6 +461,218 @@ namespace InfraBIM.CulvertTool.Services
             // "Can't make type TNN_CX_SAN CONG"
         }
 
+        private static void SetParamYesNoType(FamilySymbol s, string paramName, int val)
+        {
+            if (s == null || !s.IsValidObject) return;
+            try
+            {
+                var p = s.LookupParameter(paramName);
+                if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Integer)
+                {
+                    p.Set(val);
+                }
+            }
+            catch { }
+        }
+
+        private static void EnsureOutletTypesExist(Document doc, IList<CulvertComponentItem>? outletComponents)
+        {
+            if (doc == null || outletComponents == null || outletComponents.Count == 0) return;
+
+            FamilySymbol? baseSym = null;
+            foreach (var c in outletComponents)
+            {
+                if (c.SelectedSymbol != null)
+                {
+                    var s = c.SelectedSymbol.GetFreshSymbol(doc);
+                    if (s != null && s.IsValidObject && (s.FamilyName.Contains("TNN_CX") || s.FamilyName.Contains("SAN CONG") || s.FamilyName.Contains("CUA XA")))
+                    {
+                        baseSym = s;
+                        break;
+                    }
+                }
+            }
+
+            if (baseSym == null)
+            {
+                baseSym = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilySymbol))
+                    .Cast<FamilySymbol>()
+                    .FirstOrDefault(s => s != null && s.IsValidObject && (s.FamilyName.Contains("TNN_CX_SAN CONG") || s.FamilyName.Contains("SAN CONG")));
+            }
+
+            if (baseSym == null || !baseSym.IsValidObject) return;
+
+            Family? fam = null;
+            try { fam = baseSym.Family; } catch { }
+            if (fam == null || !fam.IsValidObject) return;
+
+            var existingSymbols = fam.GetFamilySymbolIds()
+                .Select(id => doc.GetElement(id) as FamilySymbol)
+                .Where(s => s != null && s.IsValidObject)
+                .ToList();
+
+            var neededTypes = new Dictionary<string, Action<FamilySymbol>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["TNN_CX_TUONG DAU"] = s =>
+                {
+                    SetParamYesNoType(s, "CX_TUONG DAU", 1);
+                    SetParamYesNoType(s, "TD_BE TONG LOT", 1);
+                    SetParamYesNoType(s, "TD_DA DAM DEM", 1);
+                    SetParamYesNoType(s, "CX_TUONG CANH", 0);
+                    SetParamYesNoType(s, "CX_SAN CONG", 0);
+                    SetParamYesNoType(s, "CX_BE TONG LOT", 0);
+                    SetParamYesNoType(s, "CX_DA DAM DEM", 0);
+                },
+                ["TNN_CX_TUONG CANH"] = s =>
+                {
+                    SetParamYesNoType(s, "CX_TUONG CANH", 1);
+                    SetParamYesNoType(s, "CX_TUONG DAU", 0);
+                    SetParamYesNoType(s, "CX_SAN CONG", 0);
+                    SetParamYesNoType(s, "CX_BE TONG LOT", 0);
+                    SetParamYesNoType(s, "CX_DA DAM DEM", 0);
+                    SetParamYesNoType(s, "TD_BE TONG LOT", 0);
+                    SetParamYesNoType(s, "TD_DA DAM DEM", 0);
+                },
+                ["TNN_CX_SAN CONG"] = s =>
+                {
+                    SetParamYesNoType(s, "CX_SAN CONG", 1);
+                    SetParamYesNoType(s, "CX_TUONG DAU", 0);
+                    SetParamYesNoType(s, "CX_TUONG CANH", 0);
+                    SetParamYesNoType(s, "CX_BE TONG LOT", 0);
+                    SetParamYesNoType(s, "CX_DA DAM DEM", 0);
+                    SetParamYesNoType(s, "TD_BE TONG LOT", 0);
+                    SetParamYesNoType(s, "TD_DA DAM DEM", 0);
+                },
+                ["TNN_CX_BE TONG LOT"] = s =>
+                {
+                    SetParamYesNoType(s, "CX_BE TONG LOT", 1);
+                    SetParamYesNoType(s, "CX_TUONG DAU", 0);
+                    SetParamYesNoType(s, "CX_TUONG CANH", 0);
+                    SetParamYesNoType(s, "CX_SAN CONG", 0);
+                    SetParamYesNoType(s, "CX_DA DAM DEM", 0);
+                    SetParamYesNoType(s, "TD_BE TONG LOT", 0);
+                    SetParamYesNoType(s, "TD_DA DAM DEM", 0);
+                },
+                ["TNN_CX_DA DAM DEM"] = s =>
+                {
+                    SetParamYesNoType(s, "CX_DA DAM DEM", 1);
+                    SetParamYesNoType(s, "CX_TUONG DAU", 0);
+                    SetParamYesNoType(s, "CX_TUONG CANH", 0);
+                    SetParamYesNoType(s, "CX_SAN CONG", 0);
+                    SetParamYesNoType(s, "CX_BE TONG LOT", 0);
+                    SetParamYesNoType(s, "TD_BE TONG LOT", 0);
+                    SetParamYesNoType(s, "TD_DA DAM DEM", 0);
+                }
+            };
+
+            foreach (var kvp in neededTypes)
+            {
+                string typeName = kvp.Key;
+                string shortName = typeName.Replace("TNN_CX_", "");
+                var existing = existingSymbols.FirstOrDefault(s =>
+                    s.Name.Equals(typeName, StringComparison.OrdinalIgnoreCase) ||
+                    (s.Name.IndexOf(shortName, StringComparison.OrdinalIgnoreCase) >= 0 &&
+                     (shortName != "SAN CONG" || (!s.Name.Contains("TUONG") && !s.Name.Contains("BE TONG") && !s.Name.Contains("DA DAM")))));
+
+                if (existing == null)
+                {
+                    try
+                    {
+                        var newSym = (FamilySymbol)baseSym.Duplicate(typeName);
+                        doc.Regenerate();
+                        ActivateSymbol(newSym);
+                        kvp.Value(newSym);
+                        existingSymbols.Add(newSym);
+                    }
+                    catch { }
+                }
+                else
+                {
+                    try { kvp.Value(existing); } catch { }
+                }
+            }
+
+            foreach (var comp in outletComponents)
+            {
+                string cat = (comp.CategoryType ?? "").ToUpperInvariant();
+                string targetType = string.Empty;
+                if (cat.Contains("TƯỜNG ĐẦU") || cat.Contains("TUONG DAU")) targetType = "TNN_CX_TUONG DAU";
+                else if (cat.Contains("TƯỜNG CÁNH") || cat.Contains("TUONG CANH")) targetType = "TNN_CX_TUONG CANH";
+                else if (cat.Contains("BÊ TÔNG LÓT") || cat.Contains("BE TONG LOT") || cat.Contains("BTL") || cat.Contains("LÓT") || cat.Contains("LOT")) targetType = "TNN_CX_BE TONG LOT";
+                else if (cat.Contains("ĐÁ DĂM") || cat.Contains("DA DAM") || cat.Contains("ĐỆM") || cat.Contains("DEM")) targetType = "TNN_CX_DA DAM DEM";
+                else if (cat.Contains("SÂN CỐNG") || cat.Contains("SAN CONG") || cat.Contains("BẢN ĐÁY") || cat.Contains("BAN DAY")) targetType = "TNN_CX_SAN CONG";
+
+                if (!string.IsNullOrEmpty(targetType))
+                {
+                    string shortTarget = targetType.Replace("TNN_CX_", "");
+                    var match = existingSymbols.FirstOrDefault(s =>
+                        s.Name.Equals(targetType, StringComparison.OrdinalIgnoreCase) ||
+                        (s.Name.IndexOf(shortTarget, StringComparison.OrdinalIgnoreCase) >= 0 &&
+                         (shortTarget != "SAN CONG" || (!s.Name.Contains("TUONG") && !s.Name.Contains("BE TONG") && !s.Name.Contains("DA DAM")))));
+
+                    if (match != null)
+                    {
+                        comp.SelectedSymbol = new FamilySymbolWrapper(match);
+                        ActivateSymbol(match);
+                    }
+                }
+            }
+        }
+
+        private static void EnsureApronTypesExist(Document doc, IList<CulvertComponentItem>? apronComponents)
+        {
+            if (doc == null || apronComponents == null || apronComponents.Count == 0) return;
+
+            FamilySymbol? baseSym = null;
+            foreach (var c in apronComponents)
+            {
+                if (c.SelectedSymbol != null)
+                {
+                    var s = c.SelectedSymbol.GetFreshSymbol(doc);
+                    if (s != null && s.IsValidObject && (s.FamilyName.Contains("SAN GIA CO") || s.FamilyName.Contains("SGC")))
+                    {
+                        baseSym = s;
+                        break;
+                    }
+                }
+            }
+
+            if (baseSym == null)
+            {
+                baseSym = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilySymbol))
+                    .Cast<FamilySymbol>()
+                    .FirstOrDefault(s => s != null && s.IsValidObject && (s.FamilyName.Contains("SAN GIA CO") || s.FamilyName.Contains("SGC")));
+            }
+
+            if (baseSym == null || !baseSym.IsValidObject) return;
+
+            Family? fam = null;
+            try { fam = baseSym.Family; } catch { }
+            if (fam == null || !fam.IsValidObject) return;
+
+            var existingSymbols = fam.GetFamilySymbolIds()
+                .Select(id => doc.GetElement(id) as FamilySymbol)
+                .Where(s => s != null && s.IsValidObject)
+                .ToList();
+
+            foreach (var comp in apronComponents)
+            {
+                string cat = (comp.CategoryType ?? "").ToUpperInvariant();
+                string targetType = string.Empty;
+                if (cat.Contains("LÓT") || cat.Contains("LOT") || cat.Contains("BTL")) targetType = "BE TONG LOT";
+                else targetType = "SAN GIA CO";
+
+                var match = existingSymbols.FirstOrDefault(s => s.Name.IndexOf(targetType, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (match != null)
+                {
+                    comp.SelectedSymbol = new FamilySymbolWrapper(match);
+                    ActivateSymbol(match);
+                }
+            }
+        }
+
         private static IList<CulvertComponentItem> ResolveComponentsForCulvert(
             Document doc,
             IList<CulvertComponentItem> baseComponents,
@@ -468,6 +684,7 @@ namespace InfraBIM.CulvertTool.Services
             var allSymbols = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilySymbol))
                 .Cast<FamilySymbol>()
+                .Where(s => s != null && s.IsValidObject)
                 .ToList();
 
             string loaiCong = row.LoaiCong ?? "";
@@ -491,15 +708,16 @@ namespace InfraBIM.CulvertTool.Services
                     if (copy.SelectedSymbol != null)
                     {
                         var fresh = copy.SelectedSymbol.GetFreshSymbol(doc);
-                        if (fresh != null)
+                        if (fresh != null && fresh.IsValidObject)
                         {
                             copy.SelectedSymbol.Symbol = fresh;
                             ActivateSymbol(fresh);
                         }
                         else
                         {
-                            var matchSym = ResolveFamilyForCulvert(allSymbols, loaiCong, cauKien, ghiChu, row.SoCua, row.KhauDo, copy.CategoryType ?? "");
-                            if (matchSym != null)
+                            string hint = $"{copy.GroupType} {copy.CategoryType}".Trim();
+                            var matchSym = ResolveFamilyForCulvert(allSymbols, loaiCong, cauKien, ghiChu, row.SoCua, row.KhauDo, hint);
+                            if (matchSym != null && matchSym.IsValidObject)
                             {
                                 copy.SelectedSymbol = new FamilySymbolWrapper(matchSym);
                                 ActivateSymbol(matchSym);
@@ -508,8 +726,9 @@ namespace InfraBIM.CulvertTool.Services
                     }
                     else
                     {
-                        var matchSym = ResolveFamilyForCulvert(allSymbols, loaiCong, cauKien, ghiChu, row.SoCua, row.KhauDo, copy.CategoryType ?? "");
-                        if (matchSym != null)
+                        string hint = $"{copy.GroupType} {copy.CategoryType}".Trim();
+                        var matchSym = ResolveFamilyForCulvert(allSymbols, loaiCong, cauKien, ghiChu, row.SoCua, row.KhauDo, hint);
+                        if (matchSym != null && matchSym.IsValidObject)
                         {
                             copy.SelectedSymbol = new FamilySymbolWrapper(matchSym);
                             ActivateSymbol(matchSym);
@@ -560,8 +779,15 @@ namespace InfraBIM.CulvertTool.Services
 
             foreach (var sym in symbols)
             {
-                string fam = sym.FamilyName.ToUpperInvariant();
-                string name = sym.Name.ToUpperInvariant();
+                if (sym == null || !sym.IsValidObject) continue;
+                string fam = string.Empty;
+                string name = string.Empty;
+                try
+                {
+                    fam = sym.FamilyName?.ToUpperInvariant() ?? "";
+                    name = sym.Name?.ToUpperInvariant() ?? "";
+                }
+                catch { continue; }
                 string full = $"{fam} {name}";
                 int score = 0;
 
@@ -582,17 +808,17 @@ namespace InfraBIM.CulvertTool.Services
                     {
                         if (full.Contains("TUONG CANH")) score += 30;
                     }
-                    else if (hintUpper.Contains("BÊ TÔNG LÓT") || hintUpper.Contains("BE TONG LOT") || hintUpper.Contains("BTL"))
+                    else if (hintUpper.Contains("BÊ TÔNG LÓT") || hintUpper.Contains("BE TONG LOT") || hintUpper.Contains("BTL") || hintUpper.Contains("LÓT") || hintUpper.Contains("LOT"))
                     {
                         if (full.Contains("BE TONG LOT") || full.Contains("BTL")) score += 30;
                     }
-                    else if (hintUpper.Contains("ĐÁ DĂM") || hintUpper.Contains("DA DAM"))
+                    else if (hintUpper.Contains("ĐÁ DĂM") || hintUpper.Contains("DA DAM") || hintUpper.Contains("ĐỆM") || hintUpper.Contains("DEM"))
                     {
                         if (full.Contains("DA DAM")) score += 30;
                     }
-                    else if (hintUpper.Contains("SÂN CỐNG") || hintUpper.Contains("SAN CONG"))
+                    else if (hintUpper.Contains("SÂN CỐNG") || hintUpper.Contains("SAN CONG") || hintUpper.Contains("BẢN ĐÁY") || hintUpper.Contains("BAN DAY"))
                     {
-                        if (name.Contains("SAN CONG")) score += 30;
+                        if (name.Contains("SAN CONG") && !name.Contains("TUONG") && !name.Contains("BE TONG") && !name.Contains("DA DAM")) score += 30;
                     }
                 }
                 else if (isSearchingApron)
@@ -720,22 +946,127 @@ namespace InfraBIM.CulvertTool.Services
             // 2. Đặt Cửa xả Thượng lưu (P1) & Hạ lưu (P2)
             double rotOutletTL = rotAngle + Math.PI / 2.0;
             double rotOutletHL = rotAngle - Math.PI / 2.0;
-            PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, materialSettings);
-            PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, materialSettings);
 
-            // 3. Đặt Sân gia cố Thượng lưu & Hạ lưu (nối tiếp từ mép sân cống ra dầm chân khay)
+            // 2. Xác định chiều dài sân cống (CX_L san cong) từ thiết lập tham số, Family hoặc mặc định 2.16m theo CAD
+            double lSanCongM = 2.16;
+            var mappingL = familyParameterMappings?.FirstOrDefault(m => 
+                string.Equals(m.InternalName, "CX_L san cong", StringComparison.OrdinalIgnoreCase) ||
+                m.InternalName.IndexOf("L san cong", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                string.Equals(m.InternalName, "L_SAN_CONG", StringComparison.OrdinalIgnoreCase));
+            if (mappingL != null && !string.IsNullOrWhiteSpace(mappingL.CustomValue))
+            {
+                string valStrL = data.GetParamOverride(mappingL.InternalName, mappingL.CustomValue);
+                if (double.TryParse(valStrL.Replace("mm", "").Replace("m", "").Trim(), out double dValL))
+                {
+                    lSanCongM = (Math.Abs(dValL) >= 10.0) ? dValL / 1000.0 : dValL;
+                }
+            }
+            if (lSanCongM <= 0.1 && data.ParameterOverrides != null)
+            {
+                foreach (var kvp in data.ParameterOverrides)
+                {
+                    if (kvp.Key.IndexOf("L san cong", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        kvp.Key.IndexOf("L_SAN_CONG", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        if (double.TryParse(kvp.Value.Replace("mm", "").Replace("m", "").Trim(), out double dValL))
+                        {
+                            lSanCongM = (Math.Abs(dValL) >= 10.0) ? dValL / 1000.0 : dValL;
+                            if (lSanCongM > 0.1) break;
+                        }
+                    }
+                }
+            }
+            if (lSanCongM <= 0.1)
+            {
+                var outletSampleComp = outletComponents.FirstOrDefault(c => c.IsActive && c.SelectedSymbol != null);
+                if (outletSampleComp?.SelectedSymbol != null)
+                {
+                    var oSym = outletSampleComp.SelectedSymbol.GetFreshSymbol(doc);
+                    if (oSym != null)
+                    {
+                        var pL = oSym.LookupParameter("CX_L san cong") ?? oSym.LookupParameter("L_SAN_CONG") ?? oSym.LookupParameter("L");
+                        if (pL != null && pL.StorageType == StorageType.Double && pL.AsDouble() > 0.1)
+                        {
+                            lSanCongM = UnitUtils.ConvertFromInternalUnits(pL.AsDouble(), UnitTypeId.Meters);
+                        }
+                    }
+                }
+            }
+            if (lSanCongM <= 0.1)
+            {
+                var sampleOInst = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .FirstOrDefault(fi => fi.Symbol != null && (fi.Symbol.FamilyName.Contains("SAN CONG") || fi.Symbol.FamilyName.Contains("CUA XA")));
+                if (sampleOInst != null)
+                {
+                    var pL = sampleOInst.LookupParameter("CX_L san cong") ?? sampleOInst.LookupParameter("L_SAN_CONG") ?? sampleOInst.LookupParameter("L");
+                    if (pL != null && pL.StorageType == StorageType.Double && pL.AsDouble() > 0.1)
+                    {
+                        lSanCongM = UnitUtils.ConvertFromInternalUnits(pL.AsDouble(), UnitTypeId.Meters);
+                    }
+                }
+            }
+            if (lSanCongM <= 0.1)
+            {
+                lSanCongM = 2.16;
+            }
+
+            double lSanCongFeet = UnitUtils.ConvertToInternalUnits(lSanCongM, UnitTypeId.Meters);
+
+            var outletInstances = new List<FamilyInstance>();
+            var barrelInstances = new List<FamilyInstance>();
+            var beddingInstances = new List<FamilyInstance>();
+
+            PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, outletInstances);
+            PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, outletInstances);
+
+            // 3. Đặt Sân gia cố Thượng lưu & Hạ lưu:
+            // YÊU CẦU 2 (Hình 2): Điểm 1 của Sân gia cố adaptive phải đặt đúng tại mép ngoài cùng của Cửa xả (sau dầm chân khay)
+            // Chiều dài tổng từ P1/P2 đến mép ngoài: Móng tường đầu = 1.30m + Sân cống & dầm chân khay (lSanCongM) = 3.46m
+            double lMongCX_M = 1.30;
+            double lOuterCX_M = lMongCX_M + lSanCongM;
+            double lOuterCX_Feet = UnitUtils.ConvertToInternalUnits(lOuterCX_M, UnitTypeId.Meters);
+
             XYZ uOutTL = -new XYZ(u.X, u.Y, 0).Normalize();
             XYZ uOutHL = new XYZ(u.X, u.Y, 0).Normalize();
-            double lSanCongFeet = UnitUtils.ConvertToInternalUnits(1.35, UnitTypeId.Meters);
-            XYZ ptSC2_TL = p1 + uOutTL * lSanCongFeet;
-            XYZ ptSC2_HL = p2 + uOutHL * lSanCongFeet;
+            XYZ ptSC2_TL = p1 + uOutTL * lOuterCX_Feet;
+            XYZ ptSC2_HL = p2 + uOutHL * lOuterCX_Feet;
 
-            PlaceApronAssembly(doc, ptSC2_TL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, materialSettings);
-            PlaceApronAssembly(doc, ptSC2_HL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, materialSettings);
+            double lSgcTL = data.L_SGC_TL > 0.05 ? data.L_SGC_TL : 3.0;
+            double lSgcHL = data.L_SGC_HL > 0.05 ? data.L_SGC_HL : 3.0;
 
-            // 4. Rải thân cống và hộp nối theo tim cống trung tâm
+            PlaceApronAssembly(doc, ptSC2_TL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSgcTL, materialSettings);
+            PlaceApronAssembly(doc, ptSC2_HL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSgcHL, materialSettings);
+
+            // 4. Rải thân cống và hộp nối: Offset xuống 1 đoạn L_ngam_san như trong file Excel & Hình 4
+            double lNgamSanM = data.L_Ngam_San > 0 ? data.L_Ngam_San : 0.0;
+            double lNgamSanFeet = UnitUtils.ConvertToInternalUnits(lNgamSanM, UnitTypeId.Meters);
+            XYZ p1_Culvert = p1 - new XYZ(0, 0, lNgamSanFeet);
+            XYZ p2_Culvert = p2 - new XYZ(0, 0, lNgamSanFeet);
+
             BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
-                p1, p2, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings);
+                p1_Culvert, p2_Culvert, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings,
+                barrelInstances, beddingInstances);
+
+            // 5. YÊU CẦU 1 & 6: Cut Geometry
+            // Yêu cầu 1: Cut geometry giữa BTL & đá dăm đệm cống hộp với khối Cửa xả (Hình 1)
+            foreach (var bed in beddingInstances)
+            {
+                foreach (var outlet in outletInstances)
+                {
+                    TryCutGeometrySafe(doc, bed, outlet);
+                }
+            }
+
+            // Yêu cầu 6: Cut geometry giữa thân cống hộp với Cửa xả (tường đầu)
+            foreach (var bar in barrelInstances)
+            {
+                foreach (var outlet in outletInstances)
+                {
+                    TryCutGeometrySafe(doc, outlet, bar);
+                }
+            }
         }
 
         private static void PlaceOutletAssembly(
@@ -749,21 +1080,21 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<ParameterMappingItem>? familyParameterMappings,
             CulvertRowData data,
             bool isUpstream,
-            IEnumerable<CulvertMaterialItem>? materialSettings)
+            double lSanCongFeet,
+            IEnumerable<CulvertMaterialItem>? materialSettings,
+            List<FamilyInstance>? createdOutlets = null)
         {
             if (outletComponents == null || outletComponents.Count == 0) return;
 
-            XYZ uOut = isUpstream
-                ? -new XYZ(uCulvert.X, uCulvert.Y, 0).Normalize()
-                : new XYZ(uCulvert.X, uCulvert.Y, 0).Normalize();
+            // Điểm 1 adaptive đặt ngay đúng điểm trong Excel (ptBase)
+            // Điểm 2 adaptive:
+            // - Cửa xả 1 (thượng lưu): hướng từ P1 về P2 (+uCulvert)
+            // - Cửa xả 2 (hạ lưu): hướng từ P2 về P1 (-uCulvert) (Yêu cầu 1)
+            XYZ uDirNorm = new XYZ(uCulvert.X, uCulvert.Y, 0).Normalize();
+            XYZ uDir = isUpstream ? uDirNorm : -uDirNorm;
 
-            double lSanCongFeet = UnitUtils.ConvertToInternalUnits(1.35, UnitTypeId.Meters);
-            XYZ ptSC1 = ptBase;
-            XYZ ptSC2 = ptBase + uOut * lSanCongFeet;
-
-            // Điểm Adaptive sân cống: Điểm 1 mép ngoài sân cống (ptSC2), Điểm 2 tựa vào thân cống (ptSC1)
-            XYZ pA = ptSC2;
-            XYZ pB = ptSC1;
+            XYZ pA = ptBase;
+            XYZ pB = ptBase + uDir * lSanCongFeet;
 
             foreach (var comp in outletComponents)
             {
@@ -784,9 +1115,9 @@ namespace InfraBIM.CulvertTool.Services
                     string targetTypeName = string.Empty;
                     if (catUpper.Contains("TƯỜNG ĐẦU") || catUpper.Contains("TUONG DAU")) targetTypeName = "TUONG DAU";
                     else if (catUpper.Contains("TƯỜNG CÁNH") || catUpper.Contains("TUONG CANH")) targetTypeName = "TUONG CANH";
-                    else if (catUpper.Contains("BÊ TÔNG LÓT") || catUpper.Contains("BE TONG LOT") || catUpper.Contains("BTL")) targetTypeName = "BE TONG LOT";
-                    else if (catUpper.Contains("ĐÁ DĂM") || catUpper.Contains("DA DAM")) targetTypeName = "DA DAM DEM";
-                    else if (catUpper.Contains("SÂN CỐNG") || catUpper.Contains("SAN CONG")) targetTypeName = "SAN CONG";
+                    else if (catUpper.Contains("BÊ TÔNG LÓT") || catUpper.Contains("BE TONG LOT") || catUpper.Contains("BTL") || catUpper.Contains("LÓT") || catUpper.Contains("LOT")) targetTypeName = "BE TONG LOT";
+                    else if (catUpper.Contains("ĐÁ DĂM") || catUpper.Contains("DA DAM") || catUpper.Contains("ĐỆM") || catUpper.Contains("DEM")) targetTypeName = "DA DAM DEM";
+                    else if (catUpper.Contains("SÂN CỐNG") || catUpper.Contains("SAN CONG") || catUpper.Contains("BẢN ĐÁY") || catUpper.Contains("BAN DAY")) targetTypeName = "SAN CONG";
 
                     if (!string.IsNullOrEmpty(targetTypeName))
                     {
@@ -794,10 +1125,23 @@ namespace InfraBIM.CulvertTool.Services
                         {
                             foreach (ElementId symId in symFam.GetFamilySymbolIds())
                             {
-                                if (doc.GetElement(symId) is FamilySymbol fs && fs.IsValidObject && fs.Name.IndexOf(targetTypeName, StringComparison.OrdinalIgnoreCase) >= 0)
+                                if (doc.GetElement(symId) is FamilySymbol fs && fs.IsValidObject)
                                 {
-                                    targetSym = fs;
-                                    break;
+                                    bool isMatch = false;
+                                    if (targetTypeName == "SAN CONG")
+                                    {
+                                        isMatch = fs.Name.IndexOf("SAN CONG", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                                  !fs.Name.Contains("TUONG") && !fs.Name.Contains("BE TONG") && !fs.Name.Contains("DA DAM");
+                                    }
+                                    else
+                                    {
+                                        isMatch = fs.Name.IndexOf(targetTypeName, StringComparison.OrdinalIgnoreCase) >= 0;
+                                    }
+                                    if (isMatch)
+                                    {
+                                        targetSym = fs;
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -822,13 +1166,14 @@ namespace InfraBIM.CulvertTool.Services
                     else
                     {
                         inst = CreateInstanceSafe(doc, pA_off, targetSym);
-                        double rotOut = Math.Atan2(uOut.Y, uOut.X);
+                        double rotOut = Math.Atan2(uDir.Y, uDir.X);
                         SafeRotate(doc, inst.Id, pA_off, rotOut);
                     }
                 }
                 catch { }
 
                 if (inst == null) continue;
+                createdOutlets?.Add(inst);
 
                 try
                 {
@@ -841,6 +1186,11 @@ namespace InfraBIM.CulvertTool.Services
                     if (pGxC != null && !pGxC.IsReadOnly && pGxC.StorageType == StorageType.Double)
                     {
                         pGxC.Set(0.0);
+                    }
+                    var pLsc = inst.LookupParameter("CX_L san cong") ?? inst.LookupParameter("L_SAN_CONG");
+                    if (pLsc != null && !pLsc.IsReadOnly && pLsc.StorageType == StorageType.Double && lSanCongFeet > 0.1)
+                    {
+                        pLsc.Set(lSanCongFeet);
                     }
                 }
                 catch { }
@@ -866,6 +1216,7 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<ParameterMappingItem>? familyParameterMappings,
             CulvertRowData data,
             bool isUpstream,
+            double lSgcM,
             IEnumerable<CulvertMaterialItem>? materialSettings)
         {
             if (apronComponents == null || apronComponents.Count == 0) return;
@@ -874,8 +1225,7 @@ namespace InfraBIM.CulvertTool.Services
                 ? -new XYZ(uCulvert.X, uCulvert.Y, 0).Normalize()
                 : new XYZ(uCulvert.X, uCulvert.Y, 0).Normalize();
 
-            // Chiều dài thiết kế chuẩn theo CAD: 3.0m
-            double lSgcM = 3.0;
+            // Chiều dài thiết kế sân gia cố từ Excel hoặc mặc định 3.0m
             double lSgcFeet = UnitUtils.ConvertToInternalUnits(lSgcM, UnitTypeId.Meters);
 
             XYZ pA = ptSC2;
@@ -960,6 +1310,97 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
+        private static void TryCutGeometrySafe(Document doc, Element? eToCut, Element? eCutter)
+        {
+            if (doc == null || eToCut == null || eCutter == null || !eToCut.IsValidObject || !eCutter.IsValidObject) return;
+            if (eToCut.Id == eCutter.Id) return;
+
+            try
+            {
+                if (SolidSolidCutUtils.CanElementCutElement(eCutter, eToCut, out _))
+                {
+                    SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
+                    return;
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (SolidSolidCutUtils.CanElementCutElement(eToCut, eCutter, out _))
+                {
+                    SolidSolidCutUtils.AddCutBetweenSolids(doc, eCutter, eToCut);
+                    return;
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (!JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
+                {
+                    JoinGeometryUtils.JoinGeometry(doc, eToCut, eCutter);
+                }
+            }
+            catch { }
+        }
+
+        private static bool CheckIfVaiKeEnabled(
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            CulvertRowData data)
+        {
+            if (familyParameterMappings != null)
+            {
+                var item = familyParameterMappings.FirstOrDefault(m =>
+                {
+                    string name = (m.InternalName ?? "").ToUpperInvariant();
+                    string disp = (m.DisplayName ?? "").ToUpperInvariant();
+                    return name == "CO VAI KE" || name == "CO_VAI_KE" || name.Contains("VAI KE") || name.Contains("VAI_KE") ||
+                           disp.Contains("VAI KE") || disp.Contains("VAI_KE");
+                });
+
+                if (item != null)
+                {
+                    string val = data.GetParamOverride(item.InternalName, item.CustomValue);
+                    val = (val ?? "").Trim().ToLowerInvariant();
+                    if (val == "1" || val == "yes" || val == "true" || val == "có" || val == "co")
+                    {
+                        return true;
+                    }
+                    if (val == "0" || val == "no" || val == "false" || val == "không" || val == "khong")
+                    {
+                        return false;
+                    }
+                    if (item.IsSelected)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            if (data.ParameterOverrides != null)
+            {
+                foreach (var kvp in data.ParameterOverrides)
+                {
+                    string key = kvp.Key.ToUpperInvariant();
+                    if (key == "CO VAI KE" || key == "CO_VAI_KE" || key.Contains("VAI KE") || key.Contains("VAI_KE"))
+                    {
+                        string val = (kvp.Value ?? "").Trim().ToLowerInvariant();
+                        if (val == "1" || val == "yes" || val == "true" || val == "có" || val == "co")
+                        {
+                            return true;
+                        }
+                        if (val == "0" || val == "no" || val == "false" || val == "không" || val == "khong")
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
         private static void BuildBranchV2(
             Document doc,
             CulvertRowData data,
@@ -978,14 +1419,18 @@ namespace InfraBIM.CulvertTool.Services
             double bBoxFeet,
             CulvertArrayMode arrayMode,
             string branchSuffix,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null,
+            List<FamilyInstance>? createdBarrels = null,
+            List<FamilyInstance>? createdBeddings = null)
         {
             var segmentedBarrelComps = barrelComponents.Where(c => !IsBeddingComponent(c)).ToList();
             var continuousBeddingComps = barrelComponents.Where(c => IsBeddingComponent(c)).ToList();
 
-            // Lấy bề rộng ngoài thực tế của Hộp nối (HOP NOI CONG DOC)
-            // Kích thước thực tế của Family là 2.10m (thay vì 1.50m) để mép BTL/đá dừng chính xác sát mép hộp nối (Hình 4, 5)
+            bool isVaiKeGlobal = CheckIfVaiKeEnabled(familyParameterMappings, data);
+
+            // Bề rộng và chiều dày thành Hộp nối thực tế (HOP NOI CONG DOC)
             double actualManholeB_M = 2.10;
+            double manholeWallT_M = 0.25;
             var manholeComp = manholeComponents.FirstOrDefault(c => c.IsActive && c.SelectedSymbol != null);
             if (manholeComp?.SelectedSymbol != null)
             {
@@ -996,6 +1441,11 @@ namespace InfraBIM.CulvertTool.Services
                     if (pB != null && pB.StorageType == StorageType.Double && pB.AsDouble() > 0.1)
                     {
                         actualManholeB_M = UnitUtils.ConvertFromInternalUnits(pB.AsDouble(), UnitTypeId.Meters);
+                    }
+                    var pT = mSym.LookupParameter("HOP NOI CONG_T") ?? mSym.LookupParameter("T") ?? mSym.LookupParameter("T_THAN");
+                    if (pT != null && pT.StorageType == StorageType.Double && pT.AsDouble() > 0.05)
+                    {
+                        manholeWallT_M = UnitUtils.ConvertFromInternalUnits(pT.AsDouble(), UnitTypeId.Meters);
                     }
                 }
             }
@@ -1012,23 +1462,42 @@ namespace InfraBIM.CulvertTool.Services
                     {
                         actualManholeB_M = UnitUtils.ConvertFromInternalUnits(pB.AsDouble(), UnitTypeId.Meters);
                     }
+                    var pT = sampleMInst.LookupParameter("HOP NOI CONG_T") ?? sampleMInst.LookupParameter("T") ?? sampleMInst.LookupParameter("T_THAN");
+                    if (pT != null && pT.StorageType == StorageType.Double && pT.AsDouble() > 0.05)
+                    {
+                        manholeWallT_M = UnitUtils.ConvertFromInternalUnits(pT.AsDouble(), UnitTypeId.Meters);
+                    }
                 }
             }
-            if (actualManholeB_M <= 0.1)
-            {
-                actualManholeB_M = 2.10;
-            }
+            if (actualManholeB_M <= 0.1) actualManholeB_M = 2.10;
+            if (manholeWallT_M <= 0.05) manholeWallT_M = 0.25;
+
+            double wallTFeet = UnitUtils.ConvertToInternalUnits(manholeWallT_M, UnitTypeId.Meters);
+
+            // Cao độ Z bắt đầu và kết thúc của cống hộp (đã trừ L_Ngam_San)
+            double lNgamSanM = data.L_Ngam_San > 0 ? data.L_Ngam_San : 0.0;
+            double zDauCulvert = data.Z1 - lNgamSanM;
+            double zCuoiCulvert = data.Z2 - lNgamSanM;
 
             if (data.SoHopNoi == 0)
             {
+                // TH1: Không có hộp nối
+                // Rải từ P1 đến P2, đốt cuối co dãn bù trừ sát P2
                 if (totalLengthFeet > 0)
                 {
-                    LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, p1, totalLengthFeet, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, data.Z2, 1, branchSuffix, materialSettings);
-                    PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, totalLengthFeet, u, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings);
+                    LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, p1, totalLengthFeet, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                        bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, zCuoiCulvert, 1, branchSuffix, materialSettings,
+                        createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal);
+
+                    PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, totalLengthFeet, u, rotAngle,
+                        bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
                 }
             }
             else if (data.SoHopNoi == 1)
             {
+                // TH3: 1 hộp nối
+                // Đoạn 1: Rải từ P1 đến mép thành trong hộp nối (đốt bù trừ sát hộp nối)
+                // Đoạn 2: Rải từ P2 đến mép thành trong hộp nối (đốt bù trừ sát hộp nối)
                 double b1M = (data.B_HT1 > 1.8) ? data.B_HT1 : actualManholeB_M;
                 double distHN1M = data.KC_HN1;
                 if (distHN1M <= (b1M / 2.0) + 0.2)
@@ -1046,19 +1515,39 @@ namespace InfraBIM.CulvertTool.Services
                     PlaceManholeAssembly(doc, pHN1, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings);
                 }
 
-                // Đoạn 1: P1 -> Hộp 1 (từ sau tường đầu đến mép ngoài hộp nối - Hình 4, CAD Hình 5)
-                double len1 = Math.Max(0.0, distHN1Feet - (b1Feet / 2.0));
-                int dotCount1 = LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, p1, len1, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings);
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, len1, u, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings);
+                double rOut1Feet = b1Feet / 2.0;
+                double rIn1Feet = Math.Max(0.1, rOut1Feet - wallTFeet);
 
-                // Đoạn 2: Hộp 1 -> P2 (từ mép ngoài đối diện hộp nối đến sau tường đầu hạ lưu - Hình 4, CAD Hình 5)
-                XYZ pStart2 = pHN1 + u * (b1Feet / 2.0);
-                double len2 = Math.Max(0.0, totalLengthFeet - distHN1Feet - (b1Feet / 2.0));
-                LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, pStart2, len2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount1 + 1, branchSuffix, materialSettings);
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pStart2, len2, u, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings);
+                // Đoạn 1: P1 -> mép thành trong Hộp 1
+                double len1_barrel = Math.Max(0.0, distHN1Feet - rIn1Feet);
+                int dotCount1 = LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, p1, len1_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                    bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
+                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal);
+
+                // BTL & đá dăm Đoạn 1: đến mép ngoài hộp nối
+                double len1_bedding = Math.Max(0.0, distHN1Feet - rOut1Feet);
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, len1_bedding, u, rotAngle,
+                    bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
+
+                // Đoạn 2: Từ mép thành trong Hộp 1 đến P2 (rải hướng về hộp nối, đốt bù trừ sát hộp nối: isReverseBuffer = true)
+                XYZ pStart2_barrel = pHN1 + u * rIn1Feet;
+                double len2_barrel = Math.Max(0.0, totalLengthFeet - distHN1Feet - rIn1Feet);
+                LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, pStart2_barrel, len2_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                    bimConfig, customBimParams, familyParameterMappings, data, null, zCuoiCulvert, dotCount1 + 1, branchSuffix, materialSettings,
+                    createdBarrels, isReverseBuffer: true, isVaiKeGlobal: isVaiKeGlobal);
+
+                // BTL & đá dăm Đoạn 2: từ mép ngoài hộp nối đến P2
+                XYZ pStart2_bedding = pHN1 + u * rOut1Feet;
+                double len2_bedding = Math.Max(0.0, totalLengthFeet - distHN1Feet - rOut1Feet);
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pStart2_bedding, len2_bedding, u, rotAngle,
+                    bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdBeddings);
             }
             else // data.SoHopNoi >= 2
             {
+                // TH2: 2 hộp nối
+                // Đoạn 1: Từ P1 đến mép thành trong hộp nối 1 (đốt bù trừ sát hộp 1)
+                // Đoạn 2: Từ mép thành trong hộp nối 1 đến mép thành trong hộp nối 2 (đốt bù trừ sát hộp 2)
+                // Đoạn 3: Từ P2 đến mép thành trong hộp nối 2 (đốt bù trừ sát hộp 2, isReverseBuffer = true)
                 double b1M = (data.B_HT1 > 1.8) ? data.B_HT1 : actualManholeB_M;
                 double b2M = (data.B_HT2 > 1.8) ? data.B_HT2 : actualManholeB_M;
                 double distHN1M = data.KC_HN1;
@@ -1088,22 +1577,44 @@ namespace InfraBIM.CulvertTool.Services
                     PlaceManholeAssembly(doc, pHN2, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings);
                 }
 
-                // Đoạn 1: P1 -> Hộp 1 (từ sau tường đầu đến mép ngoài hộp nối 1)
-                double len1 = Math.Max(0.0, distHN1Feet - (b1Feet / 2.0));
-                int dotCount1 = LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, p1, len1, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, data.Z1, null, 1, branchSuffix, materialSettings);
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, len1, u, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings);
+                double rOut1Feet = b1Feet / 2.0;
+                double rIn1Feet = Math.Max(0.1, rOut1Feet - wallTFeet);
+                double rOut2Feet = b2Feet / 2.0;
+                double rIn2Feet = Math.Max(0.1, rOut2Feet - wallTFeet);
 
-                // Đoạn 2: Hộp 1 -> Hộp 2 (từ mép ngoài hộp nối 1 đến mép ngoài hộp nối 2 - CAD Hình 5)
-                XYZ pStart2 = pHN1 + u * (b1Feet / 2.0);
-                double len2 = Math.Max(0.0, (pHN2 - pHN1).GetLength() - ((b1Feet + b2Feet) / 2.0));
-                int dotCount2 = LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, pStart2, len2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings);
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pStart2, len2, u, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings);
+                // Đoạn 1: Từ P1 đến mép thành trong hộp nối 1
+                double len1_barrel = Math.Max(0.0, distHN1Feet - rIn1Feet);
+                int dotCount1 = LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, p1, len1_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                    bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
+                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal);
 
-                // Đoạn 3: Hộp 2 -> P2 (từ mép ngoài hộp nối 2 đến sau tường đầu hạ lưu - CAD Hình 5)
-                XYZ pStart3 = pHN2 + u * (b2Feet / 2.0);
-                double len3 = Math.Max(0.0, distHN2Feet - (b2Feet / 2.0));
-                LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, pStart3, len3, lStdFeet, jointGapFeet, u, rotAngle, arrayMode, bimConfig, customBimParams, familyParameterMappings, data, null, data.Z2, dotCount2 + 1, branchSuffix, materialSettings);
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pStart3, len3, u, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, 3, materialSettings);
+                double len1_bedding = Math.Max(0.0, distHN1Feet - rOut1Feet);
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, len1_bedding, u, rotAngle,
+                    bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
+
+                // Đoạn 2: Từ mép thành trong hộp nối 1 đến mép thành trong hộp nối 2
+                XYZ pStart2_barrel = pHN1 + u * rIn1Feet;
+                double len2_barrel = Math.Max(0.0, (pHN2 - pHN1).GetLength() - rIn1Feet - rIn2Feet);
+                int dotCount2 = LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, pStart2_barrel, len2_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                    bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings,
+                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal);
+
+                XYZ pStart2_bedding = pHN1 + u * rOut1Feet;
+                double len2_bedding = Math.Max(0.0, (pHN2 - pHN1).GetLength() - rOut1Feet - rOut2Feet);
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pStart2_bedding, len2_bedding, u, rotAngle,
+                    bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdBeddings);
+
+                // Đoạn 3: Từ mép thành trong hộp nối 2 đến P2 (đốt bù trừ sát hộp 2: isReverseBuffer = true)
+                XYZ pStart3_barrel = pHN2 + u * rIn2Feet;
+                double len3_barrel = Math.Max(0.0, distHN2Feet - rIn2Feet);
+                LayAdaptiveSegmentsV2(doc, segmentedBarrelComps, pStart3_barrel, len3_barrel, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
+                    bimConfig, customBimParams, familyParameterMappings, data, null, zCuoiCulvert, dotCount2 + 1, branchSuffix, materialSettings,
+                    createdBarrels, isReverseBuffer: true, isVaiKeGlobal: isVaiKeGlobal);
+
+                XYZ pStart3_bedding = pHN2 + u * rOut2Feet;
+                double len3_bedding = Math.Max(0.0, distHN2Feet - rOut2Feet);
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pStart3_bedding, len3_bedding, u, rotAngle,
+                    bimConfig, customBimParams, familyParameterMappings, data, 3, materialSettings, createdBeddings);
             }
         }
 
@@ -1131,7 +1642,8 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<ParameterMappingItem>? familyParameterMappings,
             CulvertRowData rowData,
             int segIndex,
-            IEnumerable<CulvertMaterialItem>? materialSettings)
+            IEnumerable<CulvertMaterialItem>? materialSettings,
+            List<FamilyInstance>? createdBeddings = null)
         {
             if (beddingComponents == null || beddingComponents.Count == 0 || lenSegFeet <= 0.01) return;
 
@@ -1179,6 +1691,7 @@ namespace InfraBIM.CulvertTool.Services
                 catch { }
 
                 if (inst == null) continue;
+                createdBeddings?.Add(inst);
 
                 string tenCauKien = $"{comp.CategoryType}_DOAN_{segIndex}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCauKien, comp.CategoryType ?? "", null, null, null, null, null); } catch { }
@@ -1250,7 +1763,10 @@ namespace InfraBIM.CulvertTool.Services
             double? zCuoiM,
             int startDotIdx,
             string branchSuffix,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null,
+            List<FamilyInstance>? createdBarrels = null,
+            bool isReverseBuffer = false,
+            bool isVaiKeGlobal = false)
         {
             if (L <= 0.001) return startDotIdx - 1;
 
@@ -1260,60 +1776,124 @@ namespace InfraBIM.CulvertTool.Services
             {
                 int n = (int)Math.Floor(L / lStd);
                 double lBien = (L - (n * lStd)) / 2.0;
+                int totalDots = n + (lBien > 0.001 ? 2 : 0);
+                if (totalDots == 0) return startDotIdx - 1;
 
                 double curDist = 0.0;
+                int placedCount = 0;
 
                 // Đốt biên 1
                 if (lBien > 0.001)
                 {
+                    bool isFirst = true;
+                    bool isLast = (totalDots == 1);
+                    bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
                     XYZ ptA = pStart + u * curDist;
                     XYZ ptB = ptA + u * lBien;
-                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, null, materialSettings);
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, (totalDots == 1) ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
                     curDist += lBien + jointGap;
+                    placedCount++;
                 }
 
                 // Các đốt chuẩn ở giữa
                 for (int i = 0; i < n; i++)
                 {
+                    bool isFirst = (placedCount == 0);
+                    bool isLast = (placedCount == totalDots - 1);
+                    bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
                     XYZ ptA = pStart + u * curDist;
                     XYZ ptB = ptA + u * lStd;
-                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, null, materialSettings);
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, isLast ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
                     curDist += lStd + jointGap;
+                    placedCount++;
                 }
 
                 // Đốt biên 2
                 if (lBien > 0.001)
                 {
+                    bool isFirst = (placedCount == 0);
+                    bool isLast = true;
+                    bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+
                     string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
                     XYZ ptA = pStart + u * curDist;
                     XYZ ptB = ptA + u * lBien;
-                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, null, zCuoiM, materialSettings);
+                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lBien, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, zCuoiM, materialSettings, createdBarrels, hasVaiKe);
                 }
             }
             else // OneWay
             {
                 int n = (int)Math.Floor(L / lStd);
                 double lDu = L - (n * lStd);
+                int totalDots = n + (lDu > 0.001 ? 1 : 0);
+                if (totalDots == 0) return startDotIdx - 1;
 
                 double curDist = 0.0;
+                int placedCount = 0;
 
-                for (int i = 0; i < n; i++)
+                if (isReverseBuffer)
                 {
-                    string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    XYZ ptA = pStart + u * curDist;
-                    XYZ ptB = ptA + u * lStd;
-                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (i == 0) ? zDauM : null, null, materialSettings);
-                    curDist += lStd + jointGap;
+                    // TH2 & TH3: Đốt co dãn bù trừ nằm sát mép thành trong hộp nối (ở đầu đoạn rải)
+                    if (lDu > 0.001)
+                    {
+                        bool isFirst = true;
+                        bool isLast = (totalDots == 1);
+                        bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+
+                        string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
+                        XYZ ptA = pStart + u * curDist;
+                        XYZ ptB = ptA + u * lDu;
+                        PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lDu, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, zDauM, (totalDots == 1) ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
+                        curDist += lDu + jointGap;
+                        placedCount++;
+                    }
+
+                    for (int i = 0; i < n; i++)
+                    {
+                        bool isFirst = (placedCount == 0);
+                        bool isLast = (placedCount == totalDots - 1);
+                        bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+
+                        string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
+                        XYZ ptA = pStart + u * curDist;
+                        XYZ ptB = ptA + u * lStd;
+                        PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, isLast ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
+                        curDist += lStd + jointGap;
+                        placedCount++;
+                    }
                 }
-
-                if (lDu > 0.001)
+                else
                 {
-                    string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
-                    XYZ ptA = pStart + u * curDist;
-                    XYZ ptB = ptA + u * lDu;
-                    PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lDu, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, (n == 0) ? zDauM : null, zCuoiM, materialSettings);
+                    // Rải chuẩn thuận từ đầu đoạn: các đốt chuẩn đi trước, đốt co dãn bù trừ ở cuối đoạn
+                    for (int i = 0; i < n; i++)
+                    {
+                        bool isFirst = (placedCount == 0);
+                        bool isLast = (placedCount == totalDots - 1);
+                        bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+
+                        string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
+                        XYZ ptA = pStart + u * curDist;
+                        XYZ ptB = ptA + u * lStd;
+                        PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lStd, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, isLast ? zCuoiM : null, materialSettings, createdBarrels, hasVaiKe);
+                        curDist += lStd + jointGap;
+                        placedCount++;
+                    }
+
+                    if (lDu > 0.001)
+                    {
+                        bool isFirst = (placedCount == 0);
+                        bool isLast = true;
+                        bool hasVaiKe = isVaiKeGlobal && (!isFirst && !isLast);
+
+                        string tenCK = FormatDotName(bimConfig.MauTenDotCong, dotIdx++, branchSuffix);
+                        XYZ ptA = pStart + u * curDist;
+                        XYZ ptB = ptA + u * lDu;
+                        PlaceBarrelComponents(doc, barrelComponents, ptA, ptB, lDu, angle, bimConfig, customBimParams, familyParameterMappings, rowData, tenCK, isFirst ? zDauM : null, zCuoiM, materialSettings, createdBarrels, hasVaiKe);
+                    }
                 }
             }
 
@@ -1344,7 +1924,9 @@ namespace InfraBIM.CulvertTool.Services
             string tenCauKien,
             double? zDau,
             double? zCuoi,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null,
+            List<FamilyInstance>? createdBarrels = null,
+            bool hasVaiKe = false)
         {
             if (barrelComponents == null) return;
 
@@ -1381,12 +1963,13 @@ namespace InfraBIM.CulvertTool.Services
                 catch { }
 
                 if (inst == null) continue;
+                createdBarrels?.Add(inst);
 
                 try
                 {
-                    // Đảm bảo không khoét vai kê trên thân cống tiêu chuẩn (Sửa lỗi Hình 2)
-                    SetParamYesNo(inst, "CO VAI KE", 0);
-                    SetParamYesNo(inst, "CO_VAI_KE", 0);
+                    // Gán tham số CO VAI KE theo đúng vị trí đốt cống (Yêu cầu 3 & 5)
+                    SetParamYesNo(inst, "CO VAI KE", hasVaiKe ? 1 : 0);
+                    SetParamYesNo(inst, "CO_VAI_KE", hasVaiKe ? 1 : 0);
                 }
                 catch { }
 

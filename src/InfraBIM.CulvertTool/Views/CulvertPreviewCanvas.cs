@@ -802,46 +802,50 @@ namespace InfraBIM.CulvertTool.Views
             }
 
             // 4. VẼ CỬA XẢ 2 ĐẦU (TƯỜNG ĐẦU, TƯỜNG CÁNH & SÂN CỐNG 3D)
-            Point ap0_TL = Project3D(-1.35, 0, -0.4);
+            double lApron = 2.16;
+            double lSgcTL = geom.L_SGC_TL > 0.05 ? geom.L_SGC_TL : 3.0;
+            double lSgcHL = geom.L_SGC_HL > 0.05 ? geom.L_SGC_HL : 3.0;
+
+            Point ap0_TL = Project3D(-lApron, 0, -0.4);
             Point ap1_TL = Project3D(0, 0, -0.4);
             Point ap2_TL = Project3D(0, 0, bW + 0.4);
-            Point ap3_TL = Project3D(-1.35, 0, bW + 0.4);
-            Point ap0_TL_t = Project3D(-1.35, bH + 0.4, -0.4);
+            Point ap3_TL = Project3D(-lApron, 0, bW + 0.4);
+            Point ap0_TL_t = Project3D(-lApron, bH + 0.4, -0.4);
             Point ap1_TL_t = Project3D(0, bH + 0.4, -0.4);
             Point ap2_TL_t = Project3D(0, bH + 0.4, bW + 0.4);
-            Point ap3_TL_t = Project3D(-1.35, bH + 0.4, bW + 0.4);
+            Point ap3_TL_t = Project3D(-lApron, bH + 0.4, bW + 0.4);
             Draw3DPrism(dc, ap0_TL, ap1_TL, ap2_TL, ap3_TL, ap0_TL_t, ap1_TL_t, ap2_TL_t, ap3_TL_t, ApronBrush, ApronPen);
 
             double yHL = -ElevDropAt(totalL);
             Point ap0_HL = Project3D(totalL, yHL, -0.4);
-            Point ap1_HL = Project3D(totalL + 1.35, yHL, -0.4);
-            Point ap2_HL = Project3D(totalL + 1.35, yHL, bW + 0.4);
+            Point ap1_HL = Project3D(totalL + lApron, yHL, -0.4);
+            Point ap2_HL = Project3D(totalL + lApron, yHL, bW + 0.4);
             Point ap3_HL = Project3D(totalL, yHL, bW + 0.4);
             Point ap0_HL_t = Project3D(totalL, yHL + bH + 0.4, -0.4);
-            Point ap1_HL_t = Project3D(totalL + 1.35, yHL + bH + 0.4, -0.4);
-            Point ap2_HL_t = Project3D(totalL + 1.35, yHL + bH + 0.4, bW + 0.4);
+            Point ap1_HL_t = Project3D(totalL + lApron, yHL + bH + 0.4, -0.4);
+            Point ap2_HL_t = Project3D(totalL + lApron, yHL + bH + 0.4, bW + 0.4);
             Point ap3_HL_t = Project3D(totalL, yHL + bH + 0.4, bW + 0.4);
             Draw3DPrism(dc, ap0_HL, ap1_HL, ap2_HL, ap3_HL, ap0_HL_t, ap1_HL_t, ap2_HL_t, ap3_HL_t, ApronBrush, ApronPen);
 
-            // 5. VẼ SÂN GIA CỐ 3M NỐI TIẾP RA DẦM CHÂN KHAY
-            Point sgc0_TL = Project3D(-4.35, -0.1, -0.5);
-            Point sgc1_TL = Project3D(-1.35, -0.1, -0.5);
-            Point sgc2_TL = Project3D(-1.35, -0.1, bW + 0.5);
-            Point sgc3_TL = Project3D(-4.35, -0.1, bW + 0.5);
-            Point sgc0_TL_t = Project3D(-4.35, 0.2, -0.5);
-            Point sgc1_TL_t = Project3D(-1.35, 0.2, -0.5);
-            Point sgc2_TL_t = Project3D(-1.35, 0.2, bW + 0.5);
-            Point sgc3_TL_t = Project3D(-4.35, 0.2, bW + 0.5);
+            // 5. VẼ SÂN GIA CỐ NỐI TIẾP RA DẦM CHÂN KHAY
+            Point sgc0_TL = Project3D(-(lApron + lSgcTL), -0.1, -0.5);
+            Point sgc1_TL = Project3D(-lApron, -0.1, -0.5);
+            Point sgc2_TL = Project3D(-lApron, -0.1, bW + 0.5);
+            Point sgc3_TL = Project3D(-(lApron + lSgcTL), -0.1, bW + 0.5);
+            Point sgc0_TL_t = Project3D(-(lApron + lSgcTL), 0.2, -0.5);
+            Point sgc1_TL_t = Project3D(-lApron, 0.2, -0.5);
+            Point sgc2_TL_t = Project3D(-lApron, 0.2, bW + 0.5);
+            Point sgc3_TL_t = Project3D(-(lApron + lSgcTL), 0.2, bW + 0.5);
             Draw3DPrism(dc, sgc0_TL, sgc1_TL, sgc2_TL, sgc3_TL, sgc0_TL_t, sgc1_TL_t, sgc2_TL_t, sgc3_TL_t, new SolidColorBrush(Color.FromArgb(160, 30, 58, 138)), new Pen(new SolidColorBrush(Color.FromRgb(96, 165, 250)), 1.0));
 
-            Point sgc0_HL = Project3D(totalL + 1.35, yHL - 0.1, -0.5);
-            Point sgc1_HL = Project3D(totalL + 4.35, yHL - 0.1, -0.5);
-            Point sgc2_HL = Project3D(totalL + 4.35, yHL - 0.1, bW + 0.5);
-            Point sgc3_HL = Project3D(totalL + 1.35, yHL - 0.1, bW + 0.5);
-            Point sgc0_HL_t = Project3D(totalL + 1.35, yHL + 0.2, -0.5);
-            Point sgc1_HL_t = Project3D(totalL + 4.35, yHL + 0.2, -0.5);
-            Point sgc2_HL_t = Project3D(totalL + 4.35, yHL + 0.2, bW + 0.5);
-            Point sgc3_HL_t = Project3D(totalL + 1.35, yHL + 0.2, bW + 0.5);
+            Point sgc0_HL = Project3D(totalL + lApron, yHL - 0.1, -0.5);
+            Point sgc1_HL = Project3D(totalL + lApron + lSgcHL, yHL - 0.1, -0.5);
+            Point sgc2_HL = Project3D(totalL + lApron + lSgcHL, yHL - 0.1, bW + 0.5);
+            Point sgc3_HL = Project3D(totalL + lApron, yHL - 0.1, bW + 0.5);
+            Point sgc0_HL_t = Project3D(totalL + lApron, yHL + 0.2, -0.5);
+            Point sgc1_HL_t = Project3D(totalL + lApron + lSgcHL, yHL + 0.2, -0.5);
+            Point sgc2_HL_t = Project3D(totalL + lApron + lSgcHL, yHL + 0.2, bW + 0.5);
+            Point sgc3_HL_t = Project3D(totalL + lApron, yHL + 0.2, bW + 0.5);
             Draw3DPrism(dc, sgc0_HL, sgc1_HL, sgc2_HL, sgc3_HL, sgc0_HL_t, sgc1_HL_t, sgc2_HL_t, sgc3_HL_t, new SolidColorBrush(Color.FromArgb(160, 30, 58, 138)), new Pen(new SolidColorBrush(Color.FromRgb(96, 165, 250)), 1.0));
 
             // 6. GHI CHÚ CAO ĐỘ VÀ THÔNG SỐ 3D TRỰC QUAN

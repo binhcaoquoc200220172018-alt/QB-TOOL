@@ -47,7 +47,7 @@ namespace InfraBIM.CulvertTool.Services
                 DeltaH = row.Z1 - row.Z2,
                 L_Std = lStd > 0.1 ? lStd : 1.0,
                 L_Min = 0.0,
-                L_Ngam = 0.0,
+                L_Ngam = row.L_Ngam_San > 0 ? row.L_Ngam_San : 0.0,
                 B_Box = bBox > 0.2 ? bBox : 1.5,
                 B_HT1 = row.B_HT1 > 0.1 ? row.B_HT1 : 1.50,
                 B_HT2 = row.B_HT2 > 0.1 ? row.B_HT2 : 1.50,
@@ -65,7 +65,9 @@ namespace InfraBIM.CulvertTool.Services
                 HasBTL_HN = hasBtlHn,
                 OffsetZ_BTL_Dot = offsetZ_BTL,
                 OffsetZ_BTL_San = offsetZ_BTL_San,
-                OffsetZ_BTL_HN = offsetZ_BTL_HN
+                OffsetZ_BTL_HN = offsetZ_BTL_HN,
+                L_SGC_TL = row.L_SGC_TL > 0.05 ? row.L_SGC_TL : 3.0,
+                L_SGC_HL = row.L_SGC_HL > 0.05 ? row.L_SGC_HL : 3.0
             };
 
             // Phân tích khẩu độ
@@ -76,13 +78,13 @@ namespace InfraBIM.CulvertTool.Services
             double totalL = geom.TotalLengthM;
             if (totalL <= 0.5) return geom;
 
-            // Thiết lập sân Thượng lưu & Hạ lưu
+            // Thiết lập sân Thượng lưu & Hạ lưu (Chiều dài sân cống CX_L san cong chuẩn = 2.16m theo CAD/Family)
             geom.ApronTL = new PreviewApronItem
             {
                 Title = "Sân thượng lưu",
                 PositionX = 0,
                 ElevationZ = geom.Z1,
-                LengthM = 2.0,
+                LengthM = 2.16,
                 WallHeightM = geom.BarrelHeightM + 0.6,
                 SlabThicknessM = 0.3
             };
@@ -92,7 +94,7 @@ namespace InfraBIM.CulvertTool.Services
                 Title = "Sân hạ lưu",
                 PositionX = totalL,
                 ElevationZ = geom.Z2,
-                LengthM = 2.0,
+                LengthM = 2.16,
                 WallHeightM = geom.BarrelHeightM + 0.6,
                 SlabThicknessM = 0.3
             };

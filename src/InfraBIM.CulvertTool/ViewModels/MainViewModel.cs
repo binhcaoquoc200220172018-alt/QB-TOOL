@@ -1128,7 +1128,10 @@ namespace InfraBIM.CulvertTool.ViewModels
                         f.Symbol.Name.IndexOf(typeKeyword, StringComparison.OrdinalIgnoreCase) >= 0);
                     if (tm != null) return tm;
                 }
-                return exactMatches.FirstOrDefault();
+                else
+                {
+                    return exactMatches.FirstOrDefault();
+                }
             }
 
             // 2. Fallback nếu không có khớp chính xác: tìm kiếm Contains
@@ -1139,7 +1142,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 matches = AllAvailableFamilies.Where(f =>
                     f.Symbol.Name.IndexOf(familyKeyword, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
             }
-            if (!matches.Any()) return null;
+            if (!matches.Any()) return exactMatches.FirstOrDefault();
 
             if (!string.IsNullOrEmpty(typeKeyword))
             {
@@ -1147,7 +1150,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     f.Symbol.Name.IndexOf(typeKeyword, StringComparison.OrdinalIgnoreCase) >= 0);
                 if (typeMatch != null) return typeMatch;
             }
-            return matches.FirstOrDefault();
+            return exactMatches.FirstOrDefault() ?? matches.FirstOrDefault();
         }
 
         private void LoadAvailableFamilies()
@@ -1160,6 +1163,7 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             foreach (var sym in collector)
             {
+                if (sym == null || !sym.IsValidObject) continue;
                 var wrapper = new FamilySymbolWrapper(sym);
                 AllAvailableFamilies.Add(wrapper);
             }
@@ -2325,6 +2329,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                     if (tgtItem != null && !tgtItem.IsYesNoParameter)
                     {
                         tgtItem.CustomValue = srcItem.CustomValue;
+                        tgtItem.IsSelected = true;
                         copiedValuesCount++;
                     }
                 }
