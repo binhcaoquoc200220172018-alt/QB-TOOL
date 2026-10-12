@@ -577,10 +577,10 @@ namespace InfraBIM.CulvertTool.Views
 
             // 4. VẼ CỬA XẢ THƯỢNG LƯU & HẠ LƯU (TƯỜNG ĐẦU, CỔNG PORTAL & TƯỜNG CÁNH TAM GIÁC MÀU XANH)
             // A. Thượng lưu (P1, X = 0)
-            BuildInletOutlet3D(_rootModelGroup, 0.0, 0.0, wOut, bH, tSlab, tWall, isUpstream: true);
+            BuildInletOutlet3D(_rootModelGroup, 0.0, 0.0, wOut, bH, tSlab, tWall, isUpstream: true, _showBedding);
 
             // B. Hạ lưu (P2, X = totalL)
-            BuildInletOutlet3D(_rootModelGroup, totalL, -Drop(totalL), wOut, bH, tSlab, tWall, isUpstream: false);
+            BuildInletOutlet3D(_rootModelGroup, totalL, -Drop(totalL), wOut, bH, tSlab, tWall, isUpstream: false, _showBedding);
 
             // 5. VẼ SÂN GIA CỐ & DẦM CHÂN KHAY KÈM LỚP BÊ TÔNG LÓT (KHỚP 100% FAMILY TNN_CX_SAN GIA CO VÀ BẢN VẼ CAD)
             // A. Thượng lưu (nối liền mạch từ mép sân cống thượng lưu ra L_SGC_TL)
@@ -599,11 +599,14 @@ namespace InfraBIM.CulvertTool.Views
             BuildFlowArrow(_rootModelGroup, totalL, bH, Drop);
         }
 
-        private static void BuildInletOutlet3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double bH, double tSlab, double tWall, bool isUpstream)
+        private static void BuildInletOutlet3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double bH, double tSlab, double tWall, bool isUpstream, bool showBedding)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            double apronLen = 2.16; // Chiều dài sân cống chuẩn theo CAD/Family TNN_CX_SAN CONG (1.76m sân + 0.40m khay cống = 2.16m)
-            double xApronEdge = xCenter + (dir * apronLen);
+            // Chiều dài tổng của cửa xả khớp chuẩn Revit (CX_L1 1.30m + CX_L san cong 2.16m = 3.46m)
+            double cxL1 = 1.30;
+            double lSanCong = 2.16;
+            double totalCX = cxL1 + lSanCong; // 3.46m
+            double xApronEdge = xCenter + (dir * totalCX);
             double postW = 0.35;
             double hwThick = 0.40;
             double hwTopY = yCenter + bH + tSlab + 0.45;
@@ -613,7 +616,7 @@ namespace InfraBIM.CulvertTool.Views
             double wApronStart = wOut + (2 * postW);
             double wApronEnd = wApronStart + (2 * wingFlare);
 
-            // 1. Bản đáy sân cống (Apron Slab - TNN_CX_SAN CONG): Mở rộng hình thang từ cống ra mép 1.35m
+            // 1. Bản đáy sân cống (Apron Slab - TNN_CX_SAN CONG): Mở rộng hình thang từ cống ra mép
             AddTrapezoidPrismMesh(group,
                 xCenter, yCenter - tSlab, yCenter, wApronStart,
                 xApronEdge, yCenter - tSlab, yCenter, wApronEnd,
@@ -628,7 +631,7 @@ namespace InfraBIM.CulvertTool.Views
             double capTopY = hwTopY + capH;
             double capOverhang = 0.08; // Độ nhô của mũ tường đầu ra phía trước và hai bên
 
-            // Mũ tường đầu (Headwall Cap Beam - Hình 1, 2): Có mặt trước vát xiên
+            // Mũ tường đầu (Headwall Cap Beam - Hình 1, 2)
             double xCapBack = isUpstream ? Math.Min(xHwBack, xHwFront) : Math.Min(xHwBack, xHwFront);
             double xCapFront = isUpstream ? Math.Min(xHwBack, xHwFront) - capOverhang : Math.Max(xHwBack, xHwFront) + capOverhang;
             double wCap = wApronStart + (2 * capOverhang);
@@ -639,12 +642,12 @@ namespace InfraBIM.CulvertTool.Views
                 Math.Max(xCapBack, xCapFront), capTopY, wCap / 2.0, 
                 MatHeadwall);
 
-            // Khối thân tường đầu trên đỉnh cống
+            // Khối thân tường đầu trên đỉnh cống (từ đỉnh khẩu độ lên mũ tường đầu)
             double xHw0 = Math.Min(xHwBack, xHwFront);
             double xHw1 = Math.Max(xHwBack, xHwFront);
             AddSolidBoxMesh(group, xHw0, yCenter + bH, -wApronStart / 2.0, xHw1, hwTopY, wApronStart / 2.0, MatHeadwall);
 
-            // Hai trụ tường đầu hai bên cống (bên trái & bên phải khẩu độ thoát nước)
+            // Hai trụ tường đầu hai bên cống (bên trái & bên phải khẩu độ thoát nước - Portal Cutout)
             AddSolidBoxMesh(group, xHw0, yCenter, -wApronStart / 2.0, xHw1, yCenter + bH, -wOut / 2.0, MatHeadwall);
             AddSolidBoxMesh(group, xHw0, yCenter, wOut / 2.0, xHw1, yCenter + bH, wApronStart / 2.0, MatHeadwall);
 
@@ -697,34 +700,57 @@ namespace InfraBIM.CulvertTool.Views
             Point3D capTR_top_out = new Point3D(wTR_top_out.X, wTR_top_out.Y + 0.12, wTR_top_out.Z);
             AddThickWallMesh(group, capTR_bot_in, capTR_bot_out, capTR_top_out, capTR_top_in, new Vector3D(0, 0, wingThick + 0.06), MatHeadwall);
 
-            // C. Móng bậc tường cánh & tường đầu (Hình 2, 3)
+            // C. Móng bê tông tường cánh & tường đầu (Hình 2):
+            // Dày footH = 0.30m, màu bê tông xám (MatHeadwall) chạy dọc tường đầu và hai tường cánh
             double footW = 0.20;
             double footH = 0.30;
+            // Móng tường đầu
             AddSolidBoxMesh(group, 
                 Math.Min(xHw0, xHw1) - (isUpstream ? footW : 0), yCenter - tSlab - footH, -wApronStart / 2.0 - wingThick - footW, 
                 Math.Max(xHw0, xHw1) + (isUpstream ? 0 : footW), yCenter - tSlab, wApronStart / 2.0 + wingThick + footW, 
                 MatHeadwall);
 
-            // 4. Bê tông lót sân cống (BTL - TNN_CX_BE TONG LOT): Dày 100mm nằm dưới bản đáy sân cống & móng tường
-            double btlThick = 0.10;
-            AddTrapezoidPrismMesh(group,
-                xCenter, yCenter - tSlab - footH - btlThick, yCenter - tSlab - footH, wApronStart + (2 * (wingThick + footW)) + 0.20,
-                xApronEdge, yCenter - tSlab - footH - btlThick, yCenter - tSlab - footH, wApronEnd + (2 * (wingThick + footW)) + 0.20,
-                MatBTL);
+            // Móng tường cánh bên trái (-Z): Chạy dọc từ tường đầu ra mép sân cống
+            Point3D fL_bot_in = new Point3D(xHwFront, yCenter - tSlab - footH, -wApronStart / 2.0);
+            Point3D fL_bot_out = new Point3D(xApronEdge, yCenter - tSlab - footH, -wApronEnd / 2.0);
+            Point3D fL_top_out = new Point3D(xApronEdge, yCenter - tSlab, -wApronEnd / 2.0);
+            Point3D fL_top_in = new Point3D(xHwFront, yCenter - tSlab, -wApronStart / 2.0);
+            AddThickWallMesh(group, fL_bot_in, fL_bot_out, fL_top_out, fL_top_in, new Vector3D(0, 0, -wingThick - footW), MatHeadwall);
 
-            // 5. Đá dăm đệm sân cống (Đá dăm - TNN_CX_DA DAM DEM): Dày 150mm nằm dưới lớp BTL
-            double stoneThick = 0.15;
-            AddTrapezoidPrismMesh(group,
-                xCenter, yCenter - tSlab - footH - btlThick - stoneThick, yCenter - tSlab - footH - btlThick, wApronStart + (2 * (wingThick + footW)) + 0.40,
-                xApronEdge, yCenter - tSlab - footH - btlThick - stoneThick, yCenter - tSlab - footH - btlThick, wApronEnd + (2 * (wingThick + footW)) + 0.40,
-                MatCrushedStone);
+            // Móng tường cánh bên phải (+Z): Chạy dọc từ tường đầu ra mép sân cống
+            Point3D fR_bot_in = new Point3D(xHwFront, yCenter - tSlab - footH, wApronStart / 2.0);
+            Point3D fR_bot_out = new Point3D(xApronEdge, yCenter - tSlab - footH, wApronEnd / 2.0);
+            Point3D fR_top_out = new Point3D(xApronEdge, yCenter - tSlab, wApronEnd / 2.0);
+            Point3D fR_top_in = new Point3D(xHwFront, yCenter - tSlab, wApronStart / 2.0);
+            AddThickWallMesh(group, fR_bot_in, fR_bot_out, fR_top_out, fR_top_in, new Vector3D(0, 0, wingThick + footW), MatHeadwall);
+
+            // D. Bê tông lót & Đá dăm đệm dưới đáy móng sân cống (chỉ vẽ khi bật hiển thị đệm)
+            if (showBedding)
+            {
+                double btlThick = 0.10;
+                double stoneThick = 0.15;
+                double wBaseStart = wApronStart + (2 * (wingThick + footW));
+                double wBaseEnd = wApronEnd + (2 * (wingThick + footW));
+
+                // 4. Bê tông lót sân cống (BTL - TNN_CX_BE TONG LOT): Dày 100mm
+                AddTrapezoidPrismMesh(group,
+                    xCenter, yCenter - tSlab - footH - btlThick, yCenter - tSlab - footH, wBaseStart,
+                    xApronEdge, yCenter - tSlab - footH - btlThick, yCenter - tSlab - footH, wBaseEnd,
+                    MatBTL);
+
+                // 5. Đá dăm đệm sân cống (Đá dăm - TNN_CX_DA DAM DEM): Dày 150mm
+                AddTrapezoidPrismMesh(group,
+                    xCenter, yCenter - tSlab - footH - btlThick - stoneThick, yCenter - tSlab - footH - btlThick, wBaseStart + 0.10,
+                    xApronEdge, yCenter - tSlab - footH - btlThick - stoneThick, yCenter - tSlab - footH - btlThick, wBaseEnd + 0.10,
+                    MatCrushedStone);
+            }
         }
 
         private static void BuildApronAssembly3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double tSlab, bool isUpstream, bool showBedding, double sgcLengthM = 3.0)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            double apronLen = 2.16; // Chiều dài sân cống chính khớp 100% CAD (1.76m sân + 0.40m khay cống = 2.16m)
-            double xApronEdge = xCenter + (dir * apronLen); // Điểm tiếp giáp 0 gap giữa Sân cống và Sân gia cố
+            double totalCX = 3.46; // Chiều dài sân cống chính khớp 100% Revit & CAD (CX_L1 1.30m + CX_L san cong 2.16m = 3.46m)
+            double xApronEdge = xCenter + (dir * totalCX); // Điểm tiếp giáp 0 gap giữa Sân cống và Sân gia cố
 
             double postW = 0.35;
             double wingFlare = 0.55;
@@ -743,62 +769,62 @@ namespace InfraBIM.CulvertTool.Views
             double toeDepth = 1.00;      // Dầm chân khay cắm sâu 1.00m thẳng đứng xuống dưới (Hình CAD: 100cm)
             double toeThick = 0.40;      // Bề dày dầm chân khay 40cm (Hình CAD: 40cm)
 
-            // 1. Bản sân gia cố (TNN_CX_SGC_SAN GIA CO - Hình 4): 
-            // Mặt trên phẳng ngang cao độ đáy cống, nối liền mạch từ xApronEdge ra xSgcEnd (3m)
+            // 1. Bản sân gia cố (TNN_CX_SGC_SAN GIA CO - Hình 2): 
+            // Mặt trên phẳng ngang cao độ đáy cống (yCenter), nối liền mạch từ xApronEdge ra xSgcEnd (3m)
             AddTrapezoidPrismMesh(group,
-                xApronEdge, yCenter - tSlab - sgcThick, yCenter - tSlab, wApronEnd,
-                xSgcEnd, yCenter - tSlab - sgcThick, yCenter - tSlab, wSgcEnd,
+                xApronEdge, yCenter - sgcThick, yCenter, wApronEnd,
+                xSgcEnd, yCenter - sgcThick, yCenter, wSgcEnd,
                 MatReinforcedApron);
 
-            // Gờ dẫn nước / bó vỉa hai bên mép sân gia cố (Hình 4)
+            // Gờ dẫn nước / bó vỉa hai bên mép sân gia cố (Hình 2)
             double curbW = 0.20;
             double curbH = 0.18;
             // Gờ bên trái (-Z)
-            Point3D cL_b0 = new Point3D(xApronEdge, yCenter - tSlab, -wApronEnd / 2.0);
-            Point3D cL_b1 = new Point3D(xSgcEnd, yCenter - tSlab, -wSgcEnd / 2.0);
-            Point3D cL_t1 = new Point3D(xSgcEnd, yCenter - tSlab + curbH, -wSgcEnd / 2.0);
-            Point3D cL_t0 = new Point3D(xApronEdge, yCenter - tSlab + curbH, -wApronEnd / 2.0);
+            Point3D cL_b0 = new Point3D(xApronEdge, yCenter, -wApronEnd / 2.0);
+            Point3D cL_b1 = new Point3D(xSgcEnd, yCenter, -wSgcEnd / 2.0);
+            Point3D cL_t1 = new Point3D(xSgcEnd, yCenter + curbH, -wSgcEnd / 2.0);
+            Point3D cL_t0 = new Point3D(xApronEdge, yCenter + curbH, -wApronEnd / 2.0);
             AddThickWallMesh(group, cL_b0, cL_b1, cL_t1, cL_t0, new Vector3D(0, 0, -curbW), MatReinforcedApron);
 
             // Gờ bên phải (+Z)
-            Point3D cR_b0 = new Point3D(xApronEdge, yCenter - tSlab, wApronEnd / 2.0);
-            Point3D cR_b1 = new Point3D(xSgcEnd, yCenter - tSlab, wSgcEnd / 2.0);
-            Point3D cR_t1 = new Point3D(xSgcEnd, yCenter - tSlab + curbH, wSgcEnd / 2.0);
-            Point3D cR_t0 = new Point3D(xApronEdge, yCenter - tSlab + curbH, wApronEnd / 2.0);
+            Point3D cR_b0 = new Point3D(xApronEdge, yCenter, wApronEnd / 2.0);
+            Point3D cR_b1 = new Point3D(xSgcEnd, yCenter, wSgcEnd / 2.0);
+            Point3D cR_t1 = new Point3D(xSgcEnd, yCenter + curbH, wSgcEnd / 2.0);
+            Point3D cR_t0 = new Point3D(xApronEdge, yCenter + curbH, wApronEnd / 2.0);
             AddThickWallMesh(group, cR_b0, cR_b1, cR_t1, cR_t0, new Vector3D(0, 0, curbW), MatReinforcedApron);
 
-            // 2. Dầm chân khay (Toe Beam - Dầm khóa hạ lưu cắm sâu xuống dưới tại Điểm 2 - Hình 4)
+            // 2. Dầm chân khay (Toe Beam - Dầm khóa hạ lưu cắm sâu xuống dưới tại Điểm 2 - Hình 2)
             double xToe0 = isUpstream ? xSgcEnd - toeThick : xSgcEnd;
             double xToe1 = isUpstream ? xSgcEnd : xSgcEnd + toeThick;
             AddSolidBoxMesh(group,
-                xToe0, yCenter - tSlab - sgcThick - toeDepth, -wSgcEnd / 2.0 - curbW,
-                xToe1, yCenter - tSlab, wSgcEnd / 2.0 + curbW,
+                xToe0, yCenter - sgcThick - toeDepth, -wSgcEnd / 2.0 - curbW,
+                xToe1, yCenter, wSgcEnd / 2.0 + curbW,
                 MatToeBeam);
 
-            // 3. Lớp bê tông lót sân gia cố (TNN_CX_SGC_BE TONG LOT - Hình 4): Dày 100mm
+            // 3. Lớp bê tông lót sân gia cố (TNN_CX_SGC_BE TONG LOT - Hình 2): Dày 100mm
             if (showBedding)
             {
                 // BTL dưới bản sân gia cố
                 AddTrapezoidPrismMesh(group,
-                    xApronEdge, yCenter - tSlab - sgcThick - sgcBtlThick, yCenter - tSlab - sgcThick, wApronEnd + 0.20,
-                    xSgcEnd, yCenter - tSlab - sgcThick - sgcBtlThick, yCenter - tSlab - sgcThick, wSgcEnd + 0.20,
+                    xApronEdge, yCenter - sgcThick - sgcBtlThick, yCenter - sgcThick, wApronEnd,
+                    xSgcEnd, yCenter - sgcThick - sgcBtlThick, yCenter - sgcThick, wSgcEnd,
                     MatBTL);
 
                 // BTL dưới đáy dầm chân khay
                 AddSolidBoxMesh(group,
-                    xToe0 - 0.10, yCenter - tSlab - sgcThick - toeDepth - sgcBtlThick, -wSgcEnd / 2.0 - curbW - 0.10,
-                    xToe1 + 0.10, yCenter - tSlab - sgcThick - toeDepth, wSgcEnd / 2.0 + curbW + 0.10,
+                    xToe0 - 0.05, yCenter - sgcThick - toeDepth - sgcBtlThick, -wSgcEnd / 2.0 - curbW - 0.05,
+                    xToe1 + 0.05, yCenter - sgcThick - toeDepth, wSgcEnd / 2.0 + curbW + 0.05,
                     MatBTL);
 
                 // 4. Lớp đá dăm đệm sân gia cố: Dày 150mm nằm dưới BTL SGC
                 AddTrapezoidPrismMesh(group,
-                    xApronEdge, yCenter - tSlab - sgcThick - sgcBtlThick - sgcStoneThick, yCenter - tSlab - sgcThick - sgcBtlThick, wApronEnd + 0.40,
-                    xSgcEnd, yCenter - tSlab - sgcThick - sgcBtlThick - sgcStoneThick, yCenter - tSlab - sgcThick - sgcBtlThick, wSgcEnd + 0.40,
+                    xApronEdge, yCenter - sgcThick - sgcBtlThick - sgcStoneThick, yCenter - sgcThick - sgcBtlThick, wApronEnd + 0.10,
+                    xSgcEnd, yCenter - sgcThick - sgcBtlThick - sgcStoneThick, yCenter - sgcThick - sgcBtlThick, wSgcEnd + 0.10,
                     MatCrushedStone);
 
                 AddSolidBoxMesh(group,
-                    xToe0 - 0.20, yCenter - tSlab - sgcThick - toeDepth - sgcBtlThick - sgcStoneThick, -wSgcEnd / 2.0 - curbW - 0.20,
-                    xToe1 + 0.20, yCenter - tSlab - sgcThick - toeDepth - sgcBtlThick, wSgcEnd / 2.0 + curbW + 0.20,
+                    xToe0 - 0.10, yCenter - sgcThick - toeDepth - sgcBtlThick - sgcStoneThick, -wSgcEnd / 2.0 - curbW - 0.10,
+                    xToe1 + 0.10, yCenter - sgcThick - toeDepth - sgcBtlThick, wSgcEnd / 2.0 + curbW + 0.10,
                     MatCrushedStone);
             }
         }
@@ -806,7 +832,7 @@ namespace InfraBIM.CulvertTool.Views
         private static void BuildBeddingLayers(Model3DGroup group, CulvertPreviewGeometry geom, double totalL, double wOut, double tSlab, Func<double, double> dropFunc)
         {
             double ngamSan = geom.L_Ngam;
-            double lMongCX = 0.0; // BTL và đá dăm cống hộp bắt đầu sau mép đá dăm đệm cửa xả (tại P1) và kéo dài đến P2 (Hình 3)
+            double lMongCX = 0.40; // BTL và đá dăm cống hộp bắt đầu sau mép đá dăm đệm cửa xả (tại P1) và kéo dài đến P2 (Hình 3)
             double xStartBedding = Math.Min(lMongCX, totalL / 2.0);
             double xEndBedding = Math.Max(totalL - lMongCX, totalL / 2.0);
             if (xEndBedding <= xStartBedding) return;
@@ -919,8 +945,8 @@ namespace InfraBIM.CulvertTool.Views
         {
             if (totalL <= 0.1) return;
             double r = 0.025; // Đường tim cống bán kính 25mm
-            double startX = -3.0;
-            double endX = totalL + 3.0;
+            double startX = 0.0;
+            double endX = totalL;
             double step = 1.5;
 
             for (double x = startX; x < endX; x += step)

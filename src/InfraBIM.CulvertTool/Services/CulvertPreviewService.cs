@@ -78,13 +78,13 @@ namespace InfraBIM.CulvertTool.Services
             double totalL = geom.TotalLengthM;
             if (totalL <= 0.5) return geom;
 
-            // Thiết lập sân Thượng lưu & Hạ lưu (Chiều dài sân cống CX_L san cong chuẩn = 2.16m theo CAD/Family)
+            // Thiết lập sân Thượng lưu & Hạ lưu (Chiều dài tổng cửa xả CX_L1 + CX_L san cong chuẩn = 3.46m theo Revit & CAD)
             geom.ApronTL = new PreviewApronItem
             {
                 Title = "Sân thượng lưu",
                 PositionX = 0,
                 ElevationZ = geom.Z1,
-                LengthM = 2.16,
+                LengthM = 3.46,
                 WallHeightM = geom.BarrelHeightM + 0.6,
                 SlabThicknessM = 0.3
             };
@@ -94,7 +94,7 @@ namespace InfraBIM.CulvertTool.Services
                 Title = "Sân hạ lưu",
                 PositionX = totalL,
                 ElevationZ = geom.Z2,
-                LengthM = 2.16,
+                LengthM = 3.46,
                 WallHeightM = geom.BarrelHeightM + 0.6,
                 SlabThicknessM = 0.3
             };

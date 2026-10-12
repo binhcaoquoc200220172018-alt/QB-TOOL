@@ -801,8 +801,8 @@ namespace InfraBIM.CulvertTool.Views
                 dc.DrawGeometry(new SolidColorBrush(Color.FromRgb(100, 116, 139)), new Pen(new SolidColorBrush(Color.FromRgb(226, 232, 240)), 1.2), capPath);
             }
 
-            // 4. VẼ CỬA XẢ 2 ĐẦU (TƯỜNG ĐẦU, TƯỜNG CÁNH & SÂN CỐNG 3D)
-            double lApron = 2.16;
+            // 4. VẼ CỬA XẢ 2 ĐẦU (TƯỜNG ĐẦU, TƯỜNG CÁNH & SÂN CỐNG 3D - TỔNG 3.46M)
+            double lApron = 3.46;
             double lSgcTL = geom.L_SGC_TL > 0.05 ? geom.L_SGC_TL : 3.0;
             double lSgcHL = geom.L_SGC_HL > 0.05 ? geom.L_SGC_HL : 3.0;
 

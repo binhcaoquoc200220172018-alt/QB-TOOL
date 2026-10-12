@@ -200,6 +200,10 @@ namespace InfraBIM.CulvertTool.Services
                             var curApron = ResolveComponentsForCulvert(doc, apronComponents, row);
                             var curManhole = ResolveComponentsForCulvert(doc, manholeComponents, row);
 
+                            var rowOutlets = new List<FamilyInstance>();
+                            var rowBarrels = new List<FamilyInstance>();
+                            var rowBeddings = new List<FamilyInstance>();
+
                             BuildSingleCulvertV2(
                                 doc,
                                 row,
@@ -217,9 +221,59 @@ namespace InfraBIM.CulvertTool.Services
                                 curArrayMode,
                                 isRowCastInPlace,
                                 useSurveyPoint,
-                                materialSettings);
+                                materialSettings,
+                                rowOutlets,
+                                rowBarrels,
+                                rowBeddings);
 
                             subT.Commit();
+
+                            // Mở Transaction riêng biệt để thực hiện Cut Geometry sau khi các cấu kiện đã commit hoàn tất
+                            // Điều này đảm bảo Revit đã tính toán xong toàn bộ Solid CSG của các Family Adaptive (Yêu cầu 1)
+                            if (rowOutlets.Count > 0 && (rowBarrels.Count > 0 || rowBeddings.Count > 0))
+                            {
+                                using (var cutT = new Transaction(doc, $"Cut Geometry Cửa xả và Cống hộp STT {row.STT}"))
+                                {
+                                    try
+                                    {
+                                        var cutFailOpts = cutT.GetFailureHandlingOptions();
+                                        cutFailOpts.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
+                                        cutFailOpts.SetClearAfterRollback(true);
+                                        cutT.SetFailureHandlingOptions(cutFailOpts);
+
+                                        cutT.Start();
+                                        doc.Regenerate();
+
+                                        // 1. Cắt Tường đầu cửa xả (Cấu kiện 1) bởi Thân cống hộp (Cấu kiện 2) - Cả 2 sân cống
+                                        foreach (var outlet in rowOutlets)
+                                        {
+                                            if (outlet == null || !outlet.IsValidObject) continue;
+                                            foreach (var bar in rowBarrels)
+                                            {
+                                                if (bar == null || !bar.IsValidObject) continue;
+                                                TryCutGeometrySafe(doc, outlet, bar);
+                                            }
+                                        }
+
+                                        // 2. Cắt BTL & Đá dăm đệm của cống hộp bởi Cửa xả
+                                        foreach (var bed in rowBeddings)
+                                        {
+                                            if (bed == null || !bed.IsValidObject) continue;
+                                            foreach (var outlet in rowOutlets)
+                                            {
+                                                if (outlet == null || !outlet.IsValidObject) continue;
+                                                TryCutGeometrySafe(doc, bed, outlet);
+                                            }
+                                        }
+
+                                        cutT.Commit();
+                                    }
+                                    catch
+                                    {
+                                        try { if (cutT.HasStarted() && !cutT.HasEnded()) cutT.RollBack(); } catch { }
+                                    }
+                                }
+                            }
                             successCount++;
                             logs.Add($"✅ Đã tạo thành công cống STT {row.STT} ({row.LyTrinh}).");
                         }
@@ -925,7 +979,10 @@ namespace InfraBIM.CulvertTool.Services
             CulvertArrayMode arrayMode,
             bool isCastInPlace,
             bool useSurveyPoint,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null,
+            List<FamilyInstance>? outCreatedOutlets = null,
+            List<FamilyInstance>? outCreatedBarrels = null,
+            List<FamilyInstance>? outCreatedBeddings = null)
         {
             // 1. Chuyển đổi tọa độ VN2000 sang Revit Internal (Feet)
             XYZ p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, data.X1, data.Y1, data.Z1, useSurveyPoint);
@@ -1014,9 +1071,9 @@ namespace InfraBIM.CulvertTool.Services
 
             double lSanCongFeet = UnitUtils.ConvertToInternalUnits(lSanCongM, UnitTypeId.Meters);
 
-            var outletInstances = new List<FamilyInstance>();
-            var barrelInstances = new List<FamilyInstance>();
-            var beddingInstances = new List<FamilyInstance>();
+            var outletInstances = outCreatedOutlets ?? new List<FamilyInstance>();
+            var barrelInstances = outCreatedBarrels ?? new List<FamilyInstance>();
+            var beddingInstances = outCreatedBeddings ?? new List<FamilyInstance>();
 
             PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, outletInstances);
             PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, outletInstances);
@@ -1122,25 +1179,10 @@ namespace InfraBIM.CulvertTool.Services
             foreach (var outlet in outletInstances)
             {
                 if (outlet == null || !outlet.IsValidObject) continue;
-                var bbOutlet = outlet.get_BoundingBox(null);
-
                 foreach (var bar in barrelInstances)
                 {
                     if (bar == null || !bar.IsValidObject) continue;
-                    var bbBar = bar.get_BoundingBox(null);
-
-                    bool mayIntersect = true;
-                    if (bbOutlet != null && bbBar != null)
-                    {
-                        mayIntersect = bbOutlet.Min.X <= bbBar.Max.X + 6.5 && bbOutlet.Max.X >= bbBar.Min.X - 6.5 &&
-                                       bbOutlet.Min.Y <= bbBar.Max.Y + 6.5 && bbOutlet.Max.Y >= bbBar.Min.Y - 6.5 &&
-                                       bbOutlet.Min.Z <= bbBar.Max.Z + 6.5 && bbOutlet.Max.Z >= bbBar.Min.Z - 6.5;
-                    }
-
-                    if (mayIntersect)
-                    {
-                        TryCutGeometrySafe(doc, outlet, bar);
-                    }
+                    TryCutGeometrySafe(doc, outlet, bar);
                 }
             }
 
@@ -1148,25 +1190,10 @@ namespace InfraBIM.CulvertTool.Services
             foreach (var bed in beddingInstances)
             {
                 if (bed == null || !bed.IsValidObject) continue;
-                var bbBed = bed.get_BoundingBox(null);
-
                 foreach (var outlet in outletInstances)
                 {
                     if (outlet == null || !outlet.IsValidObject) continue;
-                    var bbOutlet = outlet.get_BoundingBox(null);
-
-                    bool mayIntersect = true;
-                    if (bbOutlet != null && bbBed != null)
-                    {
-                        mayIntersect = bbOutlet.Min.X <= bbBed.Max.X + 6.5 && bbOutlet.Max.X >= bbBed.Min.X - 6.5 &&
-                                       bbOutlet.Min.Y <= bbBed.Max.Y + 6.5 && bbOutlet.Max.Y >= bbBed.Min.Y - 6.5 &&
-                                       bbOutlet.Min.Z <= bbBed.Max.Z + 6.5 && bbOutlet.Max.Z >= bbBed.Min.Z - 6.5;
-                    }
-
-                    if (mayIntersect)
-                    {
-                        TryCutGeometrySafe(doc, bed, outlet);
-                    }
+                    TryCutGeometrySafe(doc, bed, outlet);
                 }
             }
         }
