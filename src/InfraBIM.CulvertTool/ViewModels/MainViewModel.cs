@@ -643,6 +643,9 @@ namespace InfraBIM.CulvertTool.ViewModels
         #endregion
 
         #region Properties - Tab 03 Preview (2D / 3D)
+        // Bộ nhớ đệm lưu hình học 3D thực tế trích xuất từ Family Revit cho từng cống
+        private readonly Dictionary<int, List<(System.Windows.Media.Media3D.MeshGeometry3D Mesh, System.Windows.Media.Brush Brush)>> _cachedRealMeshes = new();
+
         private CulvertRowData? _selectedCulvertRowForPreview;
         public CulvertRowData? SelectedCulvertRowForPreview
         {
@@ -652,6 +655,16 @@ namespace InfraBIM.CulvertTool.ViewModels
                 if (SetProperty(ref _selectedCulvertRowForPreview, value))
                 {
                     UpdatePreviewGeometry();
+                    if (_selectedCulvertRowForPreview != null)
+                    {
+                        lock (_cachedRealMeshes)
+                        {
+                            if (!_cachedRealMeshes.ContainsKey(_selectedCulvertRowForPreview.STT))
+                            {
+                                ExtractRealFamilyGeometryForPreview(_selectedCulvertRowForPreview);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -888,7 +901,19 @@ namespace InfraBIM.CulvertTool.ViewModels
             FitPreviewCommand = new RelayCommand(() => RequestPreviewAction?.Invoke("Fit"));
             ZoomInPreviewCommand = new RelayCommand(() => RequestPreviewAction?.Invoke("ZoomIn"));
             ZoomOutPreviewCommand = new RelayCommand(() => RequestPreviewAction?.Invoke("ZoomOut"));
-            RefreshPreviewCommand = new RelayCommand(UpdatePreviewGeometry);
+            RefreshPreviewCommand = new RelayCommand(() =>
+            {
+                var target = SelectedCulvertRowForPreview ?? FilteredPreviewCulvertRows.FirstOrDefault();
+                if (target != null)
+                {
+                    lock (_cachedRealMeshes)
+                    {
+                        _cachedRealMeshes.Remove(target.STT);
+                    }
+                    ExtractRealFamilyGeometryForPreview(target);
+                }
+                UpdatePreviewGeometry();
+            });
 
             // Material Commands (Tab 04)
             ApplyStandardMaterialPresetCommand = new RelayCommand(ApplyStandardMaterialPreset);
@@ -1009,7 +1034,45 @@ namespace InfraBIM.CulvertTool.ViewModels
                 {
                     LoadAvailableFamilies();
                     FamilyLoadStatus = $"Đã nạp {loadedCount}/{rfaFiles.Length} Family thành công!";
-                    MessageBox.Show($"Đã tự động nạp thành công {loadedCount}/{rfaFiles.Length} Family vào Revit!", "Nạp Family Hoàn Tất", MessageBoxButton.OK, MessageBoxImage.Information);
+                });
+
+                // NGAY SAU KHI NẠP FAMILY VÀO REVIT: TRÍCH XUẤT TOÀN BỘ HÌNH HỌC 3D THỰC TẾ TỪ FAMILY
+                // Giúp người dùng khi bấm "Kiểm tra mô hình 3D" thì hiển thị chính xác hình dạng hình học cống đã vẽ trong Family
+                try
+                {
+                    var rowsToExtract = new List<CulvertRowData>();
+                    var curTarget = SelectedCulvertRowForPreview ?? FilteredPreviewCulvertRows.FirstOrDefault() ?? FilteredCulvertRows.FirstOrDefault() ?? AllCulvertRows.FirstOrDefault();
+                    if (curTarget != null) rowsToExtract.Add(curTarget);
+
+                    // Lấy thêm các cống khác trong danh sách (tối đa 10 cống) để cache sẵn
+                    foreach (var r in FilteredCulvertRows)
+                    {
+                        if (!rowsToExtract.Contains(r)) rowsToExtract.Add(r);
+                        if (rowsToExtract.Count >= 10) break;
+                    }
+
+                    foreach (var r in rowsToExtract)
+                    {
+                        if (RevitCulvertMeshExtractor.TryExtractPreviewGeometry(doc, r, this, out var realMeshes) && realMeshes.Count > 0)
+                        {
+                            lock (_cachedRealMeshes)
+                            {
+                                _cachedRealMeshes[r.STT] = realMeshes;
+                            }
+                        }
+                    }
+
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        UpdatePreviewGeometry();
+                        OnPropertyChanged(nameof(CurrentPreviewGeometry));
+                    });
+                }
+                catch { }
+
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    MessageBox.Show($"Đã tự động nạp thành công {loadedCount}/{rfaFiles.Length} Family vào Revit!\nĐã trích xuất và nạp sẵn toàn bộ hình dạng hình học 3D từ Family cho Review 3D.", "Nạp Family Hoàn Tất", MessageBoxButton.OK, MessageBoxImage.Information);
                 });
             });
 
@@ -1585,6 +1648,19 @@ namespace InfraBIM.CulvertTool.ViewModels
             PreviewMode = PreviewViewMode.Isometric3D;
             UpdatePreviewGeometry();
 
+            if (SelectedCulvertRowForPreview != null)
+            {
+                bool hasCache = false;
+                lock (_cachedRealMeshes)
+                {
+                    hasCache = _cachedRealMeshes.ContainsKey(SelectedCulvertRowForPreview.STT);
+                }
+                if (!hasCache || CurrentPreviewGeometry?.RealRevitMeshes == null)
+                {
+                    ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
+                }
+            }
+
             var reviewWindow = new Views.Culvert3DPreviewWindow(this);
             try
             {
@@ -1658,18 +1734,71 @@ namespace InfraBIM.CulvertTool.ViewModels
                 offsetZ_Cat: catOffset,
                 hasBtlDot: hasBtlDot);
 
-            // YÊU CẦU 1 (HÌNH 1 & 2): Lấy hình học thực từ Family Revit nếu mô hình đã xuất hoặc có trong Revit Document
-            if (CurrentPreviewGeometry != null && Doc != null)
+            // Lấy hình học thực từ Family Revit:
+            if (CurrentPreviewGeometry != null)
             {
-                try
+                // Ưu tiên 1: Đã được đọc và cache sẵn từ Family Revit (Yêu cầu: nạp tự động family xong là có ngay review 3D)
+                lock (_cachedRealMeshes)
                 {
-                    if (RevitCulvertMeshExtractor.TryExtractRevitGeometry(Doc, target, out var revitMeshes))
+                    if (_cachedRealMeshes.TryGetValue(target.STT, out var cached) && cached != null && cached.Count > 0)
                     {
-                        CurrentPreviewGeometry.RealRevitMeshes = revitMeshes;
+                        CurrentPreviewGeometry.RealRevitMeshes = cached;
                     }
                 }
-                catch { }
+
+                // Ưu tiên 2: Nếu chưa có trong cache nhưng mô hình đã được xuất trên canvas Revit
+                if (CurrentPreviewGeometry.RealRevitMeshes == null && Doc != null)
+                {
+                    try
+                    {
+                        if (RevitCulvertMeshExtractor.TryExtractRevitGeometry(Doc, target, out var revitMeshes) && revitMeshes.Count > 0)
+                        {
+                            CurrentPreviewGeometry.RealRevitMeshes = revitMeshes;
+                            lock (_cachedRealMeshes)
+                            {
+                                _cachedRealMeshes[target.STT] = revitMeshes;
+                            }
+                        }
+                    }
+                    catch { }
+                }
             }
+        }
+
+        /// <summary>
+        /// Kích hoạt trích xuất hình học thực tế từ Family cho cống chỉ định (hoặc cống đang chọn)
+        /// </summary>
+        public void ExtractRealFamilyGeometryForPreview(CulvertRowData? targetRow = null)
+        {
+            var row = targetRow ?? SelectedCulvertRowForPreview ?? FilteredPreviewCulvertRows.FirstOrDefault() ?? FilteredCulvertRows.FirstOrDefault();
+            if (row == null) return;
+
+            _eventHandler.SetAction(app =>
+            {
+                var doc = app.ActiveUIDocument?.Document;
+                if (doc == null) return;
+
+                if (RevitCulvertMeshExtractor.TryExtractPreviewGeometry(doc, row, this, out var realMeshes) && realMeshes.Count > 0)
+                {
+                    lock (_cachedRealMeshes)
+                    {
+                        _cachedRealMeshes[row.STT] = realMeshes;
+                    }
+
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (SelectedCulvertRowForPreview == row || SelectedCulvertRowForPreview?.STT == row.STT)
+                        {
+                            if (CurrentPreviewGeometry != null)
+                            {
+                                CurrentPreviewGeometry.RealRevitMeshes = realMeshes;
+                                OnPropertyChanged(nameof(CurrentPreviewGeometry));
+                            }
+                        }
+                    });
+                }
+            });
+            _externalEvent.Raise();
         }
         #endregion
 

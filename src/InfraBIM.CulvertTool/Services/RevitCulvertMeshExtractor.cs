@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using Autodesk.Revit.DB;
 using InfraBIM.CulvertTool.Models;
+using InfraBIM.CulvertTool.ViewModels;
 
 namespace InfraBIM.CulvertTool.Services
 {
@@ -14,6 +15,155 @@ namespace InfraBIM.CulvertTool.Services
     /// </summary>
     public static class RevitCulvertMeshExtractor
     {
+        /// <summary>
+        /// Trích xuất hình học 3D thực tế trực tiếp từ Family Revit bằng giao dịch ảo (Virtual Rollback Transaction).
+        /// Cho phép người dùng xem trước chính xác 100% hình dạng hình học cống đã vẽ trong Family
+        /// ngay sau khi nạp Family và TRƯỚC KHI bấm chạy mô hình cống trong Revit.
+        /// </summary>
+        public static bool TryExtractPreviewGeometry(
+            Document? doc,
+            CulvertRowData? row,
+            MainViewModel? vm,
+            out List<(MeshGeometry3D Mesh, Brush Brush)> result)
+        {
+            result = new List<(MeshGeometry3D, Brush)>();
+            if (doc == null || row == null || vm == null) return false;
+
+            try
+            {
+                // 1. Chuẩn bị dữ liệu cống và tọa độ đánh giá
+                bool useSurveyPoint = (vm.SelectedCoordSysIndex == 0);
+                CulvertRowData evalRow = row;
+                XYZ p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, evalRow.X1, evalRow.Y1, evalRow.Z1, useSurveyPoint);
+                XYZ p2 = CoordinateService.ConvertVN2000ToRevitInternal(doc, evalRow.X2, evalRow.Y2, evalRow.Z2, useSurveyPoint);
+                if (p1.DistanceTo(p2) < 0.1)
+                {
+                    double lenM = evalRow.ChieuDai > 0.5 ? evalRow.ChieuDai : 10.0;
+                    evalRow = new CulvertRowData
+                    {
+                        STT = row.STT,
+                        LyTrinh = row.LyTrinh,
+                        LoaiCong = row.LoaiCong,
+                        CauKien = row.CauKien,
+                        KhauDo = row.KhauDo,
+                        ChieuDai = lenM,
+                        SoCua = row.SoCua,
+                        DoDoc = row.DoDoc,
+                        Z1 = row.Z1,
+                        Z2 = row.Z2,
+                        L_Ngam_San = row.L_Ngam_San,
+                        L_SGC_TL = row.L_SGC_TL,
+                        L_SGC_HL = row.L_SGC_HL,
+                        SoHopNoi = row.SoHopNoi,
+                        Dist_HN1 = row.Dist_HN1,
+                        Dist_HN2 = row.Dist_HN2,
+                        B_HT1 = row.B_HT1,
+                        B_HT2 = row.B_HT2,
+                        GhiChu = row.GhiChu,
+                        X1 = 0,
+                        Y1 = 0,
+                        X2 = lenM,
+                        Y2 = 0,
+                        ParameterOverrides = row.ParameterOverrides
+                    };
+                    p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, evalRow.X1, evalRow.Y1, evalRow.Z1, useSurveyPoint);
+                    p2 = CoordinateService.ConvertVN2000ToRevitInternal(doc, evalRow.X2, evalRow.Y2, evalRow.Z2, useSurveyPoint);
+                }
+
+                XYZ v = p2 - p1;
+                XYZ u = v.Normalize();
+                double rot = Math.Atan2(u.Y, u.X);
+                double cosRot = Math.Cos(rot);
+                double sinRot = Math.Sin(rot);
+
+                // 2. Chạy trong một Transaction tạm thời để Revit dựng đầy đủ hình học, tham số & Cut Geometry
+                // Sau khi trích xuất xong mesh, RollBack() ngay lập tức để giữ nguyên trạng thái tài liệu Revit
+                using (var t = new Transaction(doc, "Temp Virtual Preview Extraction"))
+                {
+                    var failOpts = t.GetFailureHandlingOptions();
+                    failOpts.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
+                    t.SetFailureHandlingOptions(failOpts);
+
+                    t.Start();
+                    try
+                    {
+                        var curBarrel = CulvertCoreEngine.ResolveComponentsForCulvert(doc, vm.BarrelComponents.ToList(), evalRow);
+                        var curOutlet = CulvertCoreEngine.ResolveComponentsForCulvert(doc, vm.OutletComponents.ToList(), evalRow);
+                        var curApron = CulvertCoreEngine.ResolveComponentsForCulvert(doc, vm.ApronComponents.ToList(), evalRow);
+                        var curManhole = CulvertCoreEngine.ResolveComponentsForCulvert(doc, vm.ManholeComponents.ToList(), evalRow);
+
+                        var outCreatedOutlets = new List<FamilyInstance>();
+                        var outCreatedBarrels = new List<FamilyInstance>();
+                        var outCreatedBeddings = new List<FamilyInstance>();
+                        var outCreatedAprons = new List<FamilyInstance>();
+                        var outCreatedManholes = new List<FamilyInstance>();
+
+                        var curArrayMode = (vm.SelectedArrayModeIndex == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay;
+
+                        CulvertCoreEngine.BuildSingleCulvertV2(
+                            doc,
+                            evalRow,
+                            vm.BimConfig,
+                            vm.CustomBimParameters,
+                            vm.ParameterMappings,
+                            curBarrel,
+                            curOutlet,
+                            curApron,
+                            curManhole,
+                            vm.L_Std,
+                            vm.Khe_Ho,
+                            vm.B_Box,
+                            vm.KhoangCachTimDefault,
+                            curArrayMode,
+                            vm.IsCastInPlaceMode,
+                            useSurveyPoint,
+                            vm.ComponentMaterials,
+                            outCreatedOutlets,
+                            outCreatedBarrels,
+                            outCreatedBeddings,
+                            outCreatedAprons,
+                            outCreatedManholes);
+
+                        try { doc.Regenerate(); } catch { }
+
+                        var allInstances = new List<FamilyInstance>();
+                        allInstances.AddRange(outCreatedOutlets);
+                        allInstances.AddRange(outCreatedBarrels);
+                        allInstances.AddRange(outCreatedBeddings);
+                        allInstances.AddRange(outCreatedAprons);
+                        allInstances.AddRange(outCreatedManholes);
+
+                        var opt = new Options
+                        {
+                            DetailLevel = ViewDetailLevel.Fine,
+                            ComputeReferences = false,
+                            IncludeNonVisibleObjects = false
+                        };
+
+                        foreach (var inst in allInstances)
+                        {
+                            if (inst == null || !inst.IsValidObject) continue;
+                            var geom = inst.get_Geometry(opt);
+                            if (geom == null) continue;
+
+                            Brush brush = GetBrushForFamily(inst.Symbol?.FamilyName ?? "", inst.Symbol?.Name ?? "");
+                            ExtractSolidsRecursive(geom, p1, cosRot, sinRot, brush, result);
+                        }
+                    }
+                    finally
+                    {
+                        t.RollBack();
+                    }
+                }
+
+                return result.Count > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public static bool TryExtractRevitGeometry(
             Document? doc,
             CulvertRowData? row,
@@ -164,19 +314,24 @@ namespace InfraBIM.CulvertTool.Services
         private static Brush GetBrushForFamily(string fn, string typeName)
         {
             string upper = $"{fn} {typeName}".ToUpperInvariant();
+            SolidColorBrush brush;
             if (upper.Contains("THAN CONG") || upper.Contains("THÂN CỐNG") || upper.Contains("THAN_CONG") || upper.Contains("DOT") || upper.Contains("ĐỐT"))
-                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(63, 68, 78)); // Bê tông xám than đậm (#3F444E) như Hình 2
-            if (upper.Contains("HOP NOI") || upper.Contains("HỘP NỐI") || upper.Contains("HO GA") || upper.Contains("HỐ GA") || upper.Contains("HN"))
-                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
-            if (upper.Contains("BE TONG LOT") || upper.Contains("BTL") || upper.Contains("BT LOT"))
-                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184)); // Bê tông lót (#94A3B8)
-            if (upper.Contains("DA DAM") || upper.Contains("DDD") || upper.Contains("ĐÁ DĂM"))
-                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(202, 138, 4));  // Đá dăm đệm (#CA8A04)
-            if (upper.Contains("CUA XA") || upper.Contains("CỬA XẢ") || upper.Contains("CX") || upper.Contains("SAN CONG") || upper.Contains("TUONG DAU") || upper.Contains("TUONG CANH"))
-                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
-            if (upper.Contains("SAN GIA CO") || upper.Contains("SÂN GIA CỐ") || upper.Contains("SGC"))
-                return new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
-            return new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184));
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(63, 68, 78)); // Bê tông xám than đậm (#3F444E) như Hình 2
+            else if (upper.Contains("HOP NOI") || upper.Contains("HỘP NỐI") || upper.Contains("HO GA") || upper.Contains("HỐ GA") || upper.Contains("HN"))
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
+            else if (upper.Contains("BE TONG LOT") || upper.Contains("BTL") || upper.Contains("BT LOT"))
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184)); // Bê tông lót (#94A3B8)
+            else if (upper.Contains("DA DAM") || upper.Contains("DDD") || upper.Contains("ĐÁ DĂM"))
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(202, 138, 4));  // Đá dăm đệm (#CA8A04)
+            else if (upper.Contains("CUA XA") || upper.Contains("CỬA XẢ") || upper.Contains("CX") || upper.Contains("SAN CONG") || upper.Contains("TUONG DAU") || upper.Contains("TUONG CANH"))
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
+            else if (upper.Contains("SAN GIA CO") || upper.Contains("SÂN GIA CỐ") || upper.Contains("SGC"))
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
+            else
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184));
+
+            if (brush.CanFreeze) brush.Freeze();
+            return brush;
         }
 
         private static void ExtractSolidsRecursive(
@@ -252,6 +407,7 @@ namespace InfraBIM.CulvertTool.Services
                 }
             }
 
+            if (mesh.CanFreeze) mesh.Freeze();
             return mesh;
         }
 

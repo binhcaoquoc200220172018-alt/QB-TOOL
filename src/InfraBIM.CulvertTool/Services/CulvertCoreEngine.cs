@@ -727,7 +727,7 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
-        private static IList<CulvertComponentItem> ResolveComponentsForCulvert(
+        internal static IList<CulvertComponentItem> ResolveComponentsForCulvert(
             Document doc,
             IList<CulvertComponentItem> baseComponents,
             CulvertRowData row)
@@ -982,7 +982,9 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<CulvertMaterialItem>? materialSettings = null,
             List<FamilyInstance>? outCreatedOutlets = null,
             List<FamilyInstance>? outCreatedBarrels = null,
-            List<FamilyInstance>? outCreatedBeddings = null)
+            List<FamilyInstance>? outCreatedBeddings = null,
+            List<FamilyInstance>? outCreatedAprons = null,
+            List<FamilyInstance>? outCreatedManholes = null)
         {
             // 1. Chuyển đổi tọa độ VN2000 sang Revit Internal (Feet)
             XYZ p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, data.X1, data.Y1, data.Z1, useSurveyPoint);
@@ -1074,6 +1076,8 @@ namespace InfraBIM.CulvertTool.Services
             var outletInstances = outCreatedOutlets ?? new List<FamilyInstance>();
             var barrelInstances = outCreatedBarrels ?? new List<FamilyInstance>();
             var beddingInstances = outCreatedBeddings ?? new List<FamilyInstance>();
+            var apronInstances = outCreatedAprons ?? new List<FamilyInstance>();
+            var manholeInstances = outCreatedManholes ?? new List<FamilyInstance>();
 
             PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, outletInstances);
             PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, outletInstances);
@@ -1155,8 +1159,8 @@ namespace InfraBIM.CulvertTool.Services
             double lSgcTL = data.L_SGC_TL > 0.05 ? data.L_SGC_TL : 3.0;
             double lSgcHL = data.L_SGC_HL > 0.05 ? data.L_SGC_HL : 3.0;
 
-            PlaceApronAssembly(doc, ptSC2_TL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSgcTL, materialSettings);
-            PlaceApronAssembly(doc, ptSC2_HL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSgcHL, materialSettings);
+            PlaceApronAssembly(doc, ptSC2_TL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSgcTL, materialSettings, apronInstances);
+            PlaceApronAssembly(doc, ptSC2_HL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSgcHL, materialSettings, apronInstances);
 
             // 4. Rải thân cống và hộp nối: Offset xuống 1 đoạn L_ngam_san như trong file Excel & Hình 4
             double lNgamSanM = data.L_Ngam_San > 0 ? data.L_Ngam_San : 0.0;
@@ -1166,7 +1170,7 @@ namespace InfraBIM.CulvertTool.Services
 
             BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
                 p1_Culvert, p2_Culvert, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings,
-                barrelInstances, beddingInstances);
+                barrelInstances, beddingInstances, manholeInstances);
 
             // 5. YÊU CẦU 1: Cut Geometry giữa Cửa xả và Thân cống hộp / BTL / Đá dăm (Hình 1 & Hình 2)
             try
@@ -1346,7 +1350,8 @@ namespace InfraBIM.CulvertTool.Services
             CulvertRowData data,
             bool isUpstream,
             double lSgcM,
-            IEnumerable<CulvertMaterialItem>? materialSettings)
+            IEnumerable<CulvertMaterialItem>? materialSettings,
+            List<FamilyInstance>? createdAprons = null)
         {
             if (apronComponents == null || apronComponents.Count == 0) return;
 
@@ -1417,6 +1422,7 @@ namespace InfraBIM.CulvertTool.Services
                 catch { }
 
                 if (inst == null) continue;
+                if (createdAprons != null) createdAprons.Add(inst);
 
                 try
                 {
@@ -1439,7 +1445,7 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
-        private static void TryCutGeometrySafe(Document doc, Element? eToCut, Element? eCutter)
+        internal static void TryCutGeometrySafe(Document doc, Element? eToCut, Element? eCutter)
         {
             if (doc == null || eToCut == null || eCutter == null || !eToCut.IsValidObject || !eCutter.IsValidObject) return;
             if (eToCut.Id == eCutter.Id) return;
@@ -1577,7 +1583,8 @@ namespace InfraBIM.CulvertTool.Services
             string branchSuffix,
             IEnumerable<CulvertMaterialItem>? materialSettings = null,
             List<FamilyInstance>? createdBarrels = null,
-            List<FamilyInstance>? createdBeddings = null)
+            List<FamilyInstance>? createdBeddings = null,
+            List<FamilyInstance>? createdManholes = null)
         {
             var segmentedBarrelComps = barrelComponents.Where(c => !IsBeddingComponent(c)).ToList();
             var continuousBeddingComps = barrelComponents.Where(c => IsBeddingComponent(c)).ToList();
@@ -1668,7 +1675,7 @@ namespace InfraBIM.CulvertTool.Services
 
                 if (string.IsNullOrEmpty(branchSuffix))
                 {
-                    PlaceManholeAssembly(doc, pHN1, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings);
+                    PlaceManholeAssembly(doc, pHN1, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdManholes);
                 }
 
                 double rOut1Feet = b1Feet / 2.0;
@@ -1731,8 +1738,8 @@ namespace InfraBIM.CulvertTool.Services
 
                 if (string.IsNullOrEmpty(branchSuffix))
                 {
-                    PlaceManholeAssembly(doc, pHN1, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings);
-                    PlaceManholeAssembly(doc, pHN2, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings);
+                    PlaceManholeAssembly(doc, pHN1, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdManholes);
+                    PlaceManholeAssembly(doc, pHN2, rotAngle, manholeComponents, bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdManholes);
                 }
 
                 double rOut1Feet = b1Feet / 2.0;
@@ -1875,7 +1882,8 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<ParameterMappingItem>? familyParameterMappings,
             CulvertRowData data,
             int manholeIndex,
-            IEnumerable<CulvertMaterialItem>? materialSettings)
+            IEnumerable<CulvertMaterialItem>? materialSettings,
+            List<FamilyInstance>? createdManholes = null)
         {
             if (manholeComponents == null || manholeComponents.Count == 0) return;
 
@@ -1900,6 +1908,7 @@ namespace InfraBIM.CulvertTool.Services
                 catch { }
 
                 if (inst == null) continue;
+                if (createdManholes != null) createdManholes.Add(inst);
 
                 string tenCK = $"{comp.CategoryType}_{manholeIndex}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, $"HỐ GA {manholeIndex}", null, null, ptComp.X, ptComp.Y, ptComp.Z); } catch { }
