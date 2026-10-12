@@ -40,9 +40,27 @@ namespace InfraBIM.CulvertTool.Views
         {
             if (d is Culvert3DViewportControl control)
             {
+                if (e.OldValue is CulvertPreviewGeometry oldGeom)
+                {
+                    oldGeom.PropertyChanged -= control.OnGeometryPropertyChanged;
+                }
+                if (e.NewValue is CulvertPreviewGeometry newGeom)
+                {
+                    newGeom.PropertyChanged += control.OnGeometryPropertyChanged;
+                }
+
                 control.RebuildModel();
                 control.FitView();
             }
+        }
+
+        private void OnGeometryPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                RebuildModel();
+                FitView();
+            });
         }
         #endregion
 

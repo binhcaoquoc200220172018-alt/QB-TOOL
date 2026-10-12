@@ -657,12 +657,14 @@ namespace InfraBIM.CulvertTool.ViewModels
                     UpdatePreviewGeometry();
                     if (_selectedCulvertRowForPreview != null)
                     {
+                        bool hasCache = false;
                         lock (_cachedRealMeshes)
                         {
-                            if (!_cachedRealMeshes.ContainsKey(_selectedCulvertRowForPreview.STT))
-                            {
-                                ExtractRealFamilyGeometryForPreview(_selectedCulvertRowForPreview);
-                            }
+                            hasCache = _cachedRealMeshes.ContainsKey(_selectedCulvertRowForPreview.STT);
+                        }
+                        if (!hasCache || (_activeReviewWindow != null && _activeReviewWindow.IsLoaded))
+                        {
+                            ExtractRealFamilyGeometryForPreview(_selectedCulvertRowForPreview);
                         }
                     }
                 }
@@ -1042,6 +1044,11 @@ namespace InfraBIM.CulvertTool.ViewModels
                 {
                     var rowsToExtract = new List<CulvertRowData>();
                     var curTarget = SelectedCulvertRowForPreview ?? FilteredPreviewCulvertRows.FirstOrDefault() ?? FilteredCulvertRows.FirstOrDefault() ?? AllCulvertRows.FirstOrDefault();
+                    if (curTarget == null)
+                    {
+                        curTarget = CreateDefaultPreviewCulvertRow();
+                        Application.Current.Dispatcher.Invoke(() => { SelectedCulvertRowForPreview = curTarget; });
+                    }
                     if (curTarget != null) rowsToExtract.Add(curTarget);
 
                     // Lấy thêm các cống khác trong danh sách (tối đa 10 cống) để cache sẵn
@@ -1639,29 +1646,60 @@ namespace InfraBIM.CulvertTool.ViewModels
                 PreviewMode = PreviewViewMode.Profile2D;
         }
 
+        private Views.Culvert3DPreviewWindow? _activeReviewWindow;
+
+        private CulvertRowData CreateDefaultPreviewCulvertRow()
+        {
+            return new CulvertRowData
+            {
+                STT = 1,
+                LyTrinh = "Km0+000",
+                LoaiCong = "Cống hộp 1.5x1.5m",
+                KhauDo = "1.5x1.5",
+                ChieuDai = 12.0,
+                SoCua = 1,
+                DoDoc = 2.0,
+                Z1 = 10.0,
+                Z2 = 9.76,
+                X1 = 0,
+                Y1 = 0,
+                X2 = 12.0,
+                Y2 = 0
+            };
+        }
+
         public void Open3DReview()
         {
             if (SelectedCulvertRowForPreview == null)
             {
-                SelectedCulvertRowForPreview = FilteredCulvertRows.FirstOrDefault() ?? AllCulvertRows.FirstOrDefault();
+                SelectedCulvertRowForPreview = FilteredPreviewCulvertRows.FirstOrDefault() ?? FilteredCulvertRows.FirstOrDefault() ?? AllCulvertRows.FirstOrDefault();
+                if (SelectedCulvertRowForPreview == null)
+                {
+                    SelectedCulvertRowForPreview = CreateDefaultPreviewCulvertRow();
+                }
             }
             PreviewMode = PreviewViewMode.Isometric3D;
-            UpdatePreviewGeometry();
 
+            // Luôn xóa cache của cống đang chọn để trích xuất lại mô hình mới nhất 100% theo các tham số người dùng vừa chỉnh
             if (SelectedCulvertRowForPreview != null)
             {
-                bool hasCache = false;
                 lock (_cachedRealMeshes)
                 {
-                    hasCache = _cachedRealMeshes.ContainsKey(SelectedCulvertRowForPreview.STT);
+                    _cachedRealMeshes.Remove(SelectedCulvertRowForPreview.STT);
                 }
-                if (!hasCache || CurrentPreviewGeometry?.RealRevitMeshes == null)
-                {
-                    ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
-                }
+                UpdatePreviewGeometry();
+                ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
+            }
+
+            if (_activeReviewWindow != null && _activeReviewWindow.IsLoaded)
+            {
+                _activeReviewWindow.Activate();
+                return;
             }
 
             var reviewWindow = new Views.Culvert3DPreviewWindow(this);
+            _activeReviewWindow = reviewWindow;
+            reviewWindow.Closed += (s, e) => { if (_activeReviewWindow == reviewWindow) _activeReviewWindow = null; };
             try
             {
                 if (Application.Current?.MainWindow != null && Application.Current.MainWindow.IsVisible)
@@ -1671,7 +1709,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
             catch { }
             reviewWindow.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            reviewWindow.ShowDialog();
+            reviewWindow.Show();
         }
 
         public void FilterPreviewCulvertRows()
@@ -1734,33 +1772,15 @@ namespace InfraBIM.CulvertTool.ViewModels
                 offsetZ_Cat: catOffset,
                 hasBtlDot: hasBtlDot);
 
-            // Lấy hình học thực từ Family Revit:
+            // Lấy hình học thực từ Family Revit theo cache đã trích xuất:
             if (CurrentPreviewGeometry != null)
             {
-                // Ưu tiên 1: Đã được đọc và cache sẵn từ Family Revit (Yêu cầu: nạp tự động family xong là có ngay review 3D)
                 lock (_cachedRealMeshes)
                 {
                     if (_cachedRealMeshes.TryGetValue(target.STT, out var cached) && cached != null && cached.Count > 0)
                     {
                         CurrentPreviewGeometry.RealRevitMeshes = cached;
                     }
-                }
-
-                // Ưu tiên 2: Nếu chưa có trong cache nhưng mô hình đã được xuất trên canvas Revit
-                if (CurrentPreviewGeometry.RealRevitMeshes == null && Doc != null)
-                {
-                    try
-                    {
-                        if (RevitCulvertMeshExtractor.TryExtractRevitGeometry(Doc, target, out var revitMeshes) && revitMeshes.Count > 0)
-                        {
-                            CurrentPreviewGeometry.RealRevitMeshes = revitMeshes;
-                            lock (_cachedRealMeshes)
-                            {
-                                _cachedRealMeshes[target.STT] = revitMeshes;
-                            }
-                        }
-                    }
-                    catch { }
                 }
             }
         }
@@ -2162,7 +2182,30 @@ namespace InfraBIM.CulvertTool.ViewModels
                     {
                         p.IsSelected = false;
                     }
+                    p.PropertyChanged += OnParameterMappingItemPropertyChanged;
                     ParameterMappings.Add(p);
+                }
+            }
+        }
+
+        private void OnParameterMappingItemPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ParameterMappingItem.CustomValue) ||
+                e.PropertyName == nameof(ParameterMappingItem.IsSelected) ||
+                e.PropertyName == nameof(ParameterMappingItem.MappedField))
+            {
+                lock (_cachedRealMeshes)
+                {
+                    _cachedRealMeshes.Clear();
+                }
+
+                if (SelectedCulvertRowForPreview != null)
+                {
+                    UpdatePreviewGeometry();
+                    if (_activeReviewWindow != null && _activeReviewWindow.IsLoaded)
+                    {
+                        ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
+                    }
                 }
             }
         }
@@ -2274,7 +2317,11 @@ namespace InfraBIM.CulvertTool.ViewModels
                 {
                     // Xóa tham số cũ của cấu kiện này để quét mới nhất
                     var toRemove = ParameterMappings.Where(m => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase)).ToList();
-                    foreach (var item in toRemove) ParameterMappings.Remove(item);
+                    foreach (var item in toRemove)
+                    {
+                        item.PropertyChanged -= OnParameterMappingItemPropertyChanged;
+                        ParameterMappings.Remove(item);
+                    }
 
                     foreach (var p in scanned)
                     {
@@ -2282,6 +2329,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                         {
                             p.IsSelected = false;
                         }
+                        p.PropertyChanged += OnParameterMappingItemPropertyChanged;
                         ParameterMappings.Add(p);
                     }
 
@@ -2322,6 +2370,18 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             UpdateBatchTableForSelectedParam();
 
+            // Xóa cache mô hình cũ để khi người dùng mở Review 3D hoặc đang mở Review 3D,
+            // hệ thống lập tức trích xuất lại mô hình thực tế chính xác theo tham số mới vừa chỉnh!
+            lock (_cachedRealMeshes)
+            {
+                _cachedRealMeshes.Clear();
+            }
+            if (SelectedCulvertRowForPreview != null)
+            {
+                ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
+            }
+            UpdatePreviewGeometry();
+
             MessageBox.Show($"Đã gán giá trị '{BatchApplyValue}' cho tham số '{pName}' của Family '{SelectedParamForBatch.FamilyName}' (Phạm vi cống STT {BatchFromSTT} - {BatchToSTT}, {count} cống).", "Hoàn thành", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
@@ -2351,6 +2411,19 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
 
             UpdateBatchTableForSelectedParam();
+
+            // Xóa cache mô hình cũ để khi người dùng mở Review 3D hoặc đang mở Review 3D,
+            // hệ thống lập tức trích xuất lại mô hình thực tế chính xác theo tham số mới vừa chỉnh!
+            lock (_cachedRealMeshes)
+            {
+                _cachedRealMeshes.Clear();
+            }
+            if (SelectedCulvertRowForPreview != null)
+            {
+                ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
+            }
+            UpdatePreviewGeometry();
+
             MessageBox.Show($"Đã gán thành công {paramsToApply.Count} tham số tùy biến cho {count} lý trình (Phạm vi STT {BatchFromSTT} đến {BatchToSTT}).", "Hoàn tất gán tham số", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
@@ -2465,6 +2538,16 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
 
             FilterParameterMappings();
+            lock (_cachedRealMeshes)
+            {
+                _cachedRealMeshes.Clear();
+            }
+            if (SelectedCulvertRowForPreview != null)
+            {
+                ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
+            }
+            UpdatePreviewGeometry();
+
             MessageBox.Show($"Đã sao chép thành công giá trị của {itemsToCopy.Count} thông số bạn đã nhập sang {targetComps.Count} cấu kiện khác trong cụm '{srcGroup}'!\n(Chỉ sao chép giá trị số liệu tùy biến đã nhập, không sao chép tham số và giữ nguyên toàn bộ biến Yes/No theo từng cấu kiện).\n\nDanh sách cấu kiện đã nhận giá trị:\n• {string.Join("\n• ", targetComps.Select(t => t.CategoryType))}", "Sao chép giá trị hoàn tất", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         #endregion

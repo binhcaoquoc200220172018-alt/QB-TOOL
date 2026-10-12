@@ -244,15 +244,18 @@ namespace InfraBIM.CulvertTool.Services
                                         cutT.Start();
                                         doc.Regenerate();
 
-                                        // 1. Cắt Tường đầu cửa xả (Cấu kiện 1) bởi Thân cống hộp (Cấu kiện 2) - Cả 2 sân cống
+                                        // 1. Cắt Cửa xả (Tường đầu, Tường cánh, Sân cống) bởi Thân cống hộp ở cả 2 đầu (Thượng lưu & Hạ lưu)
+                                        // Lọc các đốt cống ở 2 đầu (3 đốt đầu và 3 đốt cuối) để tăng tốc và chuẩn xác tuyệt đối
+                                        var candidateBarrels = rowBarrels.Take(3).Concat(rowBarrels.TakeLast(3)).Distinct().ToList();
+
                                         foreach (var outlet in rowOutlets)
                                         {
                                             if (outlet == null || !outlet.IsValidObject) continue;
-                                            foreach (var bar in rowBarrels)
-                                            {
-                                                if (bar == null || !bar.IsValidObject) continue;
-                                                TryCutGeometrySafe(doc, outlet, bar);
-                                            }
+                                            foreach (var bar in candidateBarrels)
+                                             {
+                                                 if (bar == null || !bar.IsValidObject) continue;
+                                                 TryCutGeometrySafe(doc, outlet, bar);
+                                             }
                                         }
 
                                         // 2. Cắt BTL & Đá dăm đệm của cống hộp bởi Cửa xả
@@ -1180,10 +1183,12 @@ namespace InfraBIM.CulvertTool.Services
             catch { }
 
             // Cut geometry giữa thân cống hộp với Cửa xả (tường đầu) - Cả 2 sân cống Thượng lưu & Hạ lưu
+            var candidateBarrels = barrelInstances.Take(3).Concat(barrelInstances.TakeLast(3)).Distinct().ToList();
+
             foreach (var outlet in outletInstances)
             {
                 if (outlet == null || !outlet.IsValidObject) continue;
-                foreach (var bar in barrelInstances)
+                foreach (var bar in candidateBarrels)
                 {
                     if (bar == null || !bar.IsValidObject) continue;
                     TryCutGeometrySafe(doc, outlet, bar);
@@ -1445,66 +1450,120 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
-        internal static void TryCutGeometrySafe(Document doc, Element? eToCut, Element? eCutter)
+        internal static bool TryCutGeometrySafe(Document doc, Element? eToCut, Element? eCutter)
         {
-            if (doc == null || eToCut == null || eCutter == null || !eToCut.IsValidObject || !eCutter.IsValidObject) return;
-            if (eToCut.Id == eCutter.Id) return;
+            if (doc == null || eToCut == null || eCutter == null || !eToCut.IsValidObject || !eCutter.IsValidObject) return false;
+            if (eToCut.Id == eCutter.Id) return false;
 
+            // 1. Kiểm tra Bounding Box giao nhau nếu cả 2 đối tượng đều có Bounding Box
+            BoundingBoxXYZ? bbCut = null;
+            BoundingBoxXYZ? bbCutter = null;
             try
             {
-                // Nếu 2 đối tượng đang bị Join trước đó, phải Unjoin trước để không chặn lệnh Cut
-                if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
-                {
-                    try { JoinGeometryUtils.UnjoinGeometry(doc, eToCut, eCutter); } catch { }
-                }
-
-                // Kiểm tra xem đã có Cut giữa 2 đối tượng chưa
-                try
-                {
-                    var cuttingSolids = SolidSolidCutUtils.GetCuttingSolids(eToCut);
-                    if (cuttingSolids != null && cuttingSolids.Contains(eCutter.Id))
-                        return;
-                }
-                catch { }
-
-                // Thử Cut thuận: eToCut (Cửa xả) bị khoét bởi eCutter (Cống hộp)
-                try
-                {
-                    if (SolidSolidCutUtils.CanElementCutElement(eCutter, eToCut, out _))
-                    {
-                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
-                        return;
-                    }
-                }
-                catch { }
-
-                // Thử Cut thuận trực tiếp nếu CanElementCutElement quá chặt
-                try
-                {
-                    SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
-                    return;
-                }
-                catch { }
-
-                // Thử Cut nghịch nếu Revit yêu cầu chiều ngược lại
-                try
-                {
-                    if (SolidSolidCutUtils.CanElementCutElement(eToCut, eCutter, out _))
-                    {
-                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eCutter, eToCut);
-                        return;
-                    }
-                }
-                catch { }
-
-                try
-                {
-                    SolidSolidCutUtils.AddCutBetweenSolids(doc, eCutter, eToCut);
-                    return;
-                }
-                catch { }
+                bbCut = eToCut.get_BoundingBox(null) ?? (doc.ActiveView != null ? eToCut.get_BoundingBox(doc.ActiveView) : null);
+                bbCutter = eCutter.get_BoundingBox(null) ?? (doc.ActiveView != null ? eCutter.get_BoundingBox(doc.ActiveView) : null);
             }
             catch { }
+
+            if (bbCut != null && bbCutter != null)
+            {
+                double margin = 0.20; // 20cm margin dung sai tiếp xúc
+                bool bboxOverlap = (bbCut.Min.X - margin <= bbCutter.Max.X && bbCut.Max.X + margin >= bbCutter.Min.X) &&
+                                   (bbCut.Min.Y - margin <= bbCutter.Max.Y && bbCut.Max.Y + margin >= bbCutter.Min.Y) &&
+                                   (bbCut.Min.Z - margin <= bbCutter.Max.Z && bbCut.Max.Z + margin >= bbCutter.Min.Z);
+                if (!bboxOverlap) return false;
+            }
+
+            // 2. Sử dụng SubTransaction để cô lập hoàn toàn từng thao tác Cut, đảm bảo 1 lỗi không bao giờ làm hỏng Transaction lớn
+            using (var sub = new SubTransaction(doc))
+            {
+                sub.Start();
+                try
+                {
+                    // Nếu 2 đối tượng đã được Cut trước đó
+                    try
+                    {
+                        var cuttingSolids = SolidSolidCutUtils.GetCuttingSolids(eToCut);
+                        if (cuttingSolids != null && cuttingSolids.Contains(eCutter.Id))
+                        {
+                            sub.Commit();
+                            return true;
+                        }
+                    }
+                    catch { }
+
+                    // QUAN TRỌNG: Nếu 2 đối tượng đang bị Join trước đó, Revit sẽ báo lỗi CutFailures.CannotCutJoinedElement
+                    // Do đó bắt buộc Unjoin trước khi thực hiện Cut Geometry!
+                    try
+                    {
+                        if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
+                        {
+                            JoinGeometryUtils.UnjoinGeometry(doc, eToCut, eCutter);
+                        }
+                    }
+                    catch { }
+
+                    bool cutSuccess = false;
+
+                    // ƯU TIÊN 1: Thử Cut Geometry chuẩn của Revit (SolidSolidCutUtils)
+                    // Cấu kiện 1 (eToCut - Cửa xả) bị khoét bởi Cấu kiện 2 (eCutter - Cống hộp)
+                    try
+                    {
+                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
+                        cutSuccess = true;
+                    }
+                    catch { }
+
+                    if (!cutSuccess)
+                    {
+                        try
+                        {
+                            SolidSolidCutUtils.AddCutBetweenSolids(doc, eCutter, eToCut);
+                            cutSuccess = true;
+                        }
+                        catch { }
+                    }
+
+                    // ƯU TIÊN 2: Nếu SolidSolidCut không hỗ trợ trực tiếp Family Adaptive này trong Project,
+                    // sử dụng JoinGeometryUtils và SwitchJoinOrder (chuẩn Revit boolean CSG)
+                    if (!cutSuccess)
+                    {
+                        try
+                        {
+                            if (!JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
+                            {
+                                JoinGeometryUtils.JoinGeometry(doc, eToCut, eCutter);
+                            }
+                            if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
+                            {
+                                // Đảm bảo eCutter (Cống hộp) là đối tượng cắt (cutting element)
+                                if (!JoinGeometryUtils.IsCuttingElementInJoin(doc, eCutter, eToCut))
+                                {
+                                    JoinGeometryUtils.SwitchJoinOrder(doc, eToCut, eCutter);
+                                }
+                                cutSuccess = true;
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (cutSuccess)
+                    {
+                        sub.Commit();
+                        return true;
+                    }
+                    else
+                    {
+                        sub.RollBack();
+                        return false;
+                    }
+                }
+                catch
+                {
+                    try { sub.RollBack(); } catch { }
+                    return false;
+                }
+            }
         }
 
         private static bool CheckIfVaiKeEnabled(

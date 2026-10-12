@@ -56,8 +56,14 @@ namespace InfraBIM.CulvertTool.Models
     /// <summary>
     /// Toàn bộ dữ liệu tính toán hình học phục vụ vẽ Preview & Kiểm tra cao độ
     /// </summary>
-    public class CulvertPreviewGeometry
+    public class CulvertPreviewGeometry : System.ComponentModel.INotifyPropertyChanged
     {
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? propName = null)
+        {
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propName));
+        }
+
         public int STT { get; set; }
         public string LyTrinh { get; set; } = string.Empty;
         public string LoaiCong { get; set; } = string.Empty;
@@ -132,6 +138,15 @@ namespace InfraBIM.CulvertTool.Models
         public double WallThicknessM { get; set; } = 0.20;
 
         // Hình học 3D thực tế trích xuất trực tiếp từ các FamilyInstance trong Revit Document
-        public List<(System.Windows.Media.Media3D.MeshGeometry3D Mesh, System.Windows.Media.Brush Brush)>? RealRevitMeshes { get; set; }
+        private List<(System.Windows.Media.Media3D.MeshGeometry3D Mesh, System.Windows.Media.Brush Brush)>? _realRevitMeshes;
+        public List<(System.Windows.Media.Media3D.MeshGeometry3D Mesh, System.Windows.Media.Brush Brush)>? RealRevitMeshes
+        {
+            get => _realRevitMeshes;
+            set
+            {
+                _realRevitMeshes = value;
+                OnPropertyChanged(nameof(RealRevitMeshes));
+            }
+        }
     }
 }
