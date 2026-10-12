@@ -87,10 +87,17 @@ namespace InfraBIM.CulvertTool.Services
                     t.Start();
                     try
                     {
-                        var curBarrel = CulvertCoreEngine.ResolveComponentsForCulvert(doc, vm.BarrelComponents.ToList(), evalRow);
+                        var barrelSource = (vm.IsTechnicalCulvertMode && vm.TechnicalBarrelComponents.Count > 0)
+                            ? vm.TechnicalBarrelComponents.ToList()
+                            : vm.BarrelComponents.ToList();
+                        var manholeSource = (vm.IsTechnicalCulvertMode && vm.TechnicalManholeComponents.Count > 0)
+                            ? vm.TechnicalManholeComponents.Concat(vm.ManholeComponents).ToList()
+                            : vm.ManholeComponents.ToList();
+
+                        var curBarrel = CulvertCoreEngine.ResolveComponentsForCulvert(doc, barrelSource, evalRow);
                         var curOutlet = CulvertCoreEngine.ResolveComponentsForCulvert(doc, vm.OutletComponents.ToList(), evalRow);
                         var curApron = CulvertCoreEngine.ResolveComponentsForCulvert(doc, vm.ApronComponents.ToList(), evalRow);
-                        var curManhole = CulvertCoreEngine.ResolveComponentsForCulvert(doc, vm.ManholeComponents.ToList(), evalRow);
+                        var curManhole = CulvertCoreEngine.ResolveComponentsForCulvert(doc, manholeSource, evalRow);
 
                         var outCreatedOutlets = new List<FamilyInstance>();
                         var outCreatedBarrels = new List<FamilyInstance>();

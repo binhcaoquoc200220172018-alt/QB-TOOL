@@ -52,7 +52,26 @@ namespace InfraBIM.CulvertTool.ViewModels
             {
                 if (SetProperty(ref _selectedSheetName, value) && !string.IsNullOrEmpty(value))
                 {
+                    UpdateModeFromSheetName(value);
                     LoadExcelData();
+                }
+            }
+        }
+
+        private void UpdateModeFromSheetName(string sheetName)
+        {
+            string s = sheetName.Trim().ToLowerInvariant();
+            bool isTech = s.Contains("kythuat") || s.Contains("kỹ thuật") || s.Contains("ky_thuat") || s.Contains("ckt");
+            IsTechnicalCulvertMode = isTech;
+            if (isTech)
+            {
+                ApplyAssemblyTemplate("CỐNG KỸ THUẬT");
+            }
+            else
+            {
+                if (SelectedCulvertTemplateType == "CỐNG KỸ THUẬT")
+                {
+                    ApplyAssemblyTemplate("CỐNG HỘP ĐÚC SẴN");
                 }
             }
         }
@@ -105,9 +124,26 @@ namespace InfraBIM.CulvertTool.ViewModels
         public ObservableCollection<CulvertComponentItem> BarrelComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> PrecastBarrelComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> CastInPlaceBarrelComponents { get; } = new();
+        public ObservableCollection<CulvertComponentItem> TechnicalBarrelComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> OutletComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> ApronComponents { get; } = new();
         public ObservableCollection<CulvertComponentItem> ManholeComponents { get; } = new();
+        public ObservableCollection<CulvertComponentItem> TechnicalManholeComponents { get; } = new();
+
+        private bool _isTechnicalCulvertMode = false;
+        public bool IsTechnicalCulvertMode
+        {
+            get => _isTechnicalCulvertMode;
+            set
+            {
+                if (SetProperty(ref _isTechnicalCulvertMode, value))
+                {
+                    OnPropertyChanged(nameof(IsNormalCulvertMode));
+                }
+            }
+        }
+
+        public bool IsNormalCulvertMode => !IsTechnicalCulvertMode;
 
         // Danh sách gộp tất cả cấu kiện phục vụ Tab 02 Parameter Mapping và Tab 04 Vật liệu
         public ObservableCollection<CulvertComponentItem> AssemblyComponents { get; } = new();
@@ -289,6 +325,84 @@ namespace InfraBIM.CulvertTool.ViewModels
             set
             {
                 if (SetProperty(ref _selectedArrayModeIndexCastInPlace, value))
+                {
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        // 3. CỐNG KỸ THUẬT (TECHNICAL CULVERT)
+        private double _lStdTechnical = 1.0;
+        public double L_Std_Technical
+        {
+            get => _lStdTechnical;
+            set
+            {
+                if (SetProperty(ref _lStdTechnical, value))
+                {
+                    _lStdTechnicalText = value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(L_Std_Technical_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        private string _lStdTechnicalText = "1.00";
+        public string L_Std_Technical_Text
+        {
+            get => _lStdTechnicalText;
+            set
+            {
+                if (SetProperty(ref _lStdTechnicalText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v > 0)
+                    {
+                        _lStdTechnical = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
+        }
+
+        private double _kheHoTechnical = 0.01;
+        public double Khe_Ho_Technical
+        {
+            get => _kheHoTechnical;
+            set
+            {
+                if (SetProperty(ref _kheHoTechnical, value))
+                {
+                    _kheHoTechnicalText = value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                    OnPropertyChanged(nameof(Khe_Ho_Technical_Text));
+                    UpdatePreviewGeometry();
+                }
+            }
+        }
+
+        private string _kheHoTechnicalText = "0.01";
+        public string Khe_Ho_Technical_Text
+        {
+            get => _kheHoTechnicalText;
+            set
+            {
+                if (SetProperty(ref _kheHoTechnicalText, value))
+                {
+                    if (TryParseFlexible(value, out double v) && v >= 0)
+                    {
+                        _kheHoTechnical = v;
+                        UpdatePreviewGeometry();
+                    }
+                }
+            }
+        }
+
+        private int _selectedArrayModeIndexTechnical = 0;
+        public int SelectedArrayModeIndex_Technical
+        {
+            get => _selectedArrayModeIndexTechnical;
+            set
+            {
+                if (SetProperty(ref _selectedArrayModeIndexTechnical, value))
                 {
                     UpdatePreviewGeometry();
                 }
@@ -494,6 +608,8 @@ namespace InfraBIM.CulvertTool.ViewModels
             "Outlet" => "🌊 Cửa xả",
             "Apron" => "🛡️ Sân gia cố",
             "Manhole" => "🕳️ Hố ga (Hộp nối)",
+            "TechManhole" => "🕳️ Hố kỹ thuật",
+            "JunctionBox" => "📦 Hộp nối cống",
             _ => "📁 Tất cả"
         };
 
@@ -1240,9 +1356,11 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             InitPrecastBarrelComponents(forceRefresh: true);
             InitCastInPlaceBarrelComponents(forceRefresh: true);
+            InitTechnicalBarrelComponents(forceRefresh: true);
             InitOutletComponents(forceRefresh: true);
             InitApronComponents(forceRefresh: true);
             InitManholeComponents(forceRefresh: true);
+            InitTechnicalManholeComponents(forceRefresh: true);
             ApplyAssemblyTemplate(SelectedCulvertTemplateType ?? "CỐNG HỘP ĐÚC SẴN");
         }
 
@@ -1466,6 +1584,71 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
         }
 
+        private void InitTechnicalBarrelComponents(bool forceRefresh = false)
+        {
+            if (!forceRefresh && TechnicalBarrelComponents.Count > 0) return;
+            foreach (var c in TechnicalBarrelComponents) c.PropertyChanged -= OnAssemblyComponentPropertyChanged;
+            TechnicalBarrelComponents.Clear();
+
+            TechnicalBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đúc sẵn",
+                CategoryType = "Thân cống kỹ thuật",
+                SelectedSymbol = FindSymbol("TNN_CKT_THAN CONG") ?? FindSymbol("TNN_CH_THAN CONG"),
+                OffsetZ = 0.0,
+                Note = "Đốt thân cống kỹ thuật đúc sẵn (1.0m)"
+            });
+            TechnicalBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đúc sẵn",
+                CategoryType = "Bê tông lót cống kỹ thuật",
+                SelectedSymbol = FindSymbol("TNN_CKT_BE TONG LOT") ?? FindSymbol("TNN_CH_BE TONG LOT"),
+                OffsetZ = -0.10,
+                Note = "Lớp bê tông lót cống kỹ thuật"
+            });
+            TechnicalBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đúc sẵn",
+                CategoryType = "Đá dăm đệm cống kỹ thuật",
+                SelectedSymbol = FindSymbol("TNN_CKT_DA DAM DEM") ?? FindSymbol("TNN_CH_DA DAM DEM"),
+                OffsetZ = -0.20,
+                Note = "Lớp đá dăm đệm cống kỹ thuật"
+            });
+
+            foreach (var c in TechnicalBarrelComponents) c.PropertyChanged += OnAssemblyComponentPropertyChanged;
+        }
+
+        private void InitTechnicalManholeComponents(bool forceRefresh = false)
+        {
+            if (!forceRefresh && TechnicalManholeComponents.Count > 0) return;
+            foreach (var c in TechnicalManholeComponents) c.PropertyChanged -= OnAssemblyComponentPropertyChanged;
+            TechnicalManholeComponents.Clear();
+
+            TechnicalManholeComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Hố kỹ thuật",
+                CategoryType = "Hố kỹ thuật 1.5x1.5m",
+                SelectedSymbol = FindSymbol("TNN_CKT_HO KY THUAT 1.5x1.5M") ?? FindSymbol("TNN_CKT_HO KY THUAT") ?? FindSymbol("HO KY THUAT"),
+                OffsetZ = 0.0,
+                Note = "Hố kỹ thuật tại 2 đầu tuyến"
+            });
+            TechnicalManholeComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Hộp nối cống",
+                CategoryType = "Hộp nối cống dọc",
+                SelectedSymbol = FindSymbol("HOP NOI CONG DOC") ?? FindSymbol("HOP NOI"),
+                OffsetZ = 0.0,
+                Note = "Hộp nối giữa cống kỹ thuật"
+            });
+
+            foreach (var c in TechnicalManholeComponents) c.PropertyChanged += OnAssemblyComponentPropertyChanged;
+        }
+
         #region Dynamic Component Assembly Methods
         private void AddNewComponent()
         {
@@ -1488,8 +1671,30 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
             BarrelComponents.Clear();
 
-            if (type.Contains("ĐỔ TẠI CHỖ") || type.Contains("DO TAI CHO"))
+            if (type.Contains("KỸ THUẬT") || type.Contains("KY THUAT") || type.Contains("TECHNICAL") || type.Contains("CKT"))
             {
+                IsTechnicalCulvertMode = true;
+                IsCastInPlaceMode = false;
+                IsDoubleCulvertMode = false;
+                L_Std = 1.0;
+                Khe_Ho = 0.01;
+
+                if (TechnicalBarrelComponents.Count == 0)
+                {
+                    InitTechnicalBarrelComponents(forceRefresh: true);
+                }
+                if (TechnicalManholeComponents.Count == 0)
+                {
+                    InitTechnicalManholeComponents(forceRefresh: true);
+                }
+                foreach (var item in TechnicalBarrelComponents)
+                {
+                    BarrelComponents.Add(item);
+                }
+            }
+            else if (type.Contains("ĐỔ TẠI CHỖ") || type.Contains("DO TAI CHO"))
+            {
+                IsTechnicalCulvertMode = false;
                 IsCastInPlaceMode = true;
                 IsDoubleCulvertMode = false;
                 L_Std = 4.0;
@@ -1506,6 +1711,7 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
             else // CỐNG HỘP ĐÚC SẴN (Mặc định)
             {
+                IsTechnicalCulvertMode = false;
                 IsCastInPlaceMode = false;
                 IsDoubleCulvertMode = false;
                 L_Std = 1.0;
@@ -1533,10 +1739,18 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
 
             AssemblyComponents.Clear();
-            foreach (var c in BarrelComponents) AssemblyComponents.Add(c);
-            foreach (var c in OutletComponents) AssemblyComponents.Add(c);
-            foreach (var c in ApronComponents) AssemblyComponents.Add(c);
-            foreach (var c in ManholeComponents) AssemblyComponents.Add(c);
+            if (IsTechnicalCulvertMode)
+            {
+                foreach (var c in TechnicalBarrelComponents) AssemblyComponents.Add(c);
+                foreach (var c in TechnicalManholeComponents) AssemblyComponents.Add(c);
+            }
+            else
+            {
+                foreach (var c in BarrelComponents) AssemblyComponents.Add(c);
+                foreach (var c in OutletComponents) AssemblyComponents.Add(c);
+                foreach (var c in ApronComponents) AssemblyComponents.Add(c);
+                foreach (var c in ManholeComponents) AssemblyComponents.Add(c);
+            }
 
             foreach (var c in AssemblyComponents)
             {
@@ -1573,11 +1787,13 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             foreach (var comp in ActiveAssignedFamiliesForTab02)
             {
-                bool isPrecast = comp.GroupType == "Cống đúc sẵn" || comp.CategoryType.Contains("đúc sẵn") || PrecastBarrelComponents.Contains(comp);
+                bool isPrecast = comp.GroupType == "Cống đúc sẵn" || comp.CategoryType.Contains("đúc sẵn") || PrecastBarrelComponents.Contains(comp) || TechnicalBarrelComponents.Contains(comp);
                 bool isCastInPlace = comp.GroupType == "Cống đổ tại chỗ" || comp.CategoryType.Contains("đổ tại chỗ") || CastInPlaceBarrelComponents.Contains(comp);
                 bool isOutlet = comp.GroupType == "Cửa xả" || comp.GroupType?.Contains("Cửa") == true || OutletComponents.Contains(comp);
                 bool isApron = comp.GroupType == "Sân gia cố" || comp.GroupType?.Contains("Gia cố") == true || comp.GroupType?.Contains("Sân") == true || ApronComponents.Contains(comp);
-                bool isManhole = comp.GroupType == "Hố ga (Hộp nối)" || comp.GroupType?.Contains("Hố") == true || comp.GroupType?.Contains("Hộp") == true || ManholeComponents.Contains(comp);
+                bool isTechManhole = comp.GroupType == "Hố kỹ thuật" || comp.CategoryType.Contains("Hố kỹ thuật");
+                bool isJunctionBox = comp.GroupType == "Hộp nối cống" || comp.GroupType == "Hộp nối" || comp.CategoryType.Contains("Hộp nối");
+                bool isManhole = comp.GroupType == "Hố ga (Hộp nối)" || comp.GroupType?.Contains("Hố") == true || comp.GroupType?.Contains("Hộp") == true || ManholeComponents.Contains(comp) || isTechManhole || isJunctionBox;
 
                 bool pass = false;
                 if (f == "All") pass = true;
@@ -1586,6 +1802,8 @@ namespace InfraBIM.CulvertTool.ViewModels
                 else if (f == "Barrel" && (isPrecast || isCastInPlace)) pass = true;
                 else if (f == "Outlet" && isOutlet) pass = true;
                 else if (f == "Apron" && isApron) pass = true;
+                else if (f == "TechManhole" && isTechManhole) pass = true;
+                else if (f == "JunctionBox" && isJunctionBox) pass = true;
                 else if (f == "Manhole" && isManhole) pass = true;
 
                 if (pass)
@@ -1611,11 +1829,19 @@ namespace InfraBIM.CulvertTool.ViewModels
             var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var allCompsToInspect = new List<CulvertComponentItem>();
-            allCompsToInspect.AddRange(PrecastBarrelComponents);
-            allCompsToInspect.AddRange(CastInPlaceBarrelComponents);
-            allCompsToInspect.AddRange(OutletComponents);
-            allCompsToInspect.AddRange(ApronComponents);
-            allCompsToInspect.AddRange(ManholeComponents);
+            if (IsTechnicalCulvertMode)
+            {
+                allCompsToInspect.AddRange(TechnicalBarrelComponents);
+                allCompsToInspect.AddRange(TechnicalManholeComponents);
+            }
+            else
+            {
+                allCompsToInspect.AddRange(PrecastBarrelComponents);
+                allCompsToInspect.AddRange(CastInPlaceBarrelComponents);
+                allCompsToInspect.AddRange(OutletComponents);
+                allCompsToInspect.AddRange(ApronComponents);
+                allCompsToInspect.AddRange(ManholeComponents);
+            }
 
             foreach (var comp in allCompsToInspect)
             {
@@ -1650,6 +1876,29 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         private CulvertRowData CreateDefaultPreviewCulvertRow()
         {
+            if (IsTechnicalCulvertMode)
+            {
+                return new CulvertRowData
+                {
+                    STT = 1,
+                    LyTrinh = "Km0+000",
+                    LoaiCong = "CỐNG KỸ THUẬT",
+                    KhauDo = "1.5x1.5",
+                    ChieuDai = 12.0,
+                    SoCua = 1,
+                    DoDoc = 2.0,
+                    Z1 = 10.0,
+                    Z2 = 9.76,
+                    X1 = 0,
+                    Y1 = 0,
+                    X2 = 12.0,
+                    Y2 = 0,
+                    SoHopNoi = 1,
+                    KC_HN1 = 6.0,
+                    B_HT1 = 1.40
+                };
+            }
+
             return new CulvertRowData
             {
                 STT = 1,

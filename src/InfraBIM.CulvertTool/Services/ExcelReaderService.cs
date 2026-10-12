@@ -173,7 +173,8 @@ namespace InfraBIM.CulvertTool.Services
 
                     // Cột C: LoaiCong (Cống hộp / Cống tròn / Cống kỹ thuật)
                     string loaiRaw = row.Cell(colLoaiCong).GetString().Trim();
-                    if (loaiRaw.ToUpperInvariant().Contains("KỸ THUẬT") || loaiRaw.ToUpperInvariant().Contains("KY THUAT"))
+                    bool isSheetCkt = (!string.IsNullOrEmpty(sheetName) && (sheetName.ToUpperInvariant().Contains("KỸ THUẬT") || sheetName.ToUpperInvariant().Contains("KY THUAT") || sheetName.ToUpperInvariant().Contains("CKT")));
+                    if (isSheetCkt || loaiRaw.ToUpperInvariant().Contains("KỸ THUẬT") || loaiRaw.ToUpperInvariant().Contains("KY THUAT") || loaiRaw.ToUpperInvariant().Contains("CKT"))
                         item.LoaiCong = "Cống kỹ thuật";
                     else if (loaiRaw.ToUpperInvariant().Contains("TRÒN") || loaiRaw.ToUpperInvariant().Contains("TRON") || loaiRaw.ToUpperInvariant().Contains("CT"))
                         item.LoaiCong = "Cống tròn";
@@ -257,6 +258,22 @@ namespace InfraBIM.CulvertTool.Services
                     if (string.IsNullOrEmpty(item.GhiChu))
                     {
                         item.GhiChu = item.DetermineCulvertType();
+                    }
+
+                    // Đối với Cống kỹ thuật: Mặc định chỉ có 1 hộp nối (SoHopNoi = 1), và không dùng các thông số cống ngang
+                    if (item.LoaiCong == "Cống kỹ thuật" || isSheetCkt)
+                    {
+                        if (item.SoHopNoi <= 0) item.SoHopNoi = 1;
+                        item.KC_HN2 = 0;
+                        item.B_HT2 = 0;
+                        item.L_Ngam_San = 0;
+                        item.Khe_Ho_HN = 0;
+                        item.L_SGC_TL = 0;
+                        item.L_SGC_HL = 0;
+                        if (string.IsNullOrEmpty(item.GhiChu) || item.GhiChu.Contains("HỘP"))
+                        {
+                            item.GhiChu = "Cống kỹ thuật";
+                        }
                     }
 
                     // Mặc định khoảng cách tim cống đôi = 2.0m
@@ -403,6 +420,49 @@ namespace InfraBIM.CulvertTool.Services
 
                 ws.SheetView.FreezeRows(1);
                 ws.Columns().AdjustToContents(15.0, 30.0);
+
+                // ========================================================
+                // SHEET 2: CỐNG KỸ THUẬT (19 CỘT - BỎ 6 CỘT KHÔNG DÙNG THEO HÌNH 2)
+                // ========================================================
+                var wsCkt = workbook.Worksheets.Add("CongKyThuat");
+                string[] headersCkt =
+                {
+                    "STT", "LyTrinh", "LoaiCong", "CauKien", "SoCua", "KhauDo",
+                    "X1", "Y1", "Z1",
+                    "X2", "Y2", "Z2",
+                    "ChieuDai", "DoDoc", "GocXoay", "SoHopNoi",
+                    "KC_HN1", "B_HT1", "GhiChu"
+                };
+
+                for (int i = 0; i < headersCkt.Length; i++)
+                {
+                    var cell = wsCkt.Cell(1, i + 1);
+                    cell.Value = headersCkt[i];
+                    cell.Style.Font.Bold = true;
+                    cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#164E63"); // Cyan Dark
+                    cell.Style.Font.FontColor = XLColor.White;
+                    cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                }
+
+                object[] cktRow1 =
+                {
+                    1, "Km0+100.00", "Cống kỹ thuật", "Đúc sẵn", 1, "1.5x1.5",
+                    580838.203, 1477280.506, 2.070,
+                    580860.889, 1477323.339, 1.870,
+                    48.47, 0.45, 62.09, 1,
+                    16.15, 1.40, "Cống kỹ thuật"
+                };
+                for (int c = 0; c < cktRow1.Length; c++) wsCkt.Cell(2, c + 1).Value = XLCellValue.FromObject(cktRow1[c]);
+
+                wsCkt.Range("G2:L100").Style.NumberFormat.Format = "0.000";
+                wsCkt.Range("M2:O100").Style.NumberFormat.Format = "0.00";
+                wsCkt.Range("Q2:R100").Style.NumberFormat.Format = "0.00";
+                wsCkt.Range("A2:A100").Style.NumberFormat.Format = "0";
+                wsCkt.Range("E2:E100").Style.NumberFormat.Format = "0";
+                wsCkt.Range("P2:P100").Style.NumberFormat.Format = "0";
+                wsCkt.SheetView.FreezeRows(1);
+                wsCkt.Columns().AdjustToContents(15.0, 30.0);
+
                 workbook.SaveAs(filePath);
             }
         }
