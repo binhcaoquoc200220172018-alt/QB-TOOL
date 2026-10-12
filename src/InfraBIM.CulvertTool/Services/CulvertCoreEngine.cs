@@ -1111,22 +1111,62 @@ namespace InfraBIM.CulvertTool.Services
                 p1_Culvert, p2_Culvert, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings,
                 barrelInstances, beddingInstances);
 
-            // 5. YÊU CẦU 1 & 6: Cut Geometry
-            // Yêu cầu 1: Cut geometry giữa BTL & đá dăm đệm cống hộp với khối Cửa xả (Hình 1)
-            foreach (var bed in beddingInstances)
+            // 5. YÊU CẦU 1: Cut Geometry giữa Cửa xả và Thân cống hộp / BTL / Đá dăm (Hình 1 & Hình 2)
+            try
             {
-                foreach (var outlet in outletInstances)
+                doc.Regenerate(); // BẮT BUỘC để Revit tính toán Solid Geometry cho các FamilyInstance mới dựng
+            }
+            catch { }
+
+            // Cut geometry giữa thân cống hộp với Cửa xả (tường đầu) - Cả 2 sân cống Thượng lưu & Hạ lưu
+            foreach (var outlet in outletInstances)
+            {
+                if (outlet == null || !outlet.IsValidObject) continue;
+                var bbOutlet = outlet.get_BoundingBox(null);
+
+                foreach (var bar in barrelInstances)
                 {
-                    TryCutGeometrySafe(doc, bed, outlet);
+                    if (bar == null || !bar.IsValidObject) continue;
+                    var bbBar = bar.get_BoundingBox(null);
+
+                    bool mayIntersect = true;
+                    if (bbOutlet != null && bbBar != null)
+                    {
+                        mayIntersect = bbOutlet.Min.X <= bbBar.Max.X + 6.5 && bbOutlet.Max.X >= bbBar.Min.X - 6.5 &&
+                                       bbOutlet.Min.Y <= bbBar.Max.Y + 6.5 && bbOutlet.Max.Y >= bbBar.Min.Y - 6.5 &&
+                                       bbOutlet.Min.Z <= bbBar.Max.Z + 6.5 && bbOutlet.Max.Z >= bbBar.Min.Z - 6.5;
+                    }
+
+                    if (mayIntersect)
+                    {
+                        TryCutGeometrySafe(doc, outlet, bar);
+                    }
                 }
             }
 
-            // Yêu cầu 6: Cut geometry giữa thân cống hộp với Cửa xả (tường đầu)
-            foreach (var bar in barrelInstances)
+            // Cut geometry giữa BTL & đá dăm đệm cống hộp với khối Cửa xả
+            foreach (var bed in beddingInstances)
             {
+                if (bed == null || !bed.IsValidObject) continue;
+                var bbBed = bed.get_BoundingBox(null);
+
                 foreach (var outlet in outletInstances)
                 {
-                    TryCutGeometrySafe(doc, outlet, bar);
+                    if (outlet == null || !outlet.IsValidObject) continue;
+                    var bbOutlet = outlet.get_BoundingBox(null);
+
+                    bool mayIntersect = true;
+                    if (bbOutlet != null && bbBed != null)
+                    {
+                        mayIntersect = bbOutlet.Min.X <= bbBed.Max.X + 6.5 && bbOutlet.Max.X >= bbBed.Min.X - 6.5 &&
+                                       bbOutlet.Min.Y <= bbBed.Max.Y + 6.5 && bbOutlet.Max.Y >= bbBed.Min.Y - 6.5 &&
+                                       bbOutlet.Min.Z <= bbBed.Max.Z + 6.5 && bbOutlet.Max.Z >= bbBed.Min.Z - 6.5;
+                    }
+
+                    if (mayIntersect)
+                    {
+                        TryCutGeometrySafe(doc, bed, outlet);
+                    }
                 }
             }
         }
@@ -1379,30 +1419,57 @@ namespace InfraBIM.CulvertTool.Services
 
             try
             {
-                if (SolidSolidCutUtils.CanElementCutElement(eCutter, eToCut, out _))
+                // Nếu 2 đối tượng đang bị Join trước đó, phải Unjoin trước để không chặn lệnh Cut
+                if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
+                {
+                    try { JoinGeometryUtils.UnjoinGeometry(doc, eToCut, eCutter); } catch { }
+                }
+
+                // Kiểm tra xem đã có Cut giữa 2 đối tượng chưa
+                try
+                {
+                    var cuttingSolids = SolidSolidCutUtils.GetCuttingSolids(eToCut);
+                    if (cuttingSolids != null && cuttingSolids.Contains(eCutter.Id))
+                        return;
+                }
+                catch { }
+
+                // Thử Cut thuận: eToCut (Cửa xả) bị khoét bởi eCutter (Cống hộp)
+                try
+                {
+                    if (SolidSolidCutUtils.CanElementCutElement(eCutter, eToCut, out _))
+                    {
+                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
+                        return;
+                    }
+                }
+                catch { }
+
+                // Thử Cut thuận trực tiếp nếu CanElementCutElement quá chặt
+                try
                 {
                     SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
                     return;
                 }
-            }
-            catch { }
+                catch { }
 
-            try
-            {
-                if (SolidSolidCutUtils.CanElementCutElement(eToCut, eCutter, out _))
+                // Thử Cut nghịch nếu Revit yêu cầu chiều ngược lại
+                try
+                {
+                    if (SolidSolidCutUtils.CanElementCutElement(eToCut, eCutter, out _))
+                    {
+                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eCutter, eToCut);
+                        return;
+                    }
+                }
+                catch { }
+
+                try
                 {
                     SolidSolidCutUtils.AddCutBetweenSolids(doc, eCutter, eToCut);
                     return;
                 }
-            }
-            catch { }
-
-            try
-            {
-                if (!JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
-                {
-                    JoinGeometryUtils.JoinGeometry(doc, eToCut, eCutter);
-                }
+                catch { }
             }
             catch { }
         }
@@ -1586,9 +1653,10 @@ namespace InfraBIM.CulvertTool.Services
                 XYZ pHN1_out_dn = pHN1 + u * rOut1Feet;
 
                 // Đoạn 1: P1 -> mép thành trong Hộp 1 (đốt bù trừ co dãn khóa cứng tại pHN1_in_up)
+                // Vùng đầu (Cửa xả 1 -> Hộp nối 1): KHÔNG có vai kê
                 int dotCount1 = LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, p1, pHN1_in_up, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
-                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
+                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: false, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
                 // BTL & đá dăm Đoạn 1: đến mép ngoài hộp nối
                 double len1_bedding = Math.Max(0.0, (pHN1_out_up - p1).GetLength());
@@ -1656,15 +1724,17 @@ namespace InfraBIM.CulvertTool.Services
                 XYZ pHN2_out_dn = pHN2 + u * rOut2Feet;
 
                 // Đoạn 1: Từ P1 đến mép thành trong hộp nối 1 (đốt bù trừ co dãn khóa cứng tại pHN1_in_up)
+                // YÊU CẦU 2 (Hình 3): Vùng đầu (Cửa xả 1 -> Hộp nối 1) KHÔNG có vai kê (isVaiKeGlobal: false)
                 int dotCount1 = LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, p1, pHN1_in_up, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
-                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
+                    createdBarrels, isReverseBuffer: false, isVaiKeGlobal: false, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
                 double len1_bedding = Math.Max(0.0, (pHN1_out_up - p1).GetLength());
                 PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, len1_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
 
                 // Đoạn 2: Từ mép thành trong hộp nối 1 đến mép thành trong hộp nối 2 (đốt bù trừ co dãn khóa cứng tại pHN2_in_up)
+                // Vùng giữa (giữa 2 hộp nối): CÓ vai kê (người dùng đánh dấu "đúng")
                 int dotCount2 = LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, pHN1_in_dn, pHN2_in_up, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
@@ -1674,9 +1744,10 @@ namespace InfraBIM.CulvertTool.Services
                     bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdBeddings);
 
                 // Đoạn 3: Từ mép thành trong hộp nối 2 đến P2 (đốt bù trừ co dãn bắt đầu từ mép thành trong Hộp 2: isReverseBuffer = true)
+                // YÊU CẦU 2 (Hình 3): Vùng cuối (Hộp nối 2 -> Cửa xả 2) KHÔNG có vai kê (isVaiKeGlobal: false)
                 LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, pHN2_in_dn, p2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, null, zCuoiCulvert, dotCount2 + 1, branchSuffix, materialSettings,
-                    createdBarrels, isReverseBuffer: true, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
+                    createdBarrels, isReverseBuffer: true, isVaiKeGlobal: false, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
                 double len3_bedding = Math.Max(0.0, (p2 - pHN2_out_dn).GetLength());
                 PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN2_out_dn, len3_bedding, u, rotAngle,
