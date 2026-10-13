@@ -34,6 +34,11 @@ namespace InfraBIM.CulvertTool.Services
                 // 1. Chuẩn bị dữ liệu cống và tọa độ đánh giá
                 bool useSurveyPoint = (vm.SelectedCoordSysIndex == 0);
                 CulvertRowData evalRow = row;
+                if (vm.IsTechnicalCulvertMode)
+                {
+                    evalRow.LoaiCong = "CỐNG KỸ THUẬT";
+                    evalRow.GhiChu = "CỐNG KỸ THUẬT";
+                }
                 XYZ p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, evalRow.X1, evalRow.Y1, evalRow.Z1, useSurveyPoint);
                 XYZ p2 = CoordinateService.ConvertVN2000ToRevitInternal(doc, evalRow.X2, evalRow.Y2, evalRow.Z2, useSurveyPoint);
                 if (p1.DistanceTo(p2) < 0.1)
@@ -43,7 +48,7 @@ namespace InfraBIM.CulvertTool.Services
                     {
                         STT = row.STT,
                         LyTrinh = row.LyTrinh,
-                        LoaiCong = row.LoaiCong,
+                        LoaiCong = vm.IsTechnicalCulvertMode ? "CỐNG KỸ THUẬT" : row.LoaiCong,
                         CauKien = row.CauKien,
                         KhauDo = row.KhauDo,
                         ChieuDai = lenM,
@@ -59,7 +64,7 @@ namespace InfraBIM.CulvertTool.Services
                         Dist_HN2 = row.Dist_HN2,
                         B_HT1 = row.B_HT1,
                         B_HT2 = row.B_HT2,
-                        GhiChu = row.GhiChu,
+                        GhiChu = vm.IsTechnicalCulvertMode ? "CỐNG KỸ THUẬT" : row.GhiChu,
                         X1 = 0,
                         Y1 = 0,
                         X2 = lenM,
@@ -91,7 +96,7 @@ namespace InfraBIM.CulvertTool.Services
                             ? vm.TechnicalBarrelComponents.ToList()
                             : vm.BarrelComponents.ToList();
                         var manholeSource = (vm.IsTechnicalCulvertMode && vm.TechnicalManholeComponents.Count > 0)
-                            ? vm.TechnicalManholeComponents.Concat(vm.ManholeComponents).ToList()
+                            ? vm.TechnicalManholeComponents.ToList()
                             : vm.ManholeComponents.ToList();
 
                         var curBarrel = CulvertCoreEngine.ResolveComponentsForCulvert(doc, barrelSource, evalRow);
@@ -129,7 +134,8 @@ namespace InfraBIM.CulvertTool.Services
                             outCreatedBarrels,
                             outCreatedBeddings,
                             outCreatedAprons,
-                            outCreatedManholes);
+                            outCreatedManholes,
+                            performCutGeometry: false);
 
                         try { doc.Regenerate(); } catch { }
 
@@ -147,14 +153,21 @@ namespace InfraBIM.CulvertTool.Services
                             IncludeNonVisibleObjects = false
                         };
 
+                        var expandedInstances = new List<FamilyInstance>();
+                        var visitedIds = new HashSet<ElementId>();
                         foreach (var inst in allInstances)
+                        {
+                            CollectInstanceAndSubComponents(doc, inst, expandedInstances, visitedIds);
+                        }
+
+                        foreach (var inst in expandedInstances)
                         {
                             if (inst == null || !inst.IsValidObject) continue;
                             var geom = inst.get_Geometry(opt);
                             if (geom == null) continue;
 
                             Brush brush = GetBrushForFamily(inst.Symbol?.FamilyName ?? "", inst.Symbol?.Name ?? "");
-                            ExtractSolidsRecursive(geom, p1, cosRot, sinRot, brush, result);
+                            ExtractSolidsRecursive(geom, null, p1, cosRot, sinRot, brush, result);
                         }
                     }
                     finally
@@ -280,13 +293,20 @@ namespace InfraBIM.CulvertTool.Services
                     IncludeNonVisibleObjects = false
                 };
 
+                var expandedInstances = new List<FamilyInstance>();
+                var visitedIds = new HashSet<ElementId>();
                 foreach (var inst in culvertInstances)
+                {
+                    CollectInstanceAndSubComponents(doc, inst, expandedInstances, visitedIds);
+                }
+
+                foreach (var inst in expandedInstances)
                 {
                     var geom = inst.get_Geometry(opt);
                     if (geom == null) continue;
 
                     Brush brush = GetBrushForFamily(inst.Symbol?.FamilyName ?? "", inst.Symbol?.Name ?? "");
-                    ExtractSolidsRecursive(geom, p1, cosRot, sinRot, brush, result);
+                    ExtractSolidsRecursive(geom, null, p1, cosRot, sinRot, brush, result);
                 }
 
                 return result.Count > 0;
@@ -304,7 +324,8 @@ namespace InfraBIM.CulvertTool.Services
                    upper.Contains("THAN") || upper.Contains("THÂN") || upper.Contains("CUA XA") || upper.Contains("CỬA XẢ") ||
                    upper.Contains("HOP NOI") || upper.Contains("HỘP NỐI") || upper.Contains("HO GA") || upper.Contains("HỐ GA") ||
                    upper.Contains("SGC") || upper.Contains("SAN GIA CO") || upper.Contains("SÂN GIA CỐ") ||
-                   upper.Contains("BT LOT") || upper.Contains("DA DAM") || upper.Contains("BTL") || upper.Contains("DDD");
+                   upper.Contains("BT LOT") || upper.Contains("DA DAM") || upper.Contains("BTL") || upper.Contains("DDD") ||
+                   upper.Contains("HO KY THUAT") || upper.Contains("HỐ KỸ THUẬT") || upper.Contains("KY THUAT") || upper.Contains("KỸ THUẬT") || upper.Contains("CKT");
         }
 
         private static double DistancePointToSegment(XYZ pt, XYZ p1, XYZ p2)
@@ -324,12 +345,15 @@ namespace InfraBIM.CulvertTool.Services
             SolidColorBrush brush;
             if (upper.Contains("THAN CONG") || upper.Contains("THÂN CỐNG") || upper.Contains("THAN_CONG") || upper.Contains("DOT") || upper.Contains("ĐỐT"))
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(63, 68, 78)); // Bê tông xám than đậm (#3F444E) như Hình 2
-            else if (upper.Contains("HOP NOI") || upper.Contains("HỘP NỐI") || upper.Contains("HO GA") || upper.Contains("HỐ GA") || upper.Contains("HN"))
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
             else if (upper.Contains("BE TONG LOT") || upper.Contains("BTL") || upper.Contains("BT LOT"))
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184)); // Bê tông lót (#94A3B8)
             else if (upper.Contains("DA DAM") || upper.Contains("DDD") || upper.Contains("ĐÁ DĂM"))
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(202, 138, 4));  // Đá dăm đệm (#CA8A04)
+            else if (upper.Contains("HOP NOI") || upper.Contains("HỘP NỐI") || upper.Contains("HO GA") || upper.Contains("HỐ GA") || upper.Contains("HN") ||
+                     upper.Contains("HO KY THUAT") || upper.Contains("HỐ KỸ THUẬT") || upper.Contains("CO GIENG") || upper.Contains("CỔ GIẾNG") ||
+                     upper.Contains("TAM DAN") || upper.Contains("TẤM ĐAN") || upper.Contains("NAP") || upper.Contains("NẮP") || 
+                     upper.Contains("THAN GIENG") || upper.Contains("THÂN GIẾNG") || upper.Contains("CKT"))
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
             else if (upper.Contains("CUA XA") || upper.Contains("CỬA XẢ") || upper.Contains("CX") || upper.Contains("SAN CONG") || upper.Contains("TUONG DAU") || upper.Contains("TUONG CANH"))
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
             else if (upper.Contains("SAN GIA CO") || upper.Contains("SÂN GIA CỐ") || upper.Contains("SGC"))
@@ -341,19 +365,49 @@ namespace InfraBIM.CulvertTool.Services
             return brush;
         }
 
+        private static void CollectInstanceAndSubComponents(
+            Document doc,
+            FamilyInstance inst,
+            List<FamilyInstance> list,
+            HashSet<ElementId> visited)
+        {
+            if (inst == null || !inst.IsValidObject || visited.Contains(inst.Id)) return;
+            visited.Add(inst.Id);
+            list.Add(inst);
+
+            try
+            {
+                var subIds = inst.GetSubComponentIds();
+                if (subIds != null && subIds.Count > 0)
+                {
+                    foreach (var sId in subIds)
+                    {
+                        if (doc.GetElement(sId) is FamilyInstance sub && sub.IsValidObject)
+                        {
+                            CollectInstanceAndSubComponents(doc, sub, list, visited);
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
         private static void ExtractSolidsRecursive(
             GeometryElement geomElem,
+            Autodesk.Revit.DB.Transform? parentTransform,
             XYZ p1,
             double cosRot,
             double sinRot,
             Brush brush,
             List<(MeshGeometry3D, Brush)> list)
         {
+            if (geomElem == null) return;
+
             foreach (GeometryObject obj in geomElem)
             {
-                if (obj is Solid solid && solid.Volume > 1e-6)
+                if (obj is Solid solid && solid.Volume > 1e-7 && !solid.Faces.IsEmpty)
                 {
-                    var mesh = ConvertSolidToLocalMesh(solid, p1, cosRot, sinRot);
+                    var mesh = ConvertSolidToLocalMesh(solid, parentTransform, p1, cosRot, sinRot);
                     if (mesh != null && mesh.Positions.Count > 0)
                     {
                         list.Add((mesh, brush));
@@ -361,10 +415,37 @@ namespace InfraBIM.CulvertTool.Services
                 }
                 else if (obj is GeometryInstance gi)
                 {
-                    var instGeom = gi.GetInstanceGeometry();
-                    if (instGeom != null)
+                    int countBefore = list.Count;
+
+                    // 1. Ưu tiên 1: Lấy từ GetInstanceGeometry()
+                    // Các solids trong GetInstanceGeometry() ĐÃ Ở TỌA ĐỘ DỰ ÁN (World Coordinates).
+                    // Do đó parentTransform cho solids này là null (không cần nhân thêm).
+                    try
                     {
-                        ExtractSolidsRecursive(instGeom, p1, cosRot, sinRot, brush, list);
+                        var instGeom = gi.GetInstanceGeometry();
+                        if (instGeom != null)
+                        {
+                            ExtractSolidsRecursive(instGeom, null, p1, cosRot, sinRot, brush, list);
+                        }
+                    }
+                    catch { }
+
+                    // 2. Fallback: Nếu GetInstanceGeometry() không mang lại solid nào, thử GetSymbolGeometry() với Transform cộng dồn
+                    if (list.Count == countBefore)
+                    {
+                        try
+                        {
+                            Autodesk.Revit.DB.Transform totalTr = (parentTransform != null && !parentTransform.IsIdentity)
+                                ? parentTransform.Multiply(gi.Transform)
+                                : gi.Transform;
+
+                            var symGeom = gi.GetSymbolGeometry();
+                            if (symGeom != null)
+                            {
+                                ExtractSolidsRecursive(symGeom, totalTr, p1, cosRot, sinRot, brush, list);
+                            }
+                        }
+                        catch { }
                     }
                 }
             }
@@ -372,12 +453,15 @@ namespace InfraBIM.CulvertTool.Services
 
         private static MeshGeometry3D? ConvertSolidToLocalMesh(
             Solid solid,
+            Autodesk.Revit.DB.Transform? transform,
             XYZ p1,
             double cosRot,
             double sinRot)
         {
             var mesh = new MeshGeometry3D();
             const double ft2m = 0.3048;
+
+            bool hasTr = transform != null && !transform.IsIdentity;
 
             foreach (Face face in solid.Faces)
             {
@@ -390,6 +474,13 @@ namespace InfraBIM.CulvertTool.Services
                     XYZ v0 = tri.get_Vertex(0);
                     XYZ v1 = tri.get_Vertex(1);
                     XYZ v2 = tri.get_Vertex(2);
+
+                    if (hasTr)
+                    {
+                        v0 = transform!.OfPoint(v0);
+                        v1 = transform!.OfPoint(v1);
+                        v2 = transform!.OfPoint(v2);
+                    }
 
                     Point3D pA = WorldToLocal(v0, p1, cosRot, sinRot, ft2m);
                     Point3D pB = WorldToLocal(v1, p1, cosRot, sinRot, ft2m);

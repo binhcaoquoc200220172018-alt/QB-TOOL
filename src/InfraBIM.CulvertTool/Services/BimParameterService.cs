@@ -96,9 +96,9 @@ namespace InfraBIM.CulvertTool.Services
 
             foreach (var m in mappings)
             {
-                if (!m.IsSelected) continue;
-
-                // Kiểm tra khớp theo Category (ưu tiên cao nhất nếu m.CategoryName đã được gán cấu kiện cụ thể)
+                // Kiểm tra khớp cấu kiện:
+                // Nếu m.CategoryName đã được gán cụ thể (ví dụ "Hố kỹ thuật 1.5x1.5m", "Hộp nối cống dọc"...),
+                // BẮT BUỘC phải khớp với categoryName của cấu kiện đang xét, KHÔNG ĐƯỢC để matchFam làm lẫn lộn giữa các cụm cấu kiện dùng chung Family!
                 bool matchCat = !string.IsNullOrEmpty(m.CategoryName) && 
                                 (categoryName.IndexOf(m.CategoryName, StringComparison.OrdinalIgnoreCase) >= 0 ||
                                  m.CategoryName.IndexOf(categoryName, StringComparison.OrdinalIgnoreCase) >= 0);
@@ -107,6 +107,13 @@ namespace InfraBIM.CulvertTool.Services
 
                 bool isMatch = !string.IsNullOrEmpty(m.CategoryName) ? matchCat : matchFam;
                 if (!isMatch) continue;
+
+                // Nếu là tham số Yes/No: nếu người dùng bỏ tích (IsSelected == false) thì coi như chọn "Không" (0)
+                // Nếu là tham số kích thước khác: nếu bỏ tích thì bỏ qua không can thiệp
+                if (!m.IsSelected && !m.IsYesNoParameter)
+                {
+                    continue;
+                }
 
                 // Không bao giờ can thiệp tham số Yes/No kiểm soát hiển thị nội bộ của cụm Cửa xả & Sân gia cố
                 if (m.IsYesNoParameter || m.IsVisibility)
@@ -130,9 +137,6 @@ namespace InfraBIM.CulvertTool.Services
                     pNameUpper.StartsWith("A4") || pNameUpper.StartsWith("A5") || pNameUpper.StartsWith("A6") ||
                     pNameUpper.StartsWith("A7") || pNameUpper.Contains("'")) continue;
 
-                // Bỏ qua CO VAI KE vì giá trị Yes/No đã được thuật toán rải tính toán chính xác theo từng vị trí đốt cống
-                if (pNameUpper == "CO VAI KE" || pNameUpper == "CO_VAI_KE" || pNameUpper.Contains("VAI KE") || pNameUpper.Contains("VAI_KE")) continue;
-
                 // Hỗ trợ cả Instance parameter (trên inst) và Type parameter (trên inst.Symbol)
                 Parameter? p = inst.LookupParameter(m.InternalName);
                 bool isTypeParam = false;
@@ -148,13 +152,12 @@ namespace InfraBIM.CulvertTool.Services
                 // TUYỆT ĐỐI CHO PHÉP ghi nhận các tham số kích thước hình học (Double/Length) mà người dùng đã tùy chỉnh!
                 if (isTypeParam)
                 {
-                    bool isVisName = pNameUpper == "CX_TUONG DAU" || pNameUpper == "CX_TUONG CANH" || 
-                                     pNameUpper == "CX_SAN CONG" || pNameUpper == "CX_BE TONG LOT" || 
-                                     pNameUpper == "CX_DA DAM DEM" || pNameUpper == "TD_BE TONG LOT" || 
-                                     pNameUpper == "TD_DA DAM DEM" || pNameUpper.Contains("_SH") || 
-                                     pNameUpper.Contains("YESNO");
+                    bool isOutletVis = pNameUpper == "CX_TUONG DAU" || pNameUpper == "CX_TUONG CANH" || 
+                                       pNameUpper == "CX_SAN CONG" || pNameUpper == "CX_BE TONG LOT" || 
+                                       pNameUpper == "CX_DA DAM DEM" || pNameUpper == "TD_BE TONG LOT" || 
+                                       pNameUpper == "TD_DA DAM DEM" || pNameUpper.Contains("_SH");
 
-                    if (m.IsVisibility || m.IsYesNoParameter || isVisName)
+                    if (isOutletVis)
                     {
                         continue;
                     }
@@ -163,7 +166,18 @@ namespace InfraBIM.CulvertTool.Services
                 bool hasExplicitMapping = !string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến";
 
                 // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, sau đó lấy giá trị tùy chỉnh riêng của cống
-                string valStr = data.GetParamOverride(m.InternalName, m.CustomValue);
+                string valStr = data.GetParamOverride(m.CategoryName, m.InternalName, m.CustomValue);
+                if (m.IsYesNoParameter)
+                {
+                    if (!m.IsSelected)
+                    {
+                        valStr = "0";
+                    }
+                    else if (string.IsNullOrWhiteSpace(valStr))
+                    {
+                        valStr = m.DefaultValue ?? "1";
+                    }
+                }
                 if (hasExplicitMapping)
                 {
                     if (m.MappedField == "KhauDo")

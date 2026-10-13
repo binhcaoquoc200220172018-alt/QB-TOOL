@@ -114,6 +114,43 @@ namespace InfraBIM.CulvertTool.Services
                 return geom.Z1 + frac * (geom.Z2 - geom.Z1);
             }
 
+            bool isTechnicalCulvert = (row.DetermineCulvertType() == "CỐNG KỸ THUẬT" ||
+                                       row.LoaiCong?.IndexOf("KỸ THUẬT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       row.LoaiCong?.IndexOf("KY THUAT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       row.LoaiCong?.IndexOf("CKT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       row.GhiChu?.IndexOf("KỸ THUẬT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       row.GhiChu?.IndexOf("KY THUAT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       row.GhiChu?.IndexOf("CKT", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            if (isTechnicalCulvert)
+            {
+                geom.LoaiCong = "CỐNG KỸ THUẬT";
+                // Đặt Hố kỹ thuật 1 tại P1 (X = 0)
+                geom.Manholes.Add(new PreviewManholeItem
+                {
+                    Index = 1,
+                    Title = "Hố kỹ thuật 1",
+                    DistanceFromP1M = 0.0,
+                    WidthM = geom.B_HT1 > 0.5 ? geom.B_HT1 : 1.5,
+                    ElevationZ = geom.Z1,
+                    BottomElevationZ = geom.Z1 - 0.20,
+                    TopElevationZ = geom.Z1 + geom.BarrelHeightM + 0.80,
+                    HeightM = geom.BarrelHeightM + 0.8
+                });
+                // Đặt Hố kỹ thuật 2 tại P2 (X = totalL)
+                geom.Manholes.Add(new PreviewManholeItem
+                {
+                    Index = 2,
+                    Title = "Hố kỹ thuật 2",
+                    DistanceFromP1M = totalL,
+                    WidthM = geom.B_HT1 > 0.5 ? geom.B_HT1 : 1.5,
+                    ElevationZ = geom.Z2,
+                    BottomElevationZ = geom.Z2 - 0.20,
+                    TopElevationZ = geom.Z2 + geom.BarrelHeightM + 0.80,
+                    HeightM = geom.BarrelHeightM + 0.8
+                });
+            }
+
             if (row.SoHopNoi == 0)
             {
                 // Trường hợp 0 hộp nối: Rải suốt chiều dài cống

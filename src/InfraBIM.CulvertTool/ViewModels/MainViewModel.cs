@@ -1158,29 +1158,20 @@ namespace InfraBIM.CulvertTool.ViewModels
                 // Giúp người dùng khi bấm "Kiểm tra mô hình 3D" thì hiển thị chính xác hình dạng hình học cống đã vẽ trong Family
                 try
                 {
-                    var rowsToExtract = new List<CulvertRowData>();
                     var curTarget = SelectedCulvertRowForPreview ?? FilteredPreviewCulvertRows.FirstOrDefault() ?? FilteredCulvertRows.FirstOrDefault() ?? AllCulvertRows.FirstOrDefault();
                     if (curTarget == null)
                     {
                         curTarget = CreateDefaultPreviewCulvertRow();
                         Application.Current.Dispatcher.Invoke(() => { SelectedCulvertRowForPreview = curTarget; });
                     }
-                    if (curTarget != null) rowsToExtract.Add(curTarget);
 
-                    // Lấy thêm các cống khác trong danh sách (tối đa 10 cống) để cache sẵn
-                    foreach (var r in FilteredCulvertRows)
+                    if (curTarget != null)
                     {
-                        if (!rowsToExtract.Contains(r)) rowsToExtract.Add(r);
-                        if (rowsToExtract.Count >= 10) break;
-                    }
-
-                    foreach (var r in rowsToExtract)
-                    {
-                        if (RevitCulvertMeshExtractor.TryExtractPreviewGeometry(doc, r, this, out var realMeshes) && realMeshes.Count > 0)
+                        if (RevitCulvertMeshExtractor.TryExtractPreviewGeometry(doc, curTarget, this, out var realMeshes) && realMeshes.Count > 0)
                         {
                             lock (_cachedRealMeshes)
                             {
-                                _cachedRealMeshes[r.STT] = realMeshes;
+                                _cachedRealMeshes[curTarget.STT] = realMeshes;
                             }
                         }
                     }
@@ -1641,7 +1632,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsActive = true,
                 GroupType = "Hộp nối cống",
                 CategoryType = "Hộp nối cống dọc",
-                SelectedSymbol = FindSymbol("HOP NOI CONG DOC") ?? FindSymbol("HOP NOI"),
+                SelectedSymbol = FindSymbol("HOP NOI CONG DOC") ?? FindSymbol("HOP NOI") ?? FindSymbol("TNN_CKT_HO KY THUAT 1.5x1.5M") ?? FindSymbol("HO KY THUAT"),
                 OffsetZ = 0.0,
                 Note = "Hộp nối giữa cống kỹ thuật"
             });
@@ -1678,6 +1669,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 IsDoubleCulvertMode = false;
                 L_Std = 1.0;
                 Khe_Ho = 0.01;
+                FamilyFolderPath = @"C:\Users\ADMIN\Desktop\TEST TOOL\FAMLY REVIT_HTKT\2. CỐNG KỸ THUẬT";
 
                 if (TechnicalBarrelComponents.Count == 0)
                 {
@@ -1769,6 +1761,18 @@ namespace InfraBIM.CulvertTool.ViewModels
             {
                 RefreshActiveAssignedFamiliesForTab02();
                 SyncMaterialsFromAssemblyComponents();
+                if (sender is CulvertComponentItem compItem)
+                {
+                    if (SelectedComponentForTab02 == compItem)
+                    {
+                        EnsureComponentParametersScanned(compItem);
+                        FilterParameterMappings();
+                    }
+                    else
+                    {
+                        EnsureComponentParametersScanned(compItem);
+                    }
+                }
             }
         }
 
@@ -2419,10 +2423,23 @@ namespace InfraBIM.CulvertTool.ViewModels
             var sym = comp?.SelectedSymbol?.GetFreshSymbol(Doc);
             if (sym == null || Doc == null) return;
             string cat = comp!.CategoryType;
+            string famName = sym.FamilyName;
 
-            bool hasParams = ParameterMappings.Any(m => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase));
-            if (!hasParams)
+            bool hasExactParams = ParameterMappings.Any(m => 
+                string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase));
+
+            if (!hasExactParams)
             {
+                // Xóa tham số cũ của Category này nếu khác FamilyName để cập nhật chính xác Family mới chọn
+                var oldItems = ParameterMappings.Where(m => 
+                    string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var old in oldItems)
+                {
+                    old.PropertyChanged -= OnParameterMappingItemPropertyChanged;
+                    ParameterMappings.Remove(old);
+                }
+
                 var scanned = FamilyParameterScannerService.ScanParametersForFamily(Doc, sym, cat);
                 foreach (var p in scanned)
                 {
@@ -2479,13 +2496,18 @@ namespace InfraBIM.CulvertTool.ViewModels
             if (sym == null) return;
 
             string cat = SelectedComponentForTab02!.CategoryType;
+            string famName = sym.FamilyName;
 
             foreach (var m in ParameterMappings)
             {
-                // Khớp chính xác theo CategoryName của cấu kiện đang chọn (nếu có), fallback theo FamilyName
-                bool match = !string.IsNullOrEmpty(m.CategoryName)
-                    ? string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase)
-                    : string.Equals(m.FamilyName, sym.FamilyName, StringComparison.OrdinalIgnoreCase);
+                // Khớp chính xác theo CategoryName VÀ FamilyName của cấu kiện đang chọn
+                bool match = string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) &&
+                             string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase);
+
+                if (!match && string.IsNullOrEmpty(m.CategoryName) && string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase))
+                {
+                    match = true;
+                }
 
                 if (match)
                 {
@@ -2576,7 +2598,16 @@ namespace InfraBIM.CulvertTool.ViewModels
                     {
                         if (p.IsYesNoParameter)
                         {
-                            p.IsSelected = false;
+                            string pUpper = (p.InternalName ?? "").ToUpperInvariant();
+                            bool isVaiKe = pUpper.Contains("VAI") || pUpper.Contains("TAI");
+                            if (isVaiKe)
+                            {
+                                p.IsSelected = false;
+                            }
+                            else
+                            {
+                                p.IsSelected = (p.DefaultValue == "Có" || p.DefaultValue == "1");
+                            }
                         }
                         p.PropertyChanged += OnParameterMappingItemPropertyChanged;
                         ParameterMappings.Add(p);
@@ -2636,9 +2667,27 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         public void ApplyAllCustomParamsToStationRange()
         {
-            var paramsToApply = FilteredParameterMappings
-                .Where(p => p.IsSelected && !string.IsNullOrWhiteSpace(p.CustomValue))
-                .ToList();
+            var paramsToApply = new List<(string? CategoryName, string InternalName, string Value)>();
+            foreach (var p in FilteredParameterMappings)
+            {
+                if (p.IsYesNoParameter)
+                {
+                    string valTrim = (p.CustomValue ?? "").Trim().ToLowerInvariant();
+                    // Nếu bỏ tick hoặc chọn Không/No/0 => gán "0"
+                    if (!p.IsSelected || valTrim == "0" || valTrim == "no" || valTrim == "false" || valTrim == "không" || valTrim == "khong" || valTrim == "tắt")
+                    {
+                        paramsToApply.Add((p.CategoryName, p.InternalName, "0"));
+                    }
+                    else if (p.IsSelected)
+                    {
+                        paramsToApply.Add((p.CategoryName, p.InternalName, "1"));
+                    }
+                }
+                else if (p.IsSelected && !string.IsNullOrWhiteSpace(p.CustomValue))
+                {
+                    paramsToApply.Add((p.CategoryName, p.InternalName, p.CustomValue));
+                }
+            }
 
             if (paramsToApply.Count == 0)
             {
@@ -2651,9 +2700,9 @@ namespace InfraBIM.CulvertTool.ViewModels
             {
                 if (r.STT >= BatchFromSTT && r.STT <= BatchToSTT)
                 {
-                    foreach (var p in paramsToApply)
+                    foreach (var (catName, pName, pVal) in paramsToApply)
                     {
-                        r.SetParamOverride(p.InternalName, p.CustomValue);
+                        r.SetParamOverride(catName, pName, pVal);
                     }
                     count++;
                 }
@@ -2972,7 +3021,8 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
 
             bool hasValidBarrel = PrecastBarrelComponents.Any(c => c.IsActive && c.SelectedSymbol != null) ||
-                                  CastInPlaceBarrelComponents.Any(c => c.IsActive && c.SelectedSymbol != null);
+                                  CastInPlaceBarrelComponents.Any(c => c.IsActive && c.SelectedSymbol != null) ||
+                                  (IsTechnicalCulvertMode && TechnicalBarrelComponents.Any(c => c.IsActive && c.SelectedSymbol != null));
             if (!hasValidBarrel)
             {
                 MessageBox.Show("Vui lòng kích hoạt và chọn Family cho Cống đúc sẵn hoặc Cống đổ tại chỗ ở Khung 2.", "Chưa chọn Family", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -2993,6 +3043,11 @@ namespace InfraBIM.CulvertTool.ViewModels
             var modeCastInPlace = (SelectedArrayModeIndex_CastInPlace == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay;
             bool useSurveyPoint = (SelectedCoordSysIndex == 0);
 
+            var targetPrecast = IsTechnicalCulvertMode ? TechnicalBarrelComponents.ToList() : PrecastBarrelComponents.ToList();
+            var targetManhole = IsTechnicalCulvertMode ? TechnicalManholeComponents.ToList() : ManholeComponents.ToList();
+            double curLStdPrecast = IsTechnicalCulvertMode ? L_Std : L_Std_Precast;
+            double curKheHoPrecast = IsTechnicalCulvertMode ? Khe_Ho : Khe_Ho_Precast;
+
             _eventHandler.SetAction(app =>
             {
                 var doc = app.ActiveUIDocument.Document;
@@ -3002,13 +3057,13 @@ namespace InfraBIM.CulvertTool.ViewModels
                     BimConfig,
                     CustomBimParameters,
                     ParameterMappings,
-                    PrecastBarrelComponents.ToList(),
+                    targetPrecast,
                     CastInPlaceBarrelComponents.ToList(),
                     OutletComponents.ToList(),
                     ApronComponents.ToList(),
-                    ManholeComponents.ToList(),
-                    L_Std_Precast,
-                    Khe_Ho_Precast,
+                    targetManhole,
+                    curLStdPrecast,
+                    curKheHoPrecast,
                     modePrecast,
                     L_Std_CastInPlace,
                     Khe_Ho_CastInPlace,

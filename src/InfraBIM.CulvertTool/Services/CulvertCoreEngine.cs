@@ -203,6 +203,8 @@ namespace InfraBIM.CulvertTool.Services
                             var rowOutlets = new List<FamilyInstance>();
                             var rowBarrels = new List<FamilyInstance>();
                             var rowBeddings = new List<FamilyInstance>();
+                            var rowAprons = new List<FamilyInstance>();
+                            var rowManholes = new List<FamilyInstance>();
 
                             BuildSingleCulvertV2(
                                 doc,
@@ -224,56 +226,146 @@ namespace InfraBIM.CulvertTool.Services
                                 materialSettings,
                                 rowOutlets,
                                 rowBarrels,
-                                rowBeddings);
+                                rowBeddings,
+                                rowAprons,
+                                rowManholes,
+                                performCutGeometry: false);
 
                             subT.Commit();
 
+                            // CHỈ THỰC HIỆN CUT GEOMETRY KHI BẤM "KHỞI TẠO VÀ THỰC HIỆN MÔ HÌNH"
                             // Mở Transaction riêng biệt để thực hiện Cut Geometry sau khi các cấu kiện đã commit hoàn tất
-                            // Điều này đảm bảo Revit đã tính toán xong toàn bộ Solid CSG của các Family Adaptive (Yêu cầu 1)
-                            if (rowOutlets.Count > 0 && (rowBarrels.Count > 0 || rowBeddings.Count > 0))
+                            bool isTech = (row.DetermineCulvertType() == "CỐNG KỸ THUẬT" || 
+                                          row.LoaiCong?.IndexOf("KỸ THUẬT", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                                          row.LoaiCong?.IndexOf("KY THUAT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                          row.GhiChu?.IndexOf("KỸ THUẬT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                          row.GhiChu?.IndexOf("KY THUAT", StringComparison.OrdinalIgnoreCase) >= 0);
+
+                            if (isTech)
                             {
-                                using (var cutT = new Transaction(doc, $"Cut Geometry Cửa xả và Cống hộp STT {row.STT}"))
+                                if (rowManholes.Count > 0 && rowBarrels.Count > 0)
                                 {
-                                    try
+                                    using (var cutT = new Transaction(doc, $"Cut Geometry Cống Kỹ Thuật STT {row.STT}"))
                                     {
-                                        var cutFailOpts = cutT.GetFailureHandlingOptions();
-                                        cutFailOpts.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
-                                        cutFailOpts.SetClearAfterRollback(true);
-                                        cutT.SetFailureHandlingOptions(cutFailOpts);
-
-                                        cutT.Start();
-                                        doc.Regenerate();
-
-                                        // 1. Cắt Cửa xả (Tường đầu, Tường cánh, Sân cống) bởi Thân cống hộp ở cả 2 đầu (Thượng lưu & Hạ lưu)
-                                        // Lọc các đốt cống ở 2 đầu (3 đốt đầu và 3 đốt cuối) để tăng tốc và chuẩn xác tuyệt đối
-                                        var candidateBarrels = rowBarrels.Take(3).Concat(rowBarrels.TakeLast(3)).Distinct().ToList();
-
-                                        foreach (var outlet in rowOutlets)
+                                        try
                                         {
-                                            if (outlet == null || !outlet.IsValidObject) continue;
-                                            foreach (var bar in candidateBarrels)
-                                             {
-                                                 if (bar == null || !bar.IsValidObject) continue;
-                                                 TryCutGeometrySafe(doc, outlet, bar);
-                                             }
-                                        }
+                                            var cutFailOpts = cutT.GetFailureHandlingOptions();
+                                            cutFailOpts.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
+                                            cutFailOpts.SetClearAfterRollback(true);
+                                            cutT.SetFailureHandlingOptions(cutFailOpts);
 
-                                        // 2. Cắt BTL & Đá dăm đệm của cống hộp bởi Cửa xả
-                                        foreach (var bed in rowBeddings)
-                                        {
-                                            if (bed == null || !bed.IsValidObject) continue;
-                                            foreach (var outlet in rowOutlets)
+                                            cutT.Start();
+                                            doc.Regenerate();
+
+                                            var hkt1 = rowManholes.ElementAtOrDefault(0);
+                                            var hkt2 = rowManholes.ElementAtOrDefault(1);
+                                            var hn = rowManholes.ElementAtOrDefault(2);
+
+                                            var firstBar = rowBarrels.FirstOrDefault();
+                                            var lastBar = rowBarrels.LastOrDefault();
+
+                                            // 1. Cut HKT1 với đốt cống đầu tiên và BTL/DDD đoạn 1
+                                            if (hkt1 != null && hkt1.IsValidObject)
                                             {
-                                                if (outlet == null || !outlet.IsValidObject) continue;
-                                                TryCutGeometrySafe(doc, bed, outlet);
+                                                if (firstBar != null && firstBar.IsValidObject) TryCutGeometrySafe(doc, hkt1, firstBar);
+                                                var btl1 = rowBeddings.ElementAtOrDefault(0);
+                                                var ddd1 = rowBeddings.ElementAtOrDefault(1);
+                                                if (btl1 != null && btl1.IsValidObject) TryCutGeometrySafe(doc, hkt1, btl1);
+                                                if (ddd1 != null && ddd1.IsValidObject) TryCutGeometrySafe(doc, hkt1, ddd1);
                                             }
-                                        }
 
-                                        cutT.Commit();
+                                            // 2. Cut HKT2 với đốt cống cuối cùng và BTL/DDD đoạn 2
+                                            if (hkt2 != null && hkt2.IsValidObject)
+                                            {
+                                                if (lastBar != null && lastBar.IsValidObject) TryCutGeometrySafe(doc, hkt2, lastBar);
+                                                var btl2 = rowBeddings.ElementAtOrDefault(2);
+                                                var ddd2 = rowBeddings.ElementAtOrDefault(3);
+                                                if (btl2 != null && btl2.IsValidObject) TryCutGeometrySafe(doc, hkt2, btl2);
+                                                if (ddd2 != null && ddd2.IsValidObject) TryCutGeometrySafe(doc, hkt2, ddd2);
+                                            }
+
+                                            // 3. Cut Hộp nối với 2 đốt cống liền kề trái và phải
+                                            if (hn != null && hn.IsValidObject && rowBarrels.Count >= 2)
+                                            {
+                                                var nearestBarrels = rowBarrels
+                                                    .Where(b => b != null && b.IsValidObject)
+                                                    .OrderBy(b => {
+                                                        var loc = b.Location as LocationPoint;
+                                                        var hnLoc = hn.Location as LocationPoint;
+                                                        if (loc != null && hnLoc != null) return loc.Point.DistanceTo(hnLoc.Point);
+                                                        return double.MaxValue;
+                                                    })
+                                                    .Take(2)
+                                                    .ToList();
+
+                                                foreach (var nb in nearestBarrels)
+                                                {
+                                                    TryCutGeometrySafe(doc, hn, nb);
+                                                }
+                                            }
+
+                                            cutT.Commit();
+                                        }
+                                        catch
+                                        {
+                                            try { if (cutT.HasStarted() && !cutT.HasEnded()) cutT.RollBack(); } catch { }
+                                        }
                                     }
-                                    catch
+                                }
+                            }
+                            else
+                            {
+                                // Cống ngang thông thường
+                                if (rowOutlets.Count > 0 && (rowBarrels.Count > 0 || rowBeddings.Count > 0))
+                                {
+                                    using (var cutT = new Transaction(doc, $"Cut Geometry Cửa xả và Cống hộp STT {row.STT}"))
                                     {
-                                        try { if (cutT.HasStarted() && !cutT.HasEnded()) cutT.RollBack(); } catch { }
+                                        try
+                                        {
+                                            var cutFailOpts = cutT.GetFailureHandlingOptions();
+                                            cutFailOpts.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
+                                            cutFailOpts.SetClearAfterRollback(true);
+                                            cutT.SetFailureHandlingOptions(cutFailOpts);
+
+                                            cutT.Start();
+                                            doc.Regenerate();
+
+                                            // Cửa xả Thượng lưu cắt đốt cống đầu tiên
+                                            var firstBarrel = rowBarrels.FirstOrDefault();
+                                            var lastBarrel = rowBarrels.LastOrDefault();
+                                            var inOutlet = rowOutlets.FirstOrDefault();
+                                            var outOutlet = rowOutlets.LastOrDefault();
+
+                                            if (inOutlet != null && inOutlet.IsValidObject && firstBarrel != null && firstBarrel.IsValidObject)
+                                            {
+                                                TryCutGeometrySafe(doc, inOutlet, firstBarrel);
+                                            }
+
+                                            if (outOutlet != null && outOutlet.IsValidObject && lastBarrel != null && lastBarrel.IsValidObject && outOutlet.Id != inOutlet?.Id)
+                                            {
+                                                TryCutGeometrySafe(doc, outOutlet, lastBarrel);
+                                            }
+
+                                            // Cắt BTL & Đá dăm đệm cống hộp bởi Cửa xả tại 2 đầu
+                                            var firstBed = rowBeddings.FirstOrDefault();
+                                            var lastBed = rowBeddings.LastOrDefault();
+
+                                            if (firstBed != null && firstBed.IsValidObject && inOutlet != null && inOutlet.IsValidObject)
+                                            {
+                                                TryCutGeometrySafe(doc, firstBed, inOutlet);
+                                            }
+
+                                            if (lastBed != null && lastBed.IsValidObject && outOutlet != null && outOutlet.IsValidObject && lastBed.Id != firstBed?.Id)
+                                            {
+                                                TryCutGeometrySafe(doc, lastBed, outOutlet);
+                                            }
+
+                                            cutT.Commit();
+                                        }
+                                        catch
+                                        {
+                                            try { if (cutT.HasStarted() && !cutT.HasEnded()) cutT.RollBack(); } catch { }
+                                        }
                                     }
                                 }
                             }
@@ -370,6 +462,77 @@ namespace InfraBIM.CulvertTool.Services
                 }
                 throw;
             }
+        }
+
+        private static FamilySymbol? TryAutoLoadFamilySymbol(Document doc, string familyKeyword, string? typeKeyword = null, string? preferredFolder = null)
+        {
+            try
+            {
+                // 1. Kiểm tra trong Document trước
+                var sym = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilySymbol))
+                    .Cast<FamilySymbol>()
+                    .FirstOrDefault(s => (s.FamilyName != null && s.FamilyName.IndexOf(familyKeyword, StringComparison.OrdinalIgnoreCase) >= 0));
+                if (sym != null)
+                {
+                    ActivateSymbol(sym);
+                    return sym;
+                }
+
+                // 2. Nếu chưa có, quét các thư mục trên đĩa
+                var foldersToSearch = new List<string>();
+                if (!string.IsNullOrWhiteSpace(preferredFolder) && System.IO.Directory.Exists(preferredFolder))
+                    foldersToSearch.Add(preferredFolder);
+                const string defaultCktFolder = @"C:\Users\ADMIN\Desktop\TEST TOOL\FAMLY REVIT_HTKT\2. CỐNG KỸ THUẬT";
+                if (System.IO.Directory.Exists(defaultCktFolder) && !foldersToSearch.Contains(defaultCktFolder))
+                    foldersToSearch.Add(defaultCktFolder);
+
+                foreach (var folder in foldersToSearch)
+                {
+                    var rfaFiles = System.IO.Directory.GetFiles(folder, "*.rfa", System.IO.SearchOption.AllDirectories);
+                    var matchedFile = rfaFiles.FirstOrDefault(f => System.IO.Path.GetFileName(f).IndexOf(familyKeyword, StringComparison.OrdinalIgnoreCase) >= 0);
+                    if (matchedFile != null && System.IO.File.Exists(matchedFile))
+                    {
+                        var loadOptions = new InfraBIM.CulvertTool.ViewModels.CustomFamilyLoadOptions();
+                        if (doc.LoadFamily(matchedFile, loadOptions, out Family loadedFamily) && loadedFamily != null)
+                        {
+                            var symId = loadedFamily.GetFamilySymbolIds().FirstOrDefault();
+                            if (symId != null && symId != ElementId.InvalidElementId)
+                            {
+                                var loadedSym = doc.GetElement(symId) as FamilySymbol;
+                                if (loadedSym != null)
+                                {
+                                    ActivateSymbol(loadedSym);
+                                    return loadedSym;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            string baseName = System.IO.Path.GetFileNameWithoutExtension(matchedFile);
+                            var existingFamily = new FilteredElementCollector(doc)
+                                .OfClass(typeof(Family))
+                                .Cast<Family>()
+                                .FirstOrDefault(f => string.Equals(f.Name, baseName, StringComparison.OrdinalIgnoreCase));
+                            if (existingFamily != null)
+                            {
+                                var symId = existingFamily.GetFamilySymbolIds().FirstOrDefault();
+                                if (symId != null && symId != ElementId.InvalidElementId)
+                                {
+                                    var loadedSym = doc.GetElement(symId) as FamilySymbol;
+                                    if (loadedSym != null)
+                                    {
+                                        ActivateSymbol(loadedSym);
+                                        return loadedSym;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return null;
         }
 
         private static FamilyInstance? CreateAdaptiveInstanceSafe(Document doc, FamilySymbol sym, IList<XYZ> points)
@@ -993,7 +1156,8 @@ namespace InfraBIM.CulvertTool.Services
             List<FamilyInstance>? outCreatedBarrels = null,
             List<FamilyInstance>? outCreatedBeddings = null,
             List<FamilyInstance>? outCreatedAprons = null,
-            List<FamilyInstance>? outCreatedManholes = null)
+            List<FamilyInstance>? outCreatedManholes = null,
+            bool performCutGeometry = false)
         {
             // 1. Chuyển đổi tọa độ VN2000 sang Revit Internal (Feet)
             XYZ p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, data.X1, data.Y1, data.Z1, useSurveyPoint);
@@ -1005,11 +1169,20 @@ namespace InfraBIM.CulvertTool.Services
                 throw new InvalidOperationException("Chiều dài cống quá nhỏ (P1 trùng P2).");
 
             // KIỂM TRA NẾU LÀ CỐNG KỸ THUẬT: ĐIỀU HƯỚNG SANG THUẬT TOÁN RẢI CỐNG KỸ THUẬT RIÊNG
-            if (data.DetermineCulvertType() == "CỐNG KỸ THUẬT" || 
+            bool isTechnicalCulvert = data.DetermineCulvertType() == "CỐNG KỸ THUẬT" || 
                 data.LoaiCong?.ToUpperInvariant().Contains("KỸ THUẬT") == true || 
-                data.LoaiCong?.ToUpperInvariant().Contains("KY THUAT") == true ||
-                data.GhiChu?.ToUpperInvariant().Contains("KỸ THUẬT") == true ||
-                data.GhiChu?.ToUpperInvariant().Contains("KY THUAT") == true)
+                data.LoaiCong?.ToUpperInvariant().Contains("KY THUAT") == true || 
+                data.LoaiCong?.ToUpperInvariant().Contains("CKT") == true ||
+                data.GhiChu?.ToUpperInvariant().Contains("KỸ THUẬT") == true || 
+                data.GhiChu?.ToUpperInvariant().Contains("KY THUAT") == true ||
+                data.GhiChu?.ToUpperInvariant().Contains("CKT") == true ||
+                (manholeComponents != null && manholeComponents.Any(c => 
+                    c.GroupType?.IndexOf("Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    c.CategoryType?.IndexOf("Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    c.SelectedSymbol?.Symbol?.FamilyName?.Contains("HO KY THUAT") == true ||
+                    c.SelectedSymbol?.Symbol?.FamilyName?.Contains("CKT") == true));
+
+            if (isTechnicalCulvert)
             {
                 BuildSingleTechnicalCulvert(
                     doc,
@@ -1025,7 +1198,8 @@ namespace InfraBIM.CulvertTool.Services
                     materialSettings,
                     outCreatedBarrels,
                     outCreatedBeddings,
-                    outCreatedManholes);
+                    outCreatedManholes,
+                    performCutGeometry);
                 return;
             }
 
@@ -1113,8 +1287,14 @@ namespace InfraBIM.CulvertTool.Services
             var apronInstances = outCreatedAprons ?? new List<FamilyInstance>();
             var manholeInstances = outCreatedManholes ?? new List<FamilyInstance>();
 
-            PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, outletInstances);
-            PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, outletInstances);
+            var upstreamOutlets = new List<FamilyInstance>();
+            var downstreamOutlets = new List<FamilyInstance>();
+
+            PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, upstreamOutlets);
+            PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, downstreamOutlets);
+
+            outletInstances.AddRange(upstreamOutlets);
+            outletInstances.AddRange(downstreamOutlets);
 
             // 2b. Xác định chiều dày/chiều dài móng tường đầu (CX_L1) từ thiết lập tham số, Family hoặc mặc định 1.30m
             double cxL1M = 1.30;
@@ -1207,33 +1387,68 @@ namespace InfraBIM.CulvertTool.Services
                 barrelInstances, beddingInstances, manholeInstances);
 
             // 5. YÊU CẦU 1: Cut Geometry giữa Cửa xả và Thân cống hộp / BTL / Đá dăm (Hình 1 & Hình 2)
-            try
+            // CHỈ THỰC HIỆN KHI performCutGeometry == true (khi bấm "Khởi tạo và thực hiện mô hình")
+            if (performCutGeometry)
             {
-                doc.Regenerate(); // BẮT BUỘC để Revit tính toán Solid Geometry cho các FamilyInstance mới dựng
-            }
-            catch { }
-
-            // Cut geometry giữa thân cống hộp với Cửa xả (tường đầu) - Cả 2 sân cống Thượng lưu & Hạ lưu
-            var candidateBarrels = barrelInstances.Take(3).Concat(barrelInstances.TakeLast(3)).Distinct().ToList();
-
-            foreach (var outlet in outletInstances)
-            {
-                if (outlet == null || !outlet.IsValidObject) continue;
-                foreach (var bar in candidateBarrels)
+                try
                 {
-                    if (bar == null || !bar.IsValidObject) continue;
-                    TryCutGeometrySafe(doc, outlet, bar);
+                    doc.Regenerate(); // BẮT BUỘC để Revit tính toán Solid Geometry cho các FamilyInstance mới dựng
                 }
-            }
+                catch { }
 
-            // Cut geometry giữa BTL & đá dăm đệm cống hộp với khối Cửa xả
-            foreach (var bed in beddingInstances)
-            {
-                if (bed == null || !bed.IsValidObject) continue;
-                foreach (var outlet in outletInstances)
+                var firstBar = barrelInstances.FirstOrDefault();
+                var lastBar = barrelInstances.LastOrDefault();
+                var inOutlet = outletInstances.FirstOrDefault();
+                var outOutlet = outletInstances.LastOrDefault();
+
+                // 1. Cut giữa tất cả cấu kiện Cửa xả thượng lưu (Tường đầu, Sân cống, v.v.) với đốt cống đầu tiên (firstBar)
+                if (firstBar != null && firstBar.IsValidObject)
                 {
-                    if (outlet == null || !outlet.IsValidObject) continue;
-                    TryCutGeometrySafe(doc, bed, outlet);
+                    foreach (var upInst in upstreamOutlets)
+                    {
+                        if (upInst != null && upInst.IsValidObject)
+                        {
+                            TryCutGeometrySafe(doc, upInst, firstBar);
+                        }
+                    }
+                }
+
+                // 2. Cut giữa tất cả cấu kiện Cửa xả hạ lưu (Tường đầu, Sân cống, v.v.) với đốt cống cuối cùng (lastBar)
+                if (lastBar != null && lastBar.IsValidObject)
+                {
+                    foreach (var dnInst in downstreamOutlets)
+                    {
+                        if (dnInst != null && dnInst.IsValidObject)
+                        {
+                            TryCutGeometrySafe(doc, dnInst, lastBar);
+                        }
+                    }
+                }
+
+                // 3. Cut geometry giữa BTL & đá dăm đệm cống hộp với khối Cửa xả
+                var firstBed = beddingInstances.FirstOrDefault();
+                var lastBed = beddingInstances.LastOrDefault();
+
+                if (firstBed != null && firstBed.IsValidObject)
+                {
+                    foreach (var upInst in upstreamOutlets)
+                    {
+                        if (upInst != null && upInst.IsValidObject)
+                        {
+                            TryCutGeometrySafe(doc, firstBed, upInst);
+                        }
+                    }
+                }
+
+                if (lastBed != null && lastBed.IsValidObject)
+                {
+                    foreach (var dnInst in downstreamOutlets)
+                    {
+                        if (dnInst != null && dnInst.IsValidObject)
+                        {
+                            TryCutGeometrySafe(doc, lastBed, dnInst);
+                        }
+                    }
                 }
             }
         }
@@ -1275,7 +1490,8 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<CulvertMaterialItem>? materialSettings = null,
             List<FamilyInstance>? outCreatedBarrels = null,
             List<FamilyInstance>? outCreatedBeddings = null,
-            List<FamilyInstance>? outCreatedManholes = null)
+            List<FamilyInstance>? outCreatedManholes = null,
+            bool performCutGeometry = false)
         {
             // 1. Tọa độ P1 (Thượng lưu) và P2 (Hạ lưu)
             XYZ p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, data.X1, data.Y1, data.Z1, useSurveyPoint);
@@ -1290,34 +1506,46 @@ namespace InfraBIM.CulvertTool.Services
             double rotAngle = Math.Atan2(u.Y, u.X);
 
             // 2. Phân giải các Family Symbols cho Cống kỹ thuật
+            CulvertComponentItem? compHKT = null;
+            CulvertComponentItem? compHN = null;
             FamilySymbol? symHKT = null;
             FamilySymbol? symHN = null;
+
+            if (manholeComponents != null && manholeComponents.Count > 0)
+            {
+                // Slot 1: Hố kỹ thuật (ở 2 đầu tuyến)
+                compHKT = manholeComponents.FirstOrDefault(c => 
+                    (c.GroupType?.IndexOf("Hố", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     c.CategoryType?.IndexOf("Hố", StringComparison.OrdinalIgnoreCase) >= 0) &&
+                    c.CategoryType?.IndexOf("Hộp", StringComparison.OrdinalIgnoreCase) < 0) 
+                    ?? manholeComponents.FirstOrDefault();
+
+                // Slot 2: Hộp nối cống kỹ thuật (ở giữa tuyến)
+                compHN = manholeComponents.FirstOrDefault(c => 
+                    c != compHKT && (
+                        c.GroupType?.IndexOf("Hộp", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        c.CategoryType?.IndexOf("Hộp", StringComparison.OrdinalIgnoreCase) >= 0))
+                    ?? (manholeComponents.Count > 1 ? manholeComponents[1] : null);
+
+                if (compHKT != null && compHKT.IsActive && compHKT.SelectedSymbol != null)
+                {
+                    symHKT = compHKT.SelectedSymbol.GetFreshSymbol(doc);
+                }
+                if (compHN != null && compHN.IsActive && compHN.SelectedSymbol != null)
+                {
+                    symHN = compHN.SelectedSymbol.GetFreshSymbol(doc);
+                }
+            }
+
+            CulvertComponentItem? compBarrel = null;
+            CulvertComponentItem? compBTL = null;
+            CulvertComponentItem? compDDD = null;
             FamilySymbol? symBarrel = null;
             FamilySymbol? symBTL = null;
             FamilySymbol? symDDD = null;
 
             double offsetZBtlM = -0.10;
             double offsetZDddM = -0.20;
-
-            if (manholeComponents != null)
-            {
-                foreach (var c in manholeComponents)
-                {
-                    if (!c.IsActive || c.SelectedSymbol == null) continue;
-                    var sym = c.SelectedSymbol.GetFreshSymbol(doc);
-                    if (sym == null) continue;
-                    string fn = sym.FamilyName?.ToUpperInvariant() ?? "";
-                    string cat = c.CategoryType?.ToUpperInvariant() ?? "";
-                    if (fn.Contains("HO KY THUAT") || cat.Contains("HỐ KỸ THUẬT") || cat.Contains("HO KY THUAT"))
-                    {
-                        symHKT = sym;
-                    }
-                    else if (fn.Contains("HOP NOI") || cat.Contains("HỘP NỐI") || cat.Contains("HOP NOI"))
-                    {
-                        symHN = sym;
-                    }
-                }
-            }
 
             if (barrelComponents != null)
             {
@@ -1326,20 +1554,24 @@ namespace InfraBIM.CulvertTool.Services
                     if (!c.IsActive || c.SelectedSymbol == null) continue;
                     var sym = c.SelectedSymbol.GetFreshSymbol(doc);
                     if (sym == null) continue;
-                    string fn = sym.FamilyName?.ToUpperInvariant() ?? "";
                     string cat = c.CategoryType?.ToUpperInvariant() ?? "";
+                    string fn = sym.FamilyName?.ToUpperInvariant() ?? "";
+
                     if (cat.Contains("BÊ TÔNG LÓT") || cat.Contains("BE TONG LOT") || cat.Contains("BTL") || fn.Contains("BE TONG LOT"))
                     {
+                        compBTL = c;
                         symBTL = sym;
                         offsetZBtlM = c.OffsetZ;
                     }
                     else if (cat.Contains("ĐÁ DĂM") || cat.Contains("DA DAM") || cat.Contains("DDD") || fn.Contains("DA DAM"))
                     {
+                        compDDD = c;
                         symDDD = sym;
                         offsetZDddM = c.OffsetZ;
                     }
                     else
                     {
+                        compBarrel = c;
                         symBarrel = sym;
                     }
                 }
@@ -1371,6 +1603,32 @@ namespace InfraBIM.CulvertTool.Services
                          ?? allProjectSymbols.FirstOrDefault(s => (s.FamilyName?.Contains("DA DAM DEM") == true));
             }
 
+            // AUTO-LOAD TỰ ĐỘNG NẾU TRONG DỰ ÁN CHƯA CÓ SYMBOL
+            const string cktFolder = @"C:\Users\ADMIN\Desktop\TEST TOOL\FAMLY REVIT_HTKT\2. CỐNG KỸ THUẬT";
+            if (symHKT == null)
+            {
+                symHKT = TryAutoLoadFamilySymbol(doc, "HO KY THUAT", null, cktFolder);
+            }
+            if (symBarrel == null)
+            {
+                symBarrel = TryAutoLoadFamilySymbol(doc, "TNN_CKT_THAN CONG", null, cktFolder)
+                            ?? TryAutoLoadFamilySymbol(doc, "THAN CONG", null, cktFolder);
+            }
+            if (symBTL == null)
+            {
+                symBTL = TryAutoLoadFamilySymbol(doc, "TNN_CKT_BE TONG LOT", null, cktFolder)
+                         ?? TryAutoLoadFamilySymbol(doc, "BE TONG LOT", null, cktFolder);
+            }
+            if (symDDD == null)
+            {
+                symDDD = TryAutoLoadFamilySymbol(doc, "TNN_CKT_DA DAM DEM", null, cktFolder)
+                         ?? TryAutoLoadFamilySymbol(doc, "DA DAM DEM", null, cktFolder);
+            }
+            if (symHN == null)
+            {
+                symHN = symHKT ?? TryAutoLoadFamilySymbol(doc, "HOP NOI", null, cktFolder);
+            }
+
             if (symHKT != null) ActivateSymbol(symHKT);
             if (symHN != null) ActivateSymbol(symHN);
             if (symBarrel != null) ActivateSymbol(symBarrel);
@@ -1380,75 +1638,188 @@ namespace InfraBIM.CulvertTool.Services
             // 3. Tính độ dịch của Hố kỹ thuật: (THAN GIENG_B / 2) - THAN GIENG_B THANH
             double thanGiengBM = 1.40;
             double thanGiengBThanhM = 0.20;
+
+            if (familyParameterMappings != null)
+            {
+                var mapB = familyParameterMappings.FirstOrDefault(m => 
+                    string.Equals(m.InternalName, "THAN GIENG_B", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(m.InternalName, "B_GIENG", StringComparison.OrdinalIgnoreCase));
+                if (mapB != null && !string.IsNullOrWhiteSpace(mapB.CustomValue))
+                {
+                    string v = data.GetParamOverride(mapB.InternalName, mapB.CustomValue);
+                    if (double.TryParse(v.Replace("mm", "").Replace("m", "").Trim(), out double dVal) && dVal > 0.05)
+                    {
+                        thanGiengBM = (Math.Abs(dVal) >= 10.0) ? dVal / 1000.0 : dVal;
+                    }
+                }
+                var mapT = familyParameterMappings.FirstOrDefault(m => 
+                    string.Equals(m.InternalName, "THAN GIENG_B THANH", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(m.InternalName, "B_THANH", StringComparison.OrdinalIgnoreCase));
+                if (mapT != null && !string.IsNullOrWhiteSpace(mapT.CustomValue))
+                {
+                    string v = data.GetParamOverride(mapT.InternalName, mapT.CustomValue);
+                    if (double.TryParse(v.Replace("mm", "").Replace("m", "").Trim(), out double dVal) && dVal > 0.01)
+                    {
+                        thanGiengBThanhM = (Math.Abs(dVal) >= 10.0) ? dVal / 1000.0 : dVal;
+                    }
+                }
+            }
+
             if (symHKT != null)
             {
                 var pB = symHKT.LookupParameter("THAN GIENG_B") ?? symHKT.LookupParameter("B_GIENG") ?? symHKT.LookupParameter("B");
-                if (pB != null && pB.StorageType == StorageType.Double && pB.AsDouble() > 0.1)
+                if (pB != null && pB.StorageType == StorageType.Double && pB.AsDouble() > 0.1 && thanGiengBM <= 0.1)
                 {
                     thanGiengBM = UnitUtils.ConvertFromInternalUnits(pB.AsDouble(), UnitTypeId.Meters);
                 }
                 var pThanh = symHKT.LookupParameter("THAN GIENG_B THANH") ?? symHKT.LookupParameter("B_THANH") ?? symHKT.LookupParameter("THANH");
-                if (pThanh != null && pThanh.StorageType == StorageType.Double && pThanh.AsDouble() > 0.01)
+                if (pThanh != null && pThanh.StorageType == StorageType.Double && pThanh.AsDouble() > 0.01 && thanGiengBThanhM <= 0.01)
                 {
                     thanGiengBThanhM = UnitUtils.ConvertFromInternalUnits(pThanh.AsDouble(), UnitTypeId.Meters);
                 }
             }
+
             double deltaDM = (thanGiengBM / 2.0) - thanGiengBThanhM;
             if (deltaDM <= 0) deltaDM = 0.50; // default 0.50m
             double deltaDFeet = UnitUtils.ConvertToInternalUnits(deltaDM, UnitTypeId.Meters);
+            double thanGiengBFeet = UnitUtils.ConvertToInternalUnits(thanGiengBM, UnitTypeId.Meters);
 
-            // 4. Đặt Hố kỹ thuật 1 (tại P1, dịch vào trong) & Hố kỹ thuật 2 (tại P2, dịch vào trong, đối xứng)
+            // 4. Đặt Hố kỹ thuật 1 (tại P1, dịch ra ngoài theo mũi tên Hình 1: -u * deltaD)
+            // và Hố kỹ thuật 2 (tại P2, dịch ra ngoài theo mũi tên Hình 1: +u * deltaD, đối xứng)
             FamilyInstance? instHKT1 = null;
             FamilyInstance? instHKT2 = null;
+            XYZ ptHKT1 = p1 - u * deltaDFeet;
+            XYZ ptHKT2 = p2 + u * deltaDFeet;
 
             if (symHKT != null)
             {
-                XYZ ptHKT1 = p1 + u * deltaDFeet;
-                instHKT1 = doc.Create.NewFamilyInstance(ptHKT1, symHKT, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
-                if (instHKT1 != null)
+                try
                 {
-                    ElementTransformUtils.RotateElement(doc, instHKT1.Id, Line.CreateBound(ptHKT1, ptHKT1 + XYZ.BasisZ), rotAngle);
-                    ApplyBimParametersToInstance(instHKT1, bimConfig, customBimParams, data, "Hố kỹ thuật 1");
-                    outCreatedManholes?.Add(instHKT1);
+                    instHKT1 = CreateInstanceSafe(doc, ptHKT1, symHKT);
+                    if (instHKT1 != null)
+                    {
+                        SafeRotate(doc, instHKT1.Id, ptHKT1, rotAngle);
+                        try { BimParameterService.SetElementBimProperties(instHKT1, bimConfig, "Hố kỹ thuật 1", "Hố kỹ thuật", null, null, ptHKT1.X, ptHKT1.Y, ptHKT1.Z); } catch { }
+                        try { BimParameterService.ApplyFamilyMappedParameters(instHKT1, familyParameterMappings, data, compHKT?.CategoryType ?? "Hố kỹ thuật"); } catch { }
+                        try { BimParameterService.ApplyCustomBimParameters(instHKT1, customBimParams, data, "Hố kỹ thuật"); } catch { }
+                        try { TryApplyMaterial(doc, instHKT1, materialSettings, compHKT?.CategoryType ?? "Hố kỹ thuật"); } catch { }
+                        outCreatedManholes?.Add(instHKT1);
+                    }
                 }
+                catch { }
 
-                XYZ ptHKT2 = p2 - u * deltaDFeet;
-                instHKT2 = doc.Create.NewFamilyInstance(ptHKT2, symHKT, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
-                if (instHKT2 != null)
+                try
                 {
-                    // Đặt đối xứng: xoay 180 độ so với hướng tuyến
-                    ElementTransformUtils.RotateElement(doc, instHKT2.Id, Line.CreateBound(ptHKT2, ptHKT2 + XYZ.BasisZ), rotAngle + Math.PI);
-                    ApplyBimParametersToInstance(instHKT2, bimConfig, customBimParams, data, "Hố kỹ thuật 2");
-                    outCreatedManholes?.Add(instHKT2);
+                    instHKT2 = CreateInstanceSafe(doc, ptHKT2, symHKT);
+                    if (instHKT2 != null)
+                    {
+                        // Đặt đối xứng: xoay 180 độ so với hướng tuyến
+                        SafeRotate(doc, instHKT2.Id, ptHKT2, rotAngle + Math.PI);
+                        try { BimParameterService.SetElementBimProperties(instHKT2, bimConfig, "Hố kỹ thuật 2", "Hố kỹ thuật", null, null, ptHKT2.X, ptHKT2.Y, ptHKT2.Z); } catch { }
+                        try { BimParameterService.ApplyFamilyMappedParameters(instHKT2, familyParameterMappings, data, compHKT?.CategoryType ?? "Hố kỹ thuật"); } catch { }
+                        try { BimParameterService.ApplyCustomBimParameters(instHKT2, customBimParams, data, "Hố kỹ thuật"); } catch { }
+                        try { TryApplyMaterial(doc, instHKT2, materialSettings, compHKT?.CategoryType ?? "Hố kỹ thuật"); } catch { }
+                        outCreatedManholes?.Add(instHKT2);
+                    }
                 }
+                catch { }
             }
 
-            // 5. Đặt Hộp nối cống dọc (ở giữa)
+            // 5. Đặt Hộp nối cống kỹ thuật (ở giữa tuyến)
             FamilyInstance? instHN = null;
             double kcHnM = (data.KC_HN1 > 0.1) ? data.KC_HN1 : (UnitUtils.ConvertFromInternalUnits(totalLengthFeet, UnitTypeId.Meters) / 2.0);
             double distHnFeet = UnitUtils.ConvertToInternalUnits(kcHnM, UnitTypeId.Meters);
             XYZ ptHN = p1 + u * distHnFeet;
 
-            double bHnM = (data.B_HT1 > 0.1) ? data.B_HT1 : 1.40;
+            double bHnM = 0;
+            double tThanhM = 0;
+
+            // 1. Kiểm tra mapping Tab 02 hoặc data
+            if (data.B_HT1 > 0.1) bHnM = data.B_HT1;
+            if (familyParameterMappings != null)
+            {
+                foreach (var m in familyParameterMappings)
+                {
+                    string mName = (m.InternalName ?? "").ToUpperInvariant();
+                    if (mName == "HOP NOI CONG_B" || mName == "THAN GIENG_B" || mName == "B_BOX" || mName == "B_HT1")
+                    {
+                        string valStr = data.GetParamOverride(m.InternalName, m.CustomValue);
+                        if (double.TryParse(valStr.Replace("mm", "").Replace("m", "").Trim(), out double d) && d > 0.1)
+                        {
+                            bHnM = (Math.Abs(d) >= 10.0) ? d / 1000.0 : d;
+                        }
+                    }
+                    if (mName == "HOP NOI CONG_T" || mName == "THAN GIENG_B THANH" || mName == "T" || mName == "T_THAN")
+                    {
+                        string valStr = data.GetParamOverride(m.InternalName, m.CustomValue);
+                        if (double.TryParse(valStr.Replace("mm", "").Replace("m", "").Trim(), out double d) && d > 0.01)
+                        {
+                            tThanhM = (Math.Abs(d) >= 10.0) ? d / 1000.0 : d;
+                        }
+                    }
+                }
+            }
+
+            // 2. Tra cứu từ symHN nếu chưa có
+            if (bHnM <= 0.1 && symHN != null)
+            {
+                var pB = symHN.LookupParameter("HOP NOI CONG_B") ?? symHN.LookupParameter("THAN GIENG_B") ?? symHN.LookupParameter("B_BOX") ?? symHN.LookupParameter("B_HT1") ?? symHN.LookupParameter("B");
+                if (pB != null && pB.StorageType == StorageType.Double && pB.AsDouble() > 0.1)
+                {
+                    bHnM = UnitUtils.ConvertFromInternalUnits(pB.AsDouble(), UnitTypeId.Meters);
+                }
+            }
+            if (tThanhM <= 0.01 && symHN != null)
+            {
+                var pT = symHN.LookupParameter("HOP NOI CONG_T") ?? symHN.LookupParameter("THAN GIENG_B THANH") ?? symHN.LookupParameter("T") ?? symHN.LookupParameter("T_THAN");
+                if (pT != null && pT.StorageType == StorageType.Double && pT.AsDouble() > 0.01)
+                {
+                    tThanhM = UnitUtils.ConvertFromInternalUnits(pT.AsDouble(), UnitTypeId.Meters);
+                }
+            }
+
+            // 3. Fallback chuẩn theo loại Family:
+            if (bHnM <= 0.1)
+            {
+                bHnM = (symHN?.FamilyName?.Contains("HO KY THUAT") == true) ? 1.90 : 2.10;
+            }
+            if (tThanhM <= 0.01)
+            {
+                tThanhM = (symHN?.FamilyName?.Contains("HO KY THUAT") == true) ? 0.20 : 0.25;
+            }
+
             double bHnFeet = UnitUtils.ConvertToInternalUnits(bHnM, UnitTypeId.Meters);
-            double tThanhM = 0.20; // 200mm theo bản vẽ Hình 3
             double tThanhFeet = UnitUtils.ConvertToInternalUnits(tThanhM, UnitTypeId.Meters);
 
             if (symHN != null)
             {
-                instHN = doc.Create.NewFamilyInstance(ptHN, symHN, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
-                if (instHN != null)
+                try
                 {
-                    ElementTransformUtils.RotateElement(doc, instHN.Id, Line.CreateBound(ptHN, ptHN + XYZ.BasisZ), rotAngle);
-                    var pWidth = instHN.LookupParameter("B_HT1") ?? instHN.LookupParameter("B_HN") ?? instHN.LookupParameter("B");
-                    if (pWidth != null && !pWidth.IsReadOnly && pWidth.StorageType == StorageType.Double)
+                    instHN = CreateInstanceSafe(doc, ptHN, symHN);
+                    if (instHN != null)
                     {
-                        pWidth.Set(bHnFeet);
-                    }
-                    ApplyBimParametersToInstance(instHN, bimConfig, customBimParams, data, "Hộp nối cống");
+                        SafeRotate(doc, instHN.Id, ptHN, rotAngle);
+                    try { BimParameterService.SetElementBimProperties(instHN, bimConfig, "Hộp nối cống", "Hộp nối cống", null, null, ptHN.X, ptHN.Y, ptHN.Z); } catch { }
+                    try { BimParameterService.ApplyFamilyMappedParameters(instHN, familyParameterMappings, data, compHN?.CategoryType ?? "Hộp nối cống"); } catch { }
+                    try { BimParameterService.ApplyCustomBimParameters(instHN, customBimParams, data, "Hộp nối cống"); } catch { }
+                    try { TryApplyMaterial(doc, instHN, materialSettings, compHN?.CategoryType ?? "Hộp nối cống"); } catch { }
                     outCreatedManholes?.Add(instHN);
+
+                    // Tra cứu lại kích thước thực tế từ instHN sau khi gán tham số
+                    var pActualB = instHN.LookupParameter("HOP NOI CONG_B") ?? instHN.LookupParameter("THAN GIENG_B") ?? instHN.LookupParameter("B_BOX") ?? instHN.LookupParameter("B_HT1");
+                    if (pActualB != null && pActualB.StorageType == StorageType.Double && pActualB.AsDouble() > 0.1)
+                    {
+                        bHnFeet = pActualB.AsDouble();
+                    }
+                    var pActualT = instHN.LookupParameter("HOP NOI CONG_T") ?? instHN.LookupParameter("THAN GIENG_B THANH") ?? instHN.LookupParameter("T");
+                    if (pActualT != null && pActualT.StorageType == StorageType.Double && pActualT.AsDouble() > 0.01)
+                    {
+                        tThanhFeet = pActualT.AsDouble();
+                    }
                 }
             }
+            catch { }
+        }
 
             // Mép ngoài và mép thành trong của Hộp nối
             XYZ ptHN_Ngoai1 = ptHN - u * (bHnFeet / 2.0);
@@ -1457,10 +1828,14 @@ namespace InfraBIM.CulvertTool.Services
             XYZ ptHN_Trong2 = ptHN + u * (bHnFeet / 2.0 - tThanhFeet);
             XYZ ptHN_Ngoai2 = ptHN + u * (bHnFeet / 2.0);
 
-            // 6. Rải Đốt Cống Hộp Kỹ Thuật (Không co dãn, đúng L điển hình)
+            // 6. Rải Đốt Cống Hộp Kỹ Thuật (Hình 4):
+            // Rải đều với bước chuẩn (lStdFeet + jointGapFeet), chiều dài mỗi đốt đúng L điển hình (không co dãn).
+            // Đốt cống cuối cùng tiến về phía hộp nối và đâm xuyên vào khoang hộp nối đúng L điển hình.
             double lStdFeet = UnitUtils.ConvertToInternalUnits(lStdM > 0.1 ? lStdM : 1.0, UnitTypeId.Meters);
             double jointGapFeet = UnitUtils.ConvertToInternalUnits(jointGapM >= 0 ? jointGapM : 0.01, UnitTypeId.Meters);
             double stepFeet = lStdFeet + jointGapFeet;
+
+            bool hasVaiKeGlobal = CheckIfVaiKeEnabled(familyParameterMappings, data);
 
             FamilyInstance? firstBarrel1 = null;
             FamilyInstance? lastBarrel1 = null;
@@ -1469,132 +1844,383 @@ namespace InfraBIM.CulvertTool.Services
 
             if (symBarrel != null)
             {
-                // Đoạn 1: Từ P1 đến thành trong Hộp nối (ptHN_Trong1)
-                double dist1 = p1.DistanceTo(ptHN_Trong1);
-                int numBarrels1 = Math.Max(1, (int)Math.Ceiling(dist1 / stepFeet));
+                // Đoạn 1: Rải từ P1 tiến về phía Hộp nối
                 var barrels1 = new List<FamilyInstance>();
+                double maxDist1Feet = (ptHN_Trong1 - p1).GetLength();
+                int barrelIdx1 = 0;
 
-                for (int i = 0; i < numBarrels1; i++)
+                while (true)
                 {
-                    XYZ bStart, bEnd;
-                    if (i < numBarrels1 - 1)
+                    XYZ bStart = p1 + u * (barrelIdx1 * stepFeet);
+                    if ((bStart - p1).GetLength() >= maxDist1Feet && barrelIdx1 > 0)
                     {
-                        bStart = p1 + u * (i * stepFeet);
-                        bEnd = bStart + u * lStdFeet;
+                        break;
                     }
-                    else
-                    {
-                        // Đốt cống cuối cùng chạm vào thành trong hộp nối, đúng chiều dài L điển hình chuẩn
-                        bEnd = ptHN_Trong1;
-                        bStart = ptHN_Trong1 - u * lStdFeet;
-                    }
+                    XYZ bEnd = bStart + u * lStdFeet;
 
                     var bInst = CreateAdaptiveInstanceSafe(doc, symBarrel, new List<XYZ> { bStart, bEnd });
                     if (bInst != null)
                     {
-                        ApplyBimParametersToInstance(bInst, bimConfig, customBimParams, data, $"Đốt cống CKT Đ1-{i + 1}");
+                        string[] vaiKeParams = new[] { 
+                            "VAI", "CO VAI KE", "CO_VAI_KE", "VAI KE", "VAI_KE", 
+                            "CO VAI", "CO_VAI", "CO TAI", "CO_TAI", "TAI",
+                            "TAI CONG", "TAI_CONG", "CỐNG HỘP CÓ TAI", "CONG HOP CO TAI"
+                        };
+                        foreach (var vkName in vaiKeParams)
+                        {
+                            var pInst = bInst.LookupParameter(vkName);
+                            if (pInst != null && !pInst.IsReadOnly && pInst.StorageType == StorageType.Integer)
+                            {
+                                pInst.Set(hasVaiKeGlobal ? 1 : 0);
+                            }
+                        }
+
+                        string tenCK = $"Đốt cống CKT Đ1-{barrelIdx1 + 1}";
+                        try { BimParameterService.SetElementBimProperties(bInst, bimConfig, tenCK, "Thân cống", null, null, bStart.X, bStart.Y, bStart.Z); } catch { }
+                        try { BimParameterService.ApplyFamilyMappedParameters(bInst, familyParameterMappings, data, compBarrel?.CategoryType ?? "Thân cống"); } catch { }
+                        try { BimParameterService.ApplyCustomBimParameters(bInst, customBimParams, data, "Thân cống"); } catch { }
+                        try { TryApplyMaterial(doc, bInst, materialSettings, compBarrel?.CategoryType ?? "Thân cống"); } catch { }
+
                         barrels1.Add(bInst);
                         outCreatedBarrels?.Add(bInst);
                     }
+
+                    barrelIdx1++;
+                    if (barrelIdx1 > 200 || (bStart - p1).GetLength() >= (ptHN - p1).GetLength())
+                        break;
                 }
                 firstBarrel1 = barrels1.FirstOrDefault();
                 lastBarrel1 = barrels1.LastOrDefault();
 
-                // Đoạn 2: Từ P2 đến thành trong Hộp nối (ptHN_Trong2)
-                double dist2 = p2.DistanceTo(ptHN_Trong2);
-                int numBarrels2 = Math.Max(1, (int)Math.Ceiling(dist2 / stepFeet));
+                // Đoạn 2: Rải từ P2 tiến về phía Hộp nối
                 var barrels2 = new List<FamilyInstance>();
+                double maxDist2Feet = (ptHN_Trong2 - p2).GetLength();
+                int barrelIdx2 = 0;
 
-                for (int i = 0; i < numBarrels2; i++)
+                while (true)
                 {
-                    XYZ bStart, bEnd;
-                    if (i < numBarrels2 - 1)
+                    XYZ bStart = p2 - u * (barrelIdx2 * stepFeet);
+                    if ((bStart - p2).GetLength() >= maxDist2Feet && barrelIdx2 > 0)
                     {
-                        bStart = p2 - u * (i * stepFeet);
-                        bEnd = bStart - u * lStdFeet;
+                        break;
                     }
-                    else
-                    {
-                        // Đốt cống cuối cùng chạm vào thành trong hộp nối, đúng chiều dài L điển hình chuẩn
-                        bEnd = ptHN_Trong2;
-                        bStart = ptHN_Trong2 + u * lStdFeet;
-                    }
+                    XYZ bEnd = bStart - u * lStdFeet;
 
-                    // Đảm bảo thứ tự điểm xuôi theo chiều tuyến để Adaptive component đúng hình học
                     var bInst = CreateAdaptiveInstanceSafe(doc, symBarrel, new List<XYZ> { bEnd, bStart });
                     if (bInst != null)
                     {
-                        ApplyBimParametersToInstance(bInst, bimConfig, customBimParams, data, $"Đốt cống CKT Đ2-{i + 1}");
+                        string[] vaiKeParams = new[] { 
+                            "VAI", "CO VAI KE", "CO_VAI_KE", "VAI KE", "VAI_KE", 
+                            "CO VAI", "CO_VAI", "CO TAI", "CO_TAI", "TAI",
+                            "TAI CONG", "TAI_CONG", "CỐNG HỘP CÓ TAI", "CONG HOP CO TAI"
+                        };
+                        foreach (var vkName in vaiKeParams)
+                        {
+                            var pInst = bInst.LookupParameter(vkName);
+                            if (pInst != null && !pInst.IsReadOnly && pInst.StorageType == StorageType.Integer)
+                            {
+                                pInst.Set(hasVaiKeGlobal ? 1 : 0);
+                            }
+                        }
+
+                        string tenCK = $"Đốt cống CKT Đ2-{barrelIdx2 + 1}";
+                        try { BimParameterService.SetElementBimProperties(bInst, bimConfig, tenCK, "Thân cống", null, null, bEnd.X, bEnd.Y, bEnd.Z); } catch { }
+                        try { BimParameterService.ApplyFamilyMappedParameters(bInst, familyParameterMappings, data, compBarrel?.CategoryType ?? "Thân cống"); } catch { }
+                        try { BimParameterService.ApplyCustomBimParameters(bInst, customBimParams, data, "Thân cống"); } catch { }
+                        try { TryApplyMaterial(doc, bInst, materialSettings, compBarrel?.CategoryType ?? "Thân cống"); } catch { }
+
                         barrels2.Add(bInst);
                         outCreatedBarrels?.Add(bInst);
                     }
+
+                    barrelIdx2++;
+                    if (barrelIdx2 > 200 || (bStart - p2).GetLength() >= (p2 - ptHN).GetLength())
+                        break;
                 }
                 firstBarrel2 = barrels2.FirstOrDefault();
                 lastBarrel2 = barrels2.LastOrDefault();
             }
 
-            // 7. Rải Bê tông lót & Đá dăm đệm từ P1 -> Mép ngoài HN, và từ P2 -> Mép ngoài HN
+            // 6.1 Tự động nhận diện hướng cống đâm vào và điều khiển tham số Ẩn Trái / Ẩn Phải cho Hố kỹ thuật và Hộp nối
+            AutoConfigureManholePenetrationVisibility(doc, instHKT1, ptHKT1, rotAngle, new[] { firstBarrel1 }, data, compHKT?.CategoryType ?? "Hố kỹ thuật", isMiddleJointBox: false);
+            AutoConfigureManholePenetrationVisibility(doc, instHKT2, ptHKT2, rotAngle + Math.PI, new[] { firstBarrel2 }, data, compHKT?.CategoryType ?? "Hố kỹ thuật", isMiddleJointBox: false);
+            AutoConfigureManholePenetrationVisibility(doc, instHN, ptHN, rotAngle, null, data, compHN?.CategoryType ?? "Hộp nối cống", isMiddleJointBox: true);
+
+            // 7. Rải Bê tông lót & Đá dăm đệm (Hình 2 & Yêu cầu 3):
+            // Điểm 1 adaptive đặt tại mép ngoài Hố kỹ thuật (ptHKT1_mepNgoai) đến mép ngoài Hộp nối (ptHN_Ngoai1).
+            // Phía bên kia đặt từ mép ngoài Hộp nối (ptHN_Ngoai2) đến mép ngoài Hố kỹ thuật 2 (ptHKT2_mepNgoai).
             double offsetZBtlFeet = UnitUtils.ConvertToInternalUnits(offsetZBtlM, UnitTypeId.Meters);
             double offsetZDddFeet = UnitUtils.ConvertToInternalUnits(offsetZDddM, UnitTypeId.Meters);
 
-            // Đoạn 1: P1 -> ptHN_Ngoai1
+            XYZ ptHKT1_mepNgoai = ptHKT1 + u * (thanGiengBFeet / 2.0);
+            XYZ ptHKT2_mepNgoai = ptHKT2 - u * (thanGiengBFeet / 2.0);
+
+            // Đoạn 1: ptHKT1_mepNgoai -> ptHN_Ngoai1
             FamilyInstance? instBTL1 = null;
             FamilyInstance? instDDD1 = null;
             if (symBTL != null)
             {
-                instBTL1 = CreateAdaptiveInstanceSafe(doc, symBTL, new List<XYZ> { p1 + XYZ.BasisZ * offsetZBtlFeet, ptHN_Ngoai1 + XYZ.BasisZ * offsetZBtlFeet });
-                if (instBTL1 != null) outCreatedBeddings?.Add(instBTL1);
+                instBTL1 = CreateAdaptiveInstanceSafe(doc, symBTL, new List<XYZ> { 
+                    ptHKT1_mepNgoai + XYZ.BasisZ * offsetZBtlFeet, 
+                    ptHN_Ngoai1 + XYZ.BasisZ * offsetZBtlFeet 
+                });
+                if (instBTL1 != null)
+                {
+                    try { BimParameterService.ApplyFamilyMappedParameters(instBTL1, familyParameterMappings, data, compBTL?.CategoryType ?? "Bê tông lót"); } catch { }
+                    outCreatedBeddings?.Add(instBTL1);
+                }
             }
             if (symDDD != null)
             {
-                instDDD1 = CreateAdaptiveInstanceSafe(doc, symDDD, new List<XYZ> { p1 + XYZ.BasisZ * offsetZDddFeet, ptHN_Ngoai1 + XYZ.BasisZ * offsetZDddFeet });
-                if (instDDD1 != null) outCreatedBeddings?.Add(instDDD1);
+                instDDD1 = CreateAdaptiveInstanceSafe(doc, symDDD, new List<XYZ> { 
+                    ptHKT1_mepNgoai + XYZ.BasisZ * offsetZDddFeet, 
+                    ptHN_Ngoai1 + XYZ.BasisZ * offsetZDddFeet 
+                });
+                if (instDDD1 != null)
+                {
+                    try { BimParameterService.ApplyFamilyMappedParameters(instDDD1, familyParameterMappings, data, compDDD?.CategoryType ?? "Đá dăm đệm"); } catch { }
+                    outCreatedBeddings?.Add(instDDD1);
+                }
             }
 
-            // Cut Geometry tại điểm 1: Hố kỹ thuật 1 cắt BTL và Đá dăm đệm
-            if (instHKT1 != null)
-            {
-                if (instBTL1 != null) TryCutGeometrySafe(doc, instHKT1, instBTL1);
-                if (instDDD1 != null) TryCutGeometrySafe(doc, instHKT1, instDDD1);
-            }
-
-            // Đoạn 2: P2 -> ptHN_Ngoai2
+            // Đoạn 2: ptHKT2_mepNgoai -> ptHN_Ngoai2 (Điểm 1 adaptive tại mép ngoài Hố kỹ thuật)
             FamilyInstance? instBTL2 = null;
             FamilyInstance? instDDD2 = null;
             if (symBTL != null)
             {
-                instBTL2 = CreateAdaptiveInstanceSafe(doc, symBTL, new List<XYZ> { ptHN_Ngoai2 + XYZ.BasisZ * offsetZBtlFeet, p2 + XYZ.BasisZ * offsetZBtlFeet });
-                if (instBTL2 != null) outCreatedBeddings?.Add(instBTL2);
+                instBTL2 = CreateAdaptiveInstanceSafe(doc, symBTL, new List<XYZ> { 
+                    ptHKT2_mepNgoai + XYZ.BasisZ * offsetZBtlFeet, 
+                    ptHN_Ngoai2 + XYZ.BasisZ * offsetZBtlFeet 
+                });
+                if (instBTL2 != null)
+                {
+                    try { BimParameterService.ApplyFamilyMappedParameters(instBTL2, familyParameterMappings, data, compBTL?.CategoryType ?? "Bê tông lót"); } catch { }
+                    outCreatedBeddings?.Add(instBTL2);
+                }
             }
             if (symDDD != null)
             {
-                instDDD2 = CreateAdaptiveInstanceSafe(doc, symDDD, new List<XYZ> { ptHN_Ngoai2 + XYZ.BasisZ * offsetZDddFeet, p2 + XYZ.BasisZ * offsetZDddFeet });
-                if (instDDD2 != null) outCreatedBeddings?.Add(instDDD2);
+                instDDD2 = CreateAdaptiveInstanceSafe(doc, symDDD, new List<XYZ> { 
+                    ptHKT2_mepNgoai + XYZ.BasisZ * offsetZDddFeet, 
+                    ptHN_Ngoai2 + XYZ.BasisZ * offsetZDddFeet 
+                });
+                if (instDDD2 != null)
+                {
+                    try { BimParameterService.ApplyFamilyMappedParameters(instDDD2, familyParameterMappings, data, compDDD?.CategoryType ?? "Đá dăm đệm"); } catch { }
+                    outCreatedBeddings?.Add(instDDD2);
+                }
             }
 
-            // Cut Geometry tại điểm 2: Hố kỹ thuật 2 cắt BTL và Đá dăm đệm
-            if (instHKT2 != null)
+            // 8. Cut Geometry toàn bộ cấu kiện khi performCutGeometry == true
+            if (performCutGeometry)
             {
-                if (instBTL2 != null) TryCutGeometrySafe(doc, instHKT2, instBTL2);
-                if (instDDD2 != null) TryCutGeometrySafe(doc, instHKT2, instDDD2);
+                try { doc.Regenerate(); } catch { }
+
+                // Cut Geometry tại điểm 1: Hố kỹ thuật 1 cắt BTL và Đá dăm đệm
+                if (instHKT1 != null)
+                {
+                    if (instBTL1 != null) TryCutGeometrySafe(doc, instHKT1, instBTL1);
+                    if (instDDD1 != null) TryCutGeometrySafe(doc, instHKT1, instDDD1);
+                }
+
+                // Cut Geometry tại điểm 2: Hố kỹ thuật 2 cắt BTL và Đá dăm đệm
+                if (instHKT2 != null)
+                {
+                    if (instBTL2 != null) TryCutGeometrySafe(doc, instHKT2, instBTL2);
+                    if (instDDD2 != null) TryCutGeometrySafe(doc, instHKT2, instDDD2);
+                }
+
+                // Hố kỹ thuật 1 cut với đốt cống gần nhất
+                if (instHKT1 != null && firstBarrel1 != null)
+                {
+                    TryCutGeometrySafe(doc, instHKT1, firstBarrel1);
+                }
+                // Hố kỹ thuật 2 cut với đốt cống gần nhất
+                if (instHKT2 != null && firstBarrel2 != null)
+                {
+                    TryCutGeometrySafe(doc, instHKT2, firstBarrel2);
+                }
+                // Hộp nối ở giữa cut với 2 đốt cống gần nhất trái và phải, và cut với BTL / Đá dăm đệm
+                if (instHN != null)
+                {
+                    if (lastBarrel1 != null) TryCutGeometrySafe(doc, instHN, lastBarrel1);
+                    if (lastBarrel2 != null) TryCutGeometrySafe(doc, instHN, lastBarrel2);
+                    if (instBTL1 != null) TryCutGeometrySafe(doc, instHN, instBTL1);
+                    if (instDDD1 != null) TryCutGeometrySafe(doc, instHN, instDDD1);
+                    if (instBTL2 != null) TryCutGeometrySafe(doc, instHN, instBTL2);
+                    if (instDDD2 != null) TryCutGeometrySafe(doc, instHN, instDDD2);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Tự động nhận diện hướng cống hộp đâm vào Hố kỹ thuật và điều khiển các tham số ẩn/hiện thành (ẨN TRÁI / ẨN PHẢI)
+        /// Hỗ trợ cả Instance Parameters và Subcomponents (nested families như HO GA_THAN GIENG)
+        /// </summary>
+        private static void AutoConfigureManholePenetrationVisibility(
+            Document doc,
+            FamilyInstance? manholeInst,
+            XYZ ptManhole,
+            double manholeRotAngle,
+            IEnumerable<FamilyInstance?>? barrels,
+            CulvertRowData data,
+            string categoryName,
+            bool isMiddleJointBox = false)
+        {
+            if (manholeInst == null || !manholeInst.IsValidObject) return;
+
+            bool hasPenetrationLeft = false;
+            bool hasPenetrationRight = false;
+
+            if (isMiddleJointBox)
+            {
+                // Hộp nối cống ở giữa tuyến kỹ thuật luôn có cống hộp đâm xuyên qua cả 2 bên Trái và Phải
+                hasPenetrationLeft = true;
+                hasPenetrationRight = true;
+            }
+            else
+            {
+                // Đối với Hố kỹ thuật ở 2 đầu tuyến (HKT1 và HKT2):
+                // Tính toán hướng vector của cống gần nhất chiếu lên hệ trục tọa độ cục bộ của Hố kỹ thuật
+                XYZ uLocalX = new XYZ(Math.Cos(manholeRotAngle), Math.Sin(manholeRotAngle), 0.0);
+
+                if (barrels != null)
+                {
+                    foreach (var b in barrels)
+                    {
+                        if (b == null || !b.IsValidObject) continue;
+                        XYZ? bPt = null;
+                        if (AdaptiveComponentInstanceUtils.IsAdaptiveComponentInstance(b))
+                        {
+                            var ptIds = AdaptiveComponentInstanceUtils.GetInstancePlacementPointElementRefIds(b);
+                            if (ptIds != null && ptIds.Count > 0)
+                            {
+                                if (doc.GetElement(ptIds[0]) is ReferencePoint rp0)
+                                {
+                                    bPt = rp0.Position;
+                                }
+                            }
+                        }
+                        if (bPt == null && b.Location is LocationPoint lp)
+                        {
+                            bPt = lp.Point;
+                        }
+
+                        if (bPt != null)
+                        {
+                            XYZ toBarrel = bPt - ptManhole;
+                            double dotX = toBarrel.DotProduct(uLocalX);
+                            if (dotX > 0.05)
+                            {
+                                hasPenetrationRight = true;
+                            }
+                            else if (dotX < -0.05)
+                            {
+                                hasPenetrationLeft = true;
+                            }
+                        }
+                    }
+                }
+
+                // Nếu barrels rỗng hoặc không đo được tọa độ, mặc định cống đâm vào phía trục X cục bộ
+                if (!hasPenetrationLeft && !hasPenetrationRight)
+                {
+                    hasPenetrationRight = true;
+                }
             }
 
-            // 8. Cut Geometry toàn bộ cấu kiện:
-            // - Hố kỹ thuật 1 cut với đốt cống gần nhất
-            if (instHKT1 != null && firstBarrel1 != null)
+            ApplyOpeningVisibilityParams(doc, manholeInst, hasPenetrationLeft, hasPenetrationRight, data, categoryName);
+        }
+
+        private static void ApplyOpeningVisibilityParams(
+            Document doc,
+            FamilyInstance inst,
+            bool hideLeft,
+            bool hideRight,
+            CulvertRowData rowData,
+            string categoryName)
+        {
+            if (inst == null || !inst.IsValidObject) return;
+
+            bool? userOverrideLeft = GetUserYesNoOverride(rowData, categoryName, "ẨN TRÁI", "AN TRAI", "ẨN_TRÁI", "AN_TRAI", "TRÁI", "TRAI");
+            bool? userOverrideRight = GetUserYesNoOverride(rowData, categoryName, "ẨN PHẢI", "AN PHAI", "ẨN_PHẢI", "AN_PHAI", "PHẢI", "PHAI");
+
+            bool finalHideLeft = userOverrideLeft ?? hideLeft;
+            bool finalHideRight = userOverrideRight ?? hideRight;
+
+            // 1. Áp dụng trực tiếp trên FamilyInstance inst
+            SetInstanceOrSymbolVisibility(inst, finalHideLeft, finalHideRight);
+
+            // 2. Áp dụng cho các nested / sub-components (ví dụ HO GA_THAN GIENG lồng bên trong)
+            try
             {
-                TryCutGeometrySafe(doc, instHKT1, firstBarrel1);
+                var subIds = inst.GetSubComponentIds();
+                if (subIds != null && subIds.Count > 0)
+                {
+                    foreach (var sId in subIds)
+                    {
+                        if (doc.GetElement(sId) is FamilyInstance subInst && subInst.IsValidObject)
+                        {
+                            SetInstanceOrSymbolVisibility(subInst, finalHideLeft, finalHideRight);
+                        }
+                    }
+                }
             }
-            // - Hố kỹ thuật 2 cut với đốt cống gần nhất
-            if (instHKT2 != null && firstBarrel2 != null)
+            catch { }
+        }
+
+        private static bool? GetUserYesNoOverride(CulvertRowData rowData, string? categoryName, params string[] paramNames)
+        {
+            if (rowData == null || rowData.ParameterOverrides == null) return null;
+            foreach (var name in paramNames)
             {
-                TryCutGeometrySafe(doc, instHKT2, firstBarrel2);
+                string val = rowData.GetParamOverride(categoryName, name, string.Empty);
+                if (!string.IsNullOrWhiteSpace(val))
+                {
+                    string trimmed = val.Trim().ToLowerInvariant();
+                    if (trimmed == "1" || trimmed == "true" || trimmed == "có" || trimmed == "co" || trimmed == "yes")
+                        return true;
+                    if (trimmed == "0" || trimmed == "false" || trimmed == "không" || trimmed == "khong" || trimmed == "no")
+                        return false;
+                }
             }
-            // - Hộp nối ở giữa cut với 2 đốt cống gần nhất trái và phải
-            if (instHN != null)
+            return null;
+        }
+
+        private static void SetInstanceOrSymbolVisibility(FamilyInstance inst, bool hideLeft, bool hideRight)
+        {
+            if (inst == null || !inst.IsValidObject) return;
+
+            string[] leftParamNames = new[] {
+                "ẨN TRÁI", "AN TRAI", "ẨN_TRÁI", "AN_TRAI", "TRÁI", "TRAI",
+                "ẨN VÁCH TRÁI", "ẨN THÀNH TRÁI", "CỬA TRÁI", "CUA TRAI", "CỬA_TRÁI", "CUA_TRAI",
+                "MỞ TRÁI", "MO TRAI", "MỞ_TRÁI", "MO_TRAI", "HIDE_LEFT", "OPEN_LEFT"
+            };
+
+            string[] rightParamNames = new[] {
+                "ẨN PHẢI", "AN PHAI", "ẨN_PHẢI", "AN_PHAI", "PHẢI", "PHAI",
+                "ẨN VÁCH PHẢI", "ẨN THÀNH PHẢI", "CỬA PHẢI", "CUA PHAI", "CỬA_PHẢI", "CUA_PHAI",
+                "MỞ PHẢI", "MO PHAI", "MỞ_PHẢI", "MO_PHAI", "HIDE_RIGHT", "OPEN_RIGHT"
+            };
+
+            foreach (var lpName in leftParamNames)
             {
-                if (lastBarrel1 != null) TryCutGeometrySafe(doc, instHN, lastBarrel1);
-                if (lastBarrel2 != null) TryCutGeometrySafe(doc, instHN, lastBarrel2);
+                var p = inst.LookupParameter(lpName) ?? inst.Symbol?.LookupParameter(lpName);
+                if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Integer)
+                {
+                    p.Set(hideLeft ? 1 : 0);
+                    break;
+                }
+            }
+
+            foreach (var rpName in rightParamNames)
+            {
+                var p = inst.LookupParameter(rpName) ?? inst.Symbol?.LookupParameter(rpName);
+                if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Integer)
+                {
+                    p.Set(hideRight ? 1 : 0);
+                    break;
+                }
             }
         }
 
@@ -1858,103 +2484,135 @@ namespace InfraBIM.CulvertTool.Services
 
             if (bbCut != null && bbCutter != null)
             {
-                double margin = 0.20; // 20cm margin dung sai tiếp xúc
+                double margin = 1.50; // ~45cm margin trong Revit internal units (feet)
                 bool bboxOverlap = (bbCut.Min.X - margin <= bbCutter.Max.X && bbCut.Max.X + margin >= bbCutter.Min.X) &&
                                    (bbCut.Min.Y - margin <= bbCutter.Max.Y && bbCut.Max.Y + margin >= bbCutter.Min.Y) &&
                                    (bbCut.Min.Z - margin <= bbCutter.Max.Z && bbCut.Max.Z + margin >= bbCutter.Min.Z);
                 if (!bboxOverlap) return false;
             }
 
-            // 2. Sử dụng SubTransaction để cô lập hoàn toàn từng thao tác Cut, đảm bảo 1 lỗi không bao giờ làm hỏng Transaction lớn
-            using (var sub = new SubTransaction(doc))
+            // 2. Kiểm tra nếu 2 đối tượng đã được Cut trước đó
+            try
             {
-                sub.Start();
-                try
+                var cuttingSolids = SolidSolidCutUtils.GetCuttingSolids(eToCut);
+                if (cuttingSolids != null && cuttingSolids.Contains(eCutter.Id))
                 {
-                    // Nếu 2 đối tượng đã được Cut trước đó
-                    try
-                    {
-                        var cuttingSolids = SolidSolidCutUtils.GetCuttingSolids(eToCut);
-                        if (cuttingSolids != null && cuttingSolids.Contains(eCutter.Id))
-                        {
-                            sub.Commit();
-                            return true;
-                        }
-                    }
-                    catch { }
-
-                    // QUAN TRỌNG: Nếu 2 đối tượng đang bị Join trước đó, Revit sẽ báo lỗi CutFailures.CannotCutJoinedElement
-                    // Do đó bắt buộc Unjoin trước khi thực hiện Cut Geometry!
-                    try
-                    {
-                        if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
-                        {
-                            JoinGeometryUtils.UnjoinGeometry(doc, eToCut, eCutter);
-                        }
-                    }
-                    catch { }
-
-                    bool cutSuccess = false;
-
-                    // ƯU TIÊN 1: Thử Cut Geometry chuẩn của Revit (SolidSolidCutUtils)
-                    // Cấu kiện 1 (eToCut - Cửa xả) bị khoét bởi Cấu kiện 2 (eCutter - Cống hộp)
-                    try
-                    {
-                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
-                        cutSuccess = true;
-                    }
-                    catch { }
-
-                    if (!cutSuccess)
-                    {
-                        try
-                        {
-                            SolidSolidCutUtils.AddCutBetweenSolids(doc, eCutter, eToCut);
-                            cutSuccess = true;
-                        }
-                        catch { }
-                    }
-
-                    // ƯU TIÊN 2: Nếu SolidSolidCut không hỗ trợ trực tiếp Family Adaptive này trong Project,
-                    // sử dụng JoinGeometryUtils và SwitchJoinOrder (chuẩn Revit boolean CSG)
-                    if (!cutSuccess)
-                    {
-                        try
-                        {
-                            if (!JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
-                            {
-                                JoinGeometryUtils.JoinGeometry(doc, eToCut, eCutter);
-                            }
-                            if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
-                            {
-                                // Đảm bảo eCutter (Cống hộp) là đối tượng cắt (cutting element)
-                                if (!JoinGeometryUtils.IsCuttingElementInJoin(doc, eCutter, eToCut))
-                                {
-                                    JoinGeometryUtils.SwitchJoinOrder(doc, eToCut, eCutter);
-                                }
-                                cutSuccess = true;
-                            }
-                        }
-                        catch { }
-                    }
-
-                    if (cutSuccess)
-                    {
-                        sub.Commit();
-                        return true;
-                    }
-                    else
-                    {
-                        sub.RollBack();
-                        return false;
-                    }
-                }
-                catch
-                {
-                    try { sub.RollBack(); } catch { }
-                    return false;
+                    return true;
                 }
             }
+            catch { }
+
+            // 3. Unjoin toàn bộ các đối tượng đã Join với eToCut hoặc eCutter để triệt tiêu lỗi "Can't cut joined element"
+            try
+            {
+                var joinedToCut = JoinGeometryUtils.GetJoinedElements(doc, eToCut);
+                if (joinedToCut != null && joinedToCut.Count > 0)
+                {
+                    foreach (var jId in joinedToCut.ToList())
+                    {
+                        var jElem = doc.GetElement(jId);
+                        if (jElem != null && jElem.IsValidObject)
+                        {
+                            JoinGeometryUtils.UnjoinGeometry(doc, eToCut, jElem);
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            try
+            {
+                var joinedCutter = JoinGeometryUtils.GetJoinedElements(doc, eCutter);
+                if (joinedCutter != null && joinedCutter.Count > 0)
+                {
+                    foreach (var jId in joinedCutter.ToList())
+                    {
+                        var jElem = doc.GetElement(jId);
+                        if (jElem != null && jElem.IsValidObject)
+                        {
+                            JoinGeometryUtils.UnjoinGeometry(doc, eCutter, jElem);
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
+                {
+                    JoinGeometryUtils.UnjoinGeometry(doc, eToCut, eCutter);
+                }
+            }
+            catch { }
+
+            bool cutSuccess = false;
+
+            // ƯU TIÊN 1: Thử Cut Geometry chuẩn của Revit (SolidSolidCutUtils)
+            // Cấu kiện 1 (eToCut - Tường đầu / Cửa xả / Hố kỹ thuật) bị khoét bởi Cấu kiện 2 (eCutter - Cống hộp)
+            try
+            {
+                if (SolidSolidCutUtils.CanElementCutElement(eCutter, eToCut, out _))
+                {
+                    SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
+                    cutSuccess = true;
+                }
+            }
+            catch { }
+
+            if (!cutSuccess)
+            {
+                try
+                {
+                    if (SolidSolidCutUtils.CanElementCutElement(eToCut, eCutter, out _))
+                    {
+                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eCutter, eToCut);
+                        cutSuccess = true;
+                    }
+                }
+                catch { }
+            }
+
+            // ƯU TIÊN 2: Nếu SolidSolidCut không hỗ trợ trực tiếp Family Adaptive này trong Project,
+            // sử dụng JoinGeometryUtils và SwitchJoinOrder (chuẩn Revit boolean CSG)
+            if (!cutSuccess)
+            {
+                try
+                {
+                    if (!JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
+                    {
+                        JoinGeometryUtils.JoinGeometry(doc, eToCut, eCutter);
+                    }
+                    if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
+                    {
+                        // Đảm bảo eCutter (Cống hộp) là đối tượng cắt (cutting element)
+                        if (!JoinGeometryUtils.IsCuttingElementInJoin(doc, eCutter, eToCut))
+                        {
+                            JoinGeometryUtils.SwitchJoinOrder(doc, eToCut, eCutter);
+                        }
+                        cutSuccess = true;
+                    }
+                }
+                catch { }
+            }
+
+            return cutSuccess;
+        }
+
+        internal static bool IsVaiKeOrTaiParamName(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            string n = name.Trim().ToUpperInvariant();
+            return n == "VAI" || n == "TAI" ||
+                   n == "CO VAI" || n == "CO_VAI" ||
+                   n == "CO VAI KE" || n == "CO_VAI_KE" ||
+                   n == "CO TAI" || n == "CO_TAI" ||
+                   n == "TAI CONG" || n == "TAI_CONG" ||
+                   n == "CONG HOP CO TAI" || n == "CỐNG HỘP CÓ TAI" ||
+                   n.Contains("VAI KE") || n.Contains("VAI_KE") ||
+                   n.Contains("VAI KÊ") || n.Contains("VAI_KÊ") ||
+                   n.Contains("TAI CỐNG") || n.Contains("TAI_CONG") ||
+                   n.Contains("CÓ TAI") || n.Contains("CO TAI");
         }
 
         private static bool CheckIfVaiKeEnabled(
@@ -1964,29 +2622,27 @@ namespace InfraBIM.CulvertTool.Services
             if (familyParameterMappings != null)
             {
                 var item = familyParameterMappings.FirstOrDefault(m =>
-                {
-                    string name = (m.InternalName ?? "").ToUpperInvariant();
-                    string disp = (m.DisplayName ?? "").ToUpperInvariant();
-                    return name == "CO VAI KE" || name == "CO_VAI_KE" || name.Contains("VAI KE") || name.Contains("VAI_KE") ||
-                           disp.Contains("VAI KE") || disp.Contains("VAI_KE");
-                });
+                    IsVaiKeOrTaiParamName(m.InternalName) || IsVaiKeOrTaiParamName(m.DisplayName));
 
                 if (item != null)
                 {
-                    string val = data.GetParamOverride(item.InternalName, item.CustomValue);
-                    val = (val ?? "").Trim().ToLowerInvariant();
-                    if (val == "1" || val == "yes" || val == "true" || val == "có" || val == "co")
-                    {
-                        return true;
-                    }
-                    if (val == "0" || val == "no" || val == "false" || val == "không" || val == "khong")
+                    // Nếu người dùng BỎ TICK (IsSelected == false) => chắc chắn TẮT vai kê / tai cống
+                    if (!item.IsSelected)
                     {
                         return false;
                     }
-                    if (item.IsSelected)
+
+                    string val = data.GetParamOverride(item.InternalName, item.CustomValue);
+                    val = (val ?? "").Trim().ToLowerInvariant();
+                    if (val == "0" || val == "no" || val == "false" || val == "không" || val == "khong" || val == "tắt" || val == "tat")
+                    {
+                        return false;
+                    }
+                    if (val == "1" || val == "yes" || val == "true" || val == "có" || val == "co" || val == "bật" || val == "bat")
                     {
                         return true;
                     }
+                    return item.IsSelected;
                 }
             }
 
@@ -1994,17 +2650,16 @@ namespace InfraBIM.CulvertTool.Services
             {
                 foreach (var kvp in data.ParameterOverrides)
                 {
-                    string key = kvp.Key.ToUpperInvariant();
-                    if (key == "CO VAI KE" || key == "CO_VAI_KE" || key.Contains("VAI KE") || key.Contains("VAI_KE"))
+                    if (IsVaiKeOrTaiParamName(kvp.Key))
                     {
                         string val = (kvp.Value ?? "").Trim().ToLowerInvariant();
-                        if (val == "1" || val == "yes" || val == "true" || val == "có" || val == "co")
-                        {
-                            return true;
-                        }
-                        if (val == "0" || val == "no" || val == "false" || val == "không" || val == "khong")
+                        if (val == "0" || val == "no" || val == "false" || val == "không" || val == "khong" || val == "tắt" || val == "tat")
                         {
                             return false;
+                        }
+                        if (val == "1" || val == "yes" || val == "true" || val == "có" || val == "co" || val == "bật" || val == "bat")
+                        {
+                            return true;
                         }
                     }
                 }
@@ -2615,9 +3270,28 @@ namespace InfraBIM.CulvertTool.Services
 
                 try
                 {
-                    // Gán tham số CO VAI KE theo đúng vị trí đốt cống (Yêu cầu 3 & 5)
-                    SetParamYesNo(inst, "CO VAI KE", hasVaiKe ? 1 : 0);
-                    SetParamYesNo(inst, "CO_VAI_KE", hasVaiKe ? 1 : 0);
+                    // Gán tham số VAI / CO VAI KE / TAI theo đúng vị trí đốt cống
+                    string[] vaiKeParams = new[] { 
+                        "VAI", "CO VAI KE", "CO_VAI_KE", "VAI KE", "VAI_KE", 
+                        "CO VAI", "CO_VAI", "CO TAI", "CO_TAI", "TAI",
+                        "TAI CONG", "TAI_CONG", "CỐNG HỘP CÓ TAI", "CONG HOP CO TAI"
+                    };
+                    foreach (var vkName in vaiKeParams)
+                    {
+                        var pInst = inst.LookupParameter(vkName);
+                        if (pInst != null && !pInst.IsReadOnly && pInst.StorageType == StorageType.Integer)
+                        {
+                            pInst.Set(hasVaiKe ? 1 : 0);
+                        }
+                        else if (pInst == null && inst.Symbol != null)
+                        {
+                            var pSym = inst.Symbol.LookupParameter(vkName);
+                            if (pSym != null && !pSym.IsReadOnly && pSym.StorageType == StorageType.Integer)
+                            {
+                                try { pSym.Set(hasVaiKe ? 1 : 0); } catch { }
+                            }
+                        }
+                    }
                 }
                 catch { }
 
@@ -2673,6 +3347,8 @@ namespace InfraBIM.CulvertTool.Services
         public FailureProcessingResult PreprocessFailures(FailuresAccessor failuresAccessor)
         {
             var failureMessages = failuresAccessor.GetFailureMessages();
+            bool hasUnresolvedError = false;
+            bool resolvedAny = false;
             foreach (var fmsg in failureMessages)
             {
                 var severity = fmsg.GetSeverity();
@@ -2685,9 +3361,22 @@ namespace InfraBIM.CulvertTool.Services
                     if (failuresAccessor.IsFailureResolutionPermitted(fmsg))
                     {
                         failuresAccessor.ResolveFailure(fmsg);
-                        return FailureProcessingResult.ProceedWithCommit;
+                        resolvedAny = true;
+                    }
+                    else
+                    {
+                        hasUnresolvedError = true;
                     }
                 }
+            }
+            if (hasUnresolvedError)
+            {
+                // Triệt tiêu hoàn toàn hộp thoại modal Error không thể bỏ qua của Revit bằng cách chỉ đạo RollBack
+                return FailureProcessingResult.ProceedWithRollBack;
+            }
+            if (resolvedAny)
+            {
+                return FailureProcessingResult.ProceedWithCommit;
             }
             return FailureProcessingResult.Continue;
         }

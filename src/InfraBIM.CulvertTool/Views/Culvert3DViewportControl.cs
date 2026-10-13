@@ -593,19 +593,26 @@ namespace InfraBIM.CulvertTool.Views
                 }
             }
 
-            // 4. VẼ CỬA XẢ THƯỢNG LƯU & HẠ LƯU (TƯỜNG ĐẦU, CỔNG PORTAL & TƯỜNG CÁNH TAM GIÁC MÀU XANH)
-            // A. Thượng lưu (P1, X = 0)
-            BuildInletOutlet3D(_rootModelGroup, 0.0, 0.0, wOut, bH, tSlab, tWall, isUpstream: true, _showBedding);
+            bool isTech = geom.LoaiCong?.IndexOf("KỸ THUẬT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                          geom.LoaiCong?.IndexOf("KY THUAT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                          geom.LoaiCong?.IndexOf("CKT", StringComparison.OrdinalIgnoreCase) >= 0;
 
-            // B. Hạ lưu (P2, X = totalL)
-            BuildInletOutlet3D(_rootModelGroup, totalL, -Drop(totalL), wOut, bH, tSlab, tWall, isUpstream: false, _showBedding);
+            if (!isTech)
+            {
+                // 4. VẼ CỬA XẢ THƯỢNG LƯU & HẠ LƯU (TƯỜNG ĐẦU, CỔNG PORTAL & TƯỜNG CÁNH TAM GIÁC MÀU XANH)
+                // A. Thượng lưu (P1, X = 0)
+                BuildInletOutlet3D(_rootModelGroup, 0.0, 0.0, wOut, bH, tSlab, tWall, isUpstream: true, _showBedding);
 
-            // 5. VẼ SÂN GIA CỐ & DẦM CHÂN KHAY KÈM LỚP BÊ TÔNG LÓT (KHỚP 100% FAMILY TNN_CX_SAN GIA CO VÀ BẢN VẼ CAD)
-            // A. Thượng lưu (nối liền mạch từ mép sân cống thượng lưu ra L_SGC_TL)
-            BuildApronAssembly3D(_rootModelGroup, 0.0, 0.0, wOut, tSlab, isUpstream: true, _showBedding, geom.L_SGC_TL);
+                // B. Hạ lưu (P2, X = totalL)
+                BuildInletOutlet3D(_rootModelGroup, totalL, -Drop(totalL), wOut, bH, tSlab, tWall, isUpstream: false, _showBedding);
 
-            // B. Hạ lưu (nối liền mạch từ mép sân cống hạ lưu ra L_SGC_HL)
-            BuildApronAssembly3D(_rootModelGroup, totalL, -Drop(totalL), wOut, tSlab, isUpstream: false, _showBedding, geom.L_SGC_HL);
+                // 5. VẼ SÂN GIA CỐ & DẦM CHÂN KHAY KÈM LỚP BÊ TÔNG LÓT (KHỚP 100% FAMILY TNN_CX_SAN GIA CO VÀ BẢN VẼ CAD)
+                // A. Thượng lưu (nối liền mạch từ mép sân cống thượng lưu ra L_SGC_TL)
+                BuildApronAssembly3D(_rootModelGroup, 0.0, 0.0, wOut, tSlab, isUpstream: true, _showBedding, geom.L_SGC_TL);
+
+                // B. Hạ lưu (nối liền mạch từ mép sân cống hạ lưu ra L_SGC_HL)
+                BuildApronAssembly3D(_rootModelGroup, totalL, -Drop(totalL), wOut, tSlab, isUpstream: false, _showBedding, geom.L_SGC_HL);
+            }
 
             // 6. VẼ BÊ TÔNG LÓT & ĐÁ DĂM ĐỆM (NGẮT QUÃNG CHUẨN XÁC TẠI HỘP NỐI)
             if (_showBedding)
@@ -867,8 +874,8 @@ namespace InfraBIM.CulvertTool.Views
                 foreach (var mh in geom.Manholes)
                 {
                     double mhW = Math.Max(mh.WidthM, 1.2);
-                    double mhStart = Math.Max(xStartBedding, mh.DistanceFromP1M - (mhW / 2.0) - 0.05);
-                    double mhEnd = Math.Min(xEndBedding, mh.DistanceFromP1M + (mhW / 2.0) + 0.05);
+                    double mhStart = Math.Max(xStartBedding, mh.DistanceFromP1M - (mhW / 2.0));
+                    double mhEnd = Math.Min(xEndBedding, mh.DistanceFromP1M + (mhW / 2.0));
 
                     if (mhStart > curX + 0.1)
                     {

@@ -121,7 +121,21 @@ namespace InfraBIM.CulvertTool.Models
 
         public string GetParamOverride(string? paramName, string defaultValue)
         {
-            if (!string.IsNullOrEmpty(paramName) && ParameterOverrides.TryGetValue(paramName, out var val))
+            return GetParamOverride(null, paramName, defaultValue);
+        }
+
+        public string GetParamOverride(string? categoryName, string? paramName, string defaultValue)
+        {
+            if (string.IsNullOrEmpty(paramName)) return defaultValue;
+            if (!string.IsNullOrEmpty(categoryName))
+            {
+                string catKey = $"{categoryName.Trim()}::{paramName.Trim()}";
+                if (ParameterOverrides.TryGetValue(catKey, out var catVal) && !string.IsNullOrWhiteSpace(catVal))
+                {
+                    return catVal;
+                }
+            }
+            if (ParameterOverrides.TryGetValue(paramName, out var val) && !string.IsNullOrWhiteSpace(val))
             {
                 return val;
             }
@@ -130,7 +144,17 @@ namespace InfraBIM.CulvertTool.Models
 
         public void SetParamOverride(string? paramName, string val)
         {
+            SetParamOverride(null, paramName, val);
+        }
+
+        public void SetParamOverride(string? categoryName, string? paramName, string val)
+        {
             if (string.IsNullOrEmpty(paramName)) return;
+            if (!string.IsNullOrEmpty(categoryName))
+            {
+                string catKey = $"{categoryName.Trim()}::{paramName.Trim()}";
+                ParameterOverrides[catKey] = val;
+            }
             ParameterOverrides[paramName] = val;
             ActiveParamName = paramName;
             ActiveParamValue = val;
