@@ -134,6 +134,9 @@ namespace InfraBIM.CulvertTool.Models
                 {
                     return catVal;
                 }
+                // Không fallback sang biến toàn cục khi đã chỉ định cấu kiện cụ thể,
+                // nhằm đảm bảo các biến của từng cấu kiện (liên ngoài trái, liên trong, liên phải) độc lập 100%
+                return defaultValue;
             }
             if (ParameterOverrides.TryGetValue(paramName, out var val) && !string.IsNullOrWhiteSpace(val))
             {
@@ -155,7 +158,10 @@ namespace InfraBIM.CulvertTool.Models
                 string catKey = $"{categoryName.Trim()}::{paramName.Trim()}";
                 ParameterOverrides[catKey] = val;
             }
-            ParameterOverrides[paramName] = val;
+            else
+            {
+                ParameterOverrides[paramName] = val;
+            }
             ActiveParamName = paramName;
             ActiveParamValue = val;
         }

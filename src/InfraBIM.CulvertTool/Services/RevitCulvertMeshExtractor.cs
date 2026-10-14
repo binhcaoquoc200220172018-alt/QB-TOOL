@@ -92,9 +92,20 @@ namespace InfraBIM.CulvertTool.Services
                     t.Start();
                     try
                     {
+                        bool isRowCastInPlace = vm.IsCastInPlaceMode ||
+                            (evalRow.SoCua > 1) ||
+                            (evalRow.CauKien?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                            (evalRow.CauKien?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                            (evalRow.LoaiCong?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                            (evalRow.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                            (evalRow.GhiChu?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                            (evalRow.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
+
                         var barrelSource = (vm.IsTechnicalCulvertMode && vm.TechnicalBarrelComponents.Count > 0)
                             ? vm.TechnicalBarrelComponents.ToList()
-                            : vm.BarrelComponents.ToList();
+                            : (isRowCastInPlace && vm.CastInPlaceBarrelComponents.Count > 0)
+                                ? vm.CastInPlaceBarrelComponents.ToList()
+                                : vm.BarrelComponents.ToList();
                         var manholeSource = (vm.IsTechnicalCulvertMode && vm.TechnicalManholeComponents.Count > 0)
                             ? vm.TechnicalManholeComponents.ToList()
                             : vm.ManholeComponents.ToList();
@@ -109,8 +120,13 @@ namespace InfraBIM.CulvertTool.Services
                         var outCreatedBeddings = new List<FamilyInstance>();
                         var outCreatedAprons = new List<FamilyInstance>();
                         var outCreatedManholes = new List<FamilyInstance>();
+                        var rowUpOutlets = new List<FamilyInstance>();
+                        var rowDnOutlets = new List<FamilyInstance>();
+                        var rowCipDetails = new CulvertCoreEngine.CastInPlaceDetails();
 
                         var curArrayMode = (vm.SelectedArrayModeIndex == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay;
+                        double curLStd = isRowCastInPlace ? vm.L_Std_CastInPlace : vm.L_Std;
+                        double curKheHo = isRowCastInPlace ? vm.Khe_Ho_CastInPlace : vm.Khe_Ho;
 
                         CulvertCoreEngine.BuildSingleCulvertV2(
                             doc,
@@ -122,12 +138,12 @@ namespace InfraBIM.CulvertTool.Services
                             curOutlet,
                             curApron,
                             curManhole,
-                            vm.L_Std,
-                            vm.Khe_Ho,
+                            curLStd,
+                            curKheHo,
                             vm.B_Box,
                             vm.KhoangCachTimDefault,
                             curArrayMode,
-                            vm.IsCastInPlaceMode,
+                            isRowCastInPlace,
                             useSurveyPoint,
                             vm.ComponentMaterials,
                             outCreatedOutlets,
@@ -135,7 +151,20 @@ namespace InfraBIM.CulvertTool.Services
                             outCreatedBeddings,
                             outCreatedAprons,
                             outCreatedManholes,
-                            performCutGeometry: false);
+                            performCutGeometry: false,
+                            outUpstreamOutlets: rowUpOutlets,
+                            outDownstreamOutlets: rowDnOutlets,
+                            outCipDetails: rowCipDetails);
+
+                        CulvertCoreEngine.ExecuteAllCulvertCuts(
+                            doc,
+                            isRowCastInPlace,
+                            rowUpOutlets,
+                            rowDnOutlets,
+                            outCreatedBarrels,
+                            outCreatedBeddings,
+                            outCreatedManholes,
+                            rowCipDetails);
 
                         try { doc.Regenerate(); } catch { }
 

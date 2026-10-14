@@ -99,9 +99,26 @@ namespace InfraBIM.CulvertTool.Services
                 // Kiểm tra khớp cấu kiện:
                 // Nếu m.CategoryName đã được gán cụ thể (ví dụ "Hố kỹ thuật 1.5x1.5m", "Hộp nối cống dọc"...),
                 // BẮT BUỘC phải khớp với categoryName của cấu kiện đang xét, KHÔNG ĐƯỢC để matchFam làm lẫn lộn giữa các cụm cấu kiện dùng chung Family!
-                bool matchCat = !string.IsNullOrEmpty(m.CategoryName) && 
-                                (categoryName.IndexOf(m.CategoryName, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                 m.CategoryName.IndexOf(categoryName, StringComparison.OrdinalIgnoreCase) >= 0);
+                bool matchCat;
+                if (!string.IsNullOrEmpty(m.CategoryName))
+                {
+                    if (m.CategoryName.IndexOf("liên", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        categoryName.IndexOf("liên", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        // Khớp chính xác hoàn toàn đối với các loại liên (liên ngoài trái, liên trong, liên ngoài phải)
+                        matchCat = string.Equals(m.CategoryName, categoryName, StringComparison.OrdinalIgnoreCase);
+                    }
+                    else
+                    {
+                        matchCat = (categoryName.IndexOf(m.CategoryName, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    m.CategoryName.IndexOf(categoryName, StringComparison.OrdinalIgnoreCase) >= 0);
+                    }
+                }
+                else
+                {
+                    matchCat = false;
+                }
+
                 bool matchFam = !string.IsNullOrEmpty(m.FamilyName) && 
                                 string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase);
 

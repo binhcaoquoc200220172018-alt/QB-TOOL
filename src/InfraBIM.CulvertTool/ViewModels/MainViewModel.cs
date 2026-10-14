@@ -1398,15 +1398,40 @@ namespace InfraBIM.CulvertTool.ViewModels
             foreach (var c in CastInPlaceBarrelComponents) c.PropertyChanged -= OnAssemblyComponentPropertyChanged;
             CastInPlaceBarrelComponents.Clear();
 
+            // 1. Cống hộp liên ngoài trái (tiếp xúc cửa xả thượng lưu)
             CastInPlaceBarrelComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
                 GroupType = "Cống đổ tại chỗ",
-                CategoryType = "Thân cống hộp đổ tại chỗ",
+                CategoryType = "Cống hộp (liên ngoài trái)",
                 SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG"),
                 OffsetZ = 0.0,
-                Note = "Đốt thân cống hộp đổ tại chỗ (2x3x2)"
+                Note = "Đốt thân cống hộp đổ tại chỗ liên ngoài trái (tiếp xúc cửa xả TL)"
             });
+
+            // 2. Cống hộp liên trong (các đốt ở giữa)
+            CastInPlaceBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đổ tại chỗ",
+                CategoryType = "Cống hộp (liên trong)",
+                SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG"),
+                OffsetZ = 0.0,
+                Note = "Đốt thân cống hộp đổ tại chỗ liên trong (các đốt ở giữa)"
+            });
+
+            // 3. Cống hộp liên ngoài phải (tiếp xúc cửa xả hạ lưu)
+            CastInPlaceBarrelComponents.Add(new CulvertComponentItem
+            {
+                IsActive = true,
+                GroupType = "Cống đổ tại chỗ",
+                CategoryType = "Cống hộp (liên ngoài phải)",
+                SelectedSymbol = FindSymbol("TNN_CH_THAN CONG_2x3x2") ?? FindSymbol("TNN_CH_THAN CONG"),
+                OffsetZ = 0.0,
+                Note = "Đốt thân cống hộp đổ tại chỗ liên ngoài phải (tiếp xúc cửa xả HL)"
+            });
+
+            // 4. Bê tông lót thân cống
             CastInPlaceBarrelComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
@@ -1416,6 +1441,8 @@ namespace InfraBIM.CulvertTool.ViewModels
                 OffsetZ = -0.10,
                 Note = "Lớp đệm / bê tông lót thân cống đổ tại chỗ"
             });
+
+            // 5. Đá dăm đệm thân cống
             CastInPlaceBarrelComponents.Add(new CulvertComponentItem
             {
                 IsActive = true,
@@ -2001,24 +2028,37 @@ namespace InfraBIM.CulvertTool.ViewModels
                 return;
             }
 
-            var btlDotComp = BarrelComponents.FirstOrDefault(c => c.CategoryType.Contains("lót") || c.CategoryType.Contains("BTL"));
+            bool isRowCastInPlace = IsCastInPlaceMode ||
+                (target.SoCua > 1) ||
+                (target.CauKien?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (target.CauKien?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (target.LoaiCong?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (target.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (target.GhiChu?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (target.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            var barrelList = (isRowCastInPlace && CastInPlaceBarrelComponents.Count > 0) ? CastInPlaceBarrelComponents : BarrelComponents;
+            var btlDotComp = barrelList.FirstOrDefault(c => c.CategoryType.Contains("lót") || c.CategoryType.Contains("BTL"));
             bool hasBtlDot = btlDotComp?.IsActive ?? true;
             double btlOffsetDot = btlDotComp?.OffsetZ ?? -0.10;
 
-            double catOffset = BarrelComponents.FirstOrDefault(c => c.CategoryType.Contains("cát") || c.CategoryType.Contains("đá dăm") || c.CategoryType.Contains("đệm"))?.OffsetZ ?? -0.20;
+            double catOffset = barrelList.FirstOrDefault(c => c.CategoryType.Contains("cát") || c.CategoryType.Contains("đá dăm") || c.CategoryType.Contains("đệm"))?.OffsetZ ?? -0.20;
             var mode = (SelectedArrayModeIndex == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay;
 
             string lc = (target.LoaiCong ?? "").ToUpperInvariant();
             bool isRound = lc.Contains("TRON") || lc.Contains("TRÒN") || lc.Contains("CT") || SelectedCulvertTemplateType.Contains("TRÒN");
             bool isDouble = IsDoubleCulvertMode || (target.SoCua >= 2 && isRound);
 
+            double curLStd = isRowCastInPlace ? L_Std_CastInPlace : L_Std;
+            double curKheHo = isRowCastInPlace ? Khe_Ho_CastInPlace : Khe_Ho;
+
             CurrentPreviewGeometry = CulvertPreviewService.ComputePreview(
                 target,
-                L_Std,
-                Khe_Ho,
+                curLStd,
+                curKheHo,
                 B_Box,
                 mode,
-                isCastInPlace: IsCastInPlaceMode,
+                isCastInPlace: isRowCastInPlace,
                 isRound: isRound,
                 isDouble: isDouble,
                 offsetZ_BTL: btlOffsetDot,
@@ -2555,10 +2595,11 @@ namespace InfraBIM.CulvertTool.ViewModels
         {
             string pName = SelectedParamForBatch?.InternalName ?? string.Empty;
             string defVal = SelectedParamForBatch?.CustomValue ?? string.Empty;
+            string cat = SelectedComponentForTab02?.CategoryType ?? string.Empty;
             foreach (var r in AllCulvertRows)
             {
                 r.ActiveParamName = pName;
-                r.ActiveParamValue = r.GetParamOverride(pName, defVal);
+                r.ActiveParamValue = r.GetParamOverride(cat, pName, defVal);
             }
             try
             {
@@ -2637,13 +2678,14 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             SelectedParamForBatch.CustomValue = BatchApplyValue;
             string pName = SelectedParamForBatch.InternalName;
+            string cat = SelectedComponentForTab02?.CategoryType ?? string.Empty;
 
             int count = 0;
             foreach (var r in AllCulvertRows)
             {
                 if (r.STT >= BatchFromSTT && r.STT <= BatchToSTT)
                 {
-                    r.SetParamOverride(pName, BatchApplyValue);
+                    r.SetParamOverride(cat, pName, BatchApplyValue);
                     count++;
                 }
             }

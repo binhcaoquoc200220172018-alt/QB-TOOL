@@ -205,6 +205,9 @@ namespace InfraBIM.CulvertTool.Services
                             var rowBeddings = new List<FamilyInstance>();
                             var rowAprons = new List<FamilyInstance>();
                             var rowManholes = new List<FamilyInstance>();
+                            var rowUpOutlets = new List<FamilyInstance>();
+                            var rowDnOutlets = new List<FamilyInstance>();
+                            var rowCipDetails = new CastInPlaceDetails();
 
                             BuildSingleCulvertV2(
                                 doc,
@@ -229,7 +232,10 @@ namespace InfraBIM.CulvertTool.Services
                                 rowBeddings,
                                 rowAprons,
                                 rowManholes,
-                                performCutGeometry: false);
+                                performCutGeometry: false,
+                                outUpstreamOutlets: rowUpOutlets,
+                                outDownstreamOutlets: rowDnOutlets,
+                                outCipDetails: rowCipDetails);
 
                             subT.Commit();
 
@@ -315,7 +321,7 @@ namespace InfraBIM.CulvertTool.Services
                             }
                             else
                             {
-                                // Cống ngang thông thường
+                                // Cống ngang thông thường (Đúc sẵn & Đổ tại chỗ)
                                 if (rowOutlets.Count > 0 && (rowBarrels.Count > 0 || rowBeddings.Count > 0))
                                 {
                                     using (var cutT = new Transaction(doc, $"Cut Geometry Cửa xả và Cống hộp STT {row.STT}"))
@@ -328,37 +334,16 @@ namespace InfraBIM.CulvertTool.Services
                                             cutT.SetFailureHandlingOptions(cutFailOpts);
 
                                             cutT.Start();
-                                            doc.Regenerate();
 
-                                            // Cửa xả Thượng lưu cắt đốt cống đầu tiên
-                                            var firstBarrel = rowBarrels.FirstOrDefault();
-                                            var lastBarrel = rowBarrels.LastOrDefault();
-                                            var inOutlet = rowOutlets.FirstOrDefault();
-                                            var outOutlet = rowOutlets.LastOrDefault();
-
-                                            if (inOutlet != null && inOutlet.IsValidObject && firstBarrel != null && firstBarrel.IsValidObject)
-                                            {
-                                                TryCutGeometrySafe(doc, inOutlet, firstBarrel);
-                                            }
-
-                                            if (outOutlet != null && outOutlet.IsValidObject && lastBarrel != null && lastBarrel.IsValidObject && outOutlet.Id != inOutlet?.Id)
-                                            {
-                                                TryCutGeometrySafe(doc, outOutlet, lastBarrel);
-                                            }
-
-                                            // Cắt BTL & Đá dăm đệm cống hộp bởi Cửa xả tại 2 đầu
-                                            var firstBed = rowBeddings.FirstOrDefault();
-                                            var lastBed = rowBeddings.LastOrDefault();
-
-                                            if (firstBed != null && firstBed.IsValidObject && inOutlet != null && inOutlet.IsValidObject)
-                                            {
-                                                TryCutGeometrySafe(doc, firstBed, inOutlet);
-                                            }
-
-                                            if (lastBed != null && lastBed.IsValidObject && outOutlet != null && outOutlet.IsValidObject && lastBed.Id != firstBed?.Id)
-                                            {
-                                                TryCutGeometrySafe(doc, lastBed, outOutlet);
-                                            }
+                                            ExecuteAllCulvertCuts(
+                                                doc,
+                                                isRowCastInPlace,
+                                                rowUpOutlets,
+                                                rowDnOutlets,
+                                                rowBarrels,
+                                                rowBeddings,
+                                                rowManholes,
+                                                rowCipDetails);
 
                                             cutT.Commit();
                                         }
@@ -1157,7 +1142,10 @@ namespace InfraBIM.CulvertTool.Services
             List<FamilyInstance>? outCreatedBeddings = null,
             List<FamilyInstance>? outCreatedAprons = null,
             List<FamilyInstance>? outCreatedManholes = null,
-            bool performCutGeometry = false)
+            bool performCutGeometry = false,
+            List<FamilyInstance>? outUpstreamOutlets = null,
+            List<FamilyInstance>? outDownstreamOutlets = null,
+            CastInPlaceDetails? outCipDetails = null)
         {
             // 1. Chuyển đổi tọa độ VN2000 sang Revit Internal (Feet)
             XYZ p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, data.X1, data.Y1, data.Z1, useSurveyPoint);
@@ -1295,6 +1283,8 @@ namespace InfraBIM.CulvertTool.Services
 
             outletInstances.AddRange(upstreamOutlets);
             outletInstances.AddRange(downstreamOutlets);
+            outUpstreamOutlets?.AddRange(upstreamOutlets);
+            outDownstreamOutlets?.AddRange(downstreamOutlets);
 
             // 2b. Xác định chiều dày/chiều dài móng tường đầu (CX_L1) từ thiết lập tham số, Family hoặc mặc định 1.30m
             double cxL1M = 1.30;
@@ -1382,74 +1372,53 @@ namespace InfraBIM.CulvertTool.Services
             XYZ p1_Culvert = p1 - new XYZ(0, 0, lNgamSanFeet);
             XYZ p2_Culvert = p2 - new XYZ(0, 0, lNgamSanFeet);
 
-            BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
-                p1_Culvert, p2_Culvert, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings,
-                barrelInstances, beddingInstances, manholeInstances);
+            bool isRowCastInPlace = isCastInPlace || 
+                (data.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (data.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
 
-            // 5. YÊU CẦU 1: Cut Geometry giữa Cửa xả và Thân cống hộp / BTL / Đá dăm (Hình 1 & Hình 2)
-            // CHỈ THỰC HIỆN KHI performCutGeometry == true (khi bấm "Khởi tạo và thực hiện mô hình")
+            var cipDetails = outCipDetails ?? new CastInPlaceDetails();
+            if (isRowCastInPlace)
+            {
+                BuildCastInPlaceBoxCulvert(
+                    doc,
+                    data,
+                    bimConfig,
+                    customBimParams,
+                    familyParameterMappings,
+                    barrelComponents,
+                    p1_Culvert,
+                    p2_Culvert,
+                    u,
+                    rotAngle,
+                    totalLengthFeet,
+                    lStdFeet,
+                    jointGapFeet,
+                    arrayMode,
+                    materialSettings,
+                    barrelInstances,
+                    beddingInstances,
+                    cipDetails);
+            }
+            else
+            {
+                BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
+                    p1_Culvert, p2_Culvert, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings,
+                    barrelInstances, beddingInstances, manholeInstances);
+            }
+
+            // 5. YÊU CẦU 1 & 2 & 4: Cut Geometry toàn diện giữa Cửa xả (Tường đầu), Thân cống hộp, BTL và Đá dăm đệm (Hình 1, 2, 3, 4)
+            // CHỈ THỰC HIỆN KHI performCutGeometry == true (khi bấm "Khởi tạo và thực hiện mô hình" hoặc Review 3D trích xuất mesh)
             if (performCutGeometry)
             {
-                try
-                {
-                    doc.Regenerate(); // BẮT BUỘC để Revit tính toán Solid Geometry cho các FamilyInstance mới dựng
-                }
-                catch { }
-
-                var firstBar = barrelInstances.FirstOrDefault();
-                var lastBar = barrelInstances.LastOrDefault();
-                var inOutlet = outletInstances.FirstOrDefault();
-                var outOutlet = outletInstances.LastOrDefault();
-
-                // 1. Cut giữa tất cả cấu kiện Cửa xả thượng lưu (Tường đầu, Sân cống, v.v.) với đốt cống đầu tiên (firstBar)
-                if (firstBar != null && firstBar.IsValidObject)
-                {
-                    foreach (var upInst in upstreamOutlets)
-                    {
-                        if (upInst != null && upInst.IsValidObject)
-                        {
-                            TryCutGeometrySafe(doc, upInst, firstBar);
-                        }
-                    }
-                }
-
-                // 2. Cut giữa tất cả cấu kiện Cửa xả hạ lưu (Tường đầu, Sân cống, v.v.) với đốt cống cuối cùng (lastBar)
-                if (lastBar != null && lastBar.IsValidObject)
-                {
-                    foreach (var dnInst in downstreamOutlets)
-                    {
-                        if (dnInst != null && dnInst.IsValidObject)
-                        {
-                            TryCutGeometrySafe(doc, dnInst, lastBar);
-                        }
-                    }
-                }
-
-                // 3. Cut geometry giữa BTL & đá dăm đệm cống hộp với khối Cửa xả
-                var firstBed = beddingInstances.FirstOrDefault();
-                var lastBed = beddingInstances.LastOrDefault();
-
-                if (firstBed != null && firstBed.IsValidObject)
-                {
-                    foreach (var upInst in upstreamOutlets)
-                    {
-                        if (upInst != null && upInst.IsValidObject)
-                        {
-                            TryCutGeometrySafe(doc, firstBed, upInst);
-                        }
-                    }
-                }
-
-                if (lastBed != null && lastBed.IsValidObject)
-                {
-                    foreach (var dnInst in downstreamOutlets)
-                    {
-                        if (dnInst != null && dnInst.IsValidObject)
-                        {
-                            TryCutGeometrySafe(doc, lastBed, dnInst);
-                        }
-                    }
-                }
+                ExecuteAllCulvertCuts(
+                    doc,
+                    isRowCastInPlace,
+                    upstreamOutlets,
+                    downstreamOutlets,
+                    barrelInstances,
+                    beddingInstances,
+                    manholeInstances,
+                    cipDetails);
             }
         }
 
@@ -2472,26 +2441,7 @@ namespace InfraBIM.CulvertTool.Services
             if (doc == null || eToCut == null || eCutter == null || !eToCut.IsValidObject || !eCutter.IsValidObject) return false;
             if (eToCut.Id == eCutter.Id) return false;
 
-            // 1. Kiểm tra Bounding Box giao nhau nếu cả 2 đối tượng đều có Bounding Box
-            BoundingBoxXYZ? bbCut = null;
-            BoundingBoxXYZ? bbCutter = null;
-            try
-            {
-                bbCut = eToCut.get_BoundingBox(null) ?? (doc.ActiveView != null ? eToCut.get_BoundingBox(doc.ActiveView) : null);
-                bbCutter = eCutter.get_BoundingBox(null) ?? (doc.ActiveView != null ? eCutter.get_BoundingBox(doc.ActiveView) : null);
-            }
-            catch { }
-
-            if (bbCut != null && bbCutter != null)
-            {
-                double margin = 1.50; // ~45cm margin trong Revit internal units (feet)
-                bool bboxOverlap = (bbCut.Min.X - margin <= bbCutter.Max.X && bbCut.Max.X + margin >= bbCutter.Min.X) &&
-                                   (bbCut.Min.Y - margin <= bbCutter.Max.Y && bbCut.Max.Y + margin >= bbCutter.Min.Y) &&
-                                   (bbCut.Min.Z - margin <= bbCutter.Max.Z && bbCut.Max.Z + margin >= bbCutter.Min.Z);
-                if (!bboxOverlap) return false;
-            }
-
-            // 2. Kiểm tra nếu 2 đối tượng đã được Cut trước đó
+            // 1. Kiểm tra nếu 2 đối tượng đã được Cut trước đó
             try
             {
                 var cuttingSolids = SolidSolidCutUtils.GetCuttingSolids(eToCut);
@@ -2502,41 +2452,17 @@ namespace InfraBIM.CulvertTool.Services
             }
             catch { }
 
-            // 3. Unjoin toàn bộ các đối tượng đã Join với eToCut hoặc eCutter để triệt tiêu lỗi "Can't cut joined element"
             try
             {
-                var joinedToCut = JoinGeometryUtils.GetJoinedElements(doc, eToCut);
-                if (joinedToCut != null && joinedToCut.Count > 0)
+                if (InstanceVoidCutUtils.InstanceVoidCutExists(eToCut, eCutter) ||
+                    InstanceVoidCutUtils.InstanceVoidCutExists(eCutter, eToCut))
                 {
-                    foreach (var jId in joinedToCut.ToList())
-                    {
-                        var jElem = doc.GetElement(jId);
-                        if (jElem != null && jElem.IsValidObject)
-                        {
-                            JoinGeometryUtils.UnjoinGeometry(doc, eToCut, jElem);
-                        }
-                    }
+                    return true;
                 }
             }
             catch { }
 
-            try
-            {
-                var joinedCutter = JoinGeometryUtils.GetJoinedElements(doc, eCutter);
-                if (joinedCutter != null && joinedCutter.Count > 0)
-                {
-                    foreach (var jId in joinedCutter.ToList())
-                    {
-                        var jElem = doc.GetElement(jId);
-                        if (jElem != null && jElem.IsValidObject)
-                        {
-                            JoinGeometryUtils.UnjoinGeometry(doc, eCutter, jElem);
-                        }
-                    }
-                }
-            }
-            catch { }
-
+            // 2. Unjoin các đối tượng nếu đã Join trước đó để tránh lỗi "Can't cut joined element"
             try
             {
                 if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
@@ -2548,17 +2474,39 @@ namespace InfraBIM.CulvertTool.Services
 
             bool cutSuccess = false;
 
-            // ƯU TIÊN 1: Thử Cut Geometry chuẩn của Revit (SolidSolidCutUtils)
-            // Cấu kiện 1 (eToCut - Tường đầu / Cửa xả / Hố kỹ thuật) bị khoét bởi Cấu kiện 2 (eCutter - Cống hộp)
+            // ƯU TIÊN 0: Thử InstanceVoidCutUtils (Cắt bằng Void rỗng "Cut with Voids When Loaded")
+            // Hướng A: eToCut (ví dụ Tường đầu) bị cắt bởi eCutter (Cống hộp)
             try
             {
-                if (SolidSolidCutUtils.CanElementCutElement(eCutter, eToCut, out _))
-                {
-                    SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
-                    cutSuccess = true;
-                }
+                InstanceVoidCutUtils.AddInstanceVoidCut(doc, eToCut, eCutter);
+                cutSuccess = true;
             }
             catch { }
+
+            // Hướng B: eCutter bị cắt bởi eToCut
+            if (!cutSuccess)
+            {
+                try
+                {
+                    InstanceVoidCutUtils.AddInstanceVoidCut(doc, eCutter, eToCut);
+                    cutSuccess = true;
+                }
+                catch { }
+            }
+
+            // ƯU TIÊN 1: Thử Cut Geometry chuẩn của Revit (SolidSolidCutUtils)
+            if (!cutSuccess)
+            {
+                try
+                {
+                    if (SolidSolidCutUtils.CanElementCutElement(eCutter, eToCut, out _))
+                    {
+                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
+                        cutSuccess = true;
+                    }
+                }
+                catch { }
+            }
 
             if (!cutSuccess)
             {
@@ -2573,8 +2521,7 @@ namespace InfraBIM.CulvertTool.Services
                 catch { }
             }
 
-            // ƯU TIÊN 2: Nếu SolidSolidCut không hỗ trợ trực tiếp Family Adaptive này trong Project,
-            // sử dụng JoinGeometryUtils và SwitchJoinOrder (chuẩn Revit boolean CSG)
+            // ƯU TIÊN 2: JoinGeometryUtils và SwitchJoinOrder (chuẩn Revit boolean CSG)
             if (!cutSuccess)
             {
                 try
@@ -2585,7 +2532,6 @@ namespace InfraBIM.CulvertTool.Services
                     }
                     if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
                     {
-                        // Đảm bảo eCutter (Cống hộp) là đối tượng cắt (cutting element)
                         if (!JoinGeometryUtils.IsCuttingElementInJoin(doc, eCutter, eToCut))
                         {
                             JoinGeometryUtils.SwitchJoinOrder(doc, eToCut, eCutter);
@@ -2668,6 +2614,754 @@ namespace InfraBIM.CulvertTool.Services
             return false;
         }
 
+        private static XYZ? GetElementCenterPoint(Element? elem)
+        {
+            if (elem == null || !elem.IsValidObject) return null;
+            try
+            {
+                if (elem.Location is LocationPoint lp) return lp.Point;
+                if (elem.Location is LocationCurve lc) return (lc.Curve.GetEndPoint(0) + lc.Curve.GetEndPoint(1)) * 0.5;
+                if (elem is FamilyInstance fi && AdaptiveComponentInstanceUtils.IsAdaptiveComponentInstance(fi))
+                {
+                    var adpIds = AdaptiveComponentInstanceUtils.GetInstancePlacementPointElementRefIds(fi);
+                    if (adpIds != null && adpIds.Count > 0)
+                    {
+                        XYZ sum = XYZ.Zero;
+                        int count = 0;
+                        foreach (var pid in adpIds)
+                        {
+                            if (fi.Document.GetElement(pid) is ReferencePoint rp)
+                            {
+                                sum += rp.Position;
+                                count++;
+                            }
+                        }
+                        if (count > 0) return sum / count;
+                    }
+                }
+                var bb = elem.get_BoundingBox(null);
+                if (bb != null) return (bb.Min + bb.Max) * 0.5;
+            }
+            catch { }
+            return null;
+        }
+
+        private static void CutSubComponentsSafe(Document doc, Element? elemA, Element? elemB)
+        {
+            if (doc == null || elemA == null || elemB == null || !elemA.IsValidObject || !elemB.IsValidObject) return;
+            try
+            {
+                if (elemA is FamilyInstance fiA)
+                {
+                    var subIds = fiA.GetSubComponentIds();
+                    if (subIds != null && subIds.Count > 0)
+                    {
+                        foreach (var sId in subIds)
+                        {
+                            var subElem = doc.GetElement(sId);
+                            if (subElem != null && subElem.IsValidObject)
+                            {
+                                TryCutGeometrySafe(doc, subElem, elemB);
+                                TryCutGeometrySafe(doc, elemB, subElem);
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static bool IsBtlInstance(Element? elem)
+        {
+            if (elem == null || !elem.IsValidObject) return false;
+            string fam = "";
+            string type = "";
+            if (elem is FamilyInstance fi && fi.Symbol != null)
+            {
+                fam = (fi.Symbol.FamilyName ?? "").ToUpperInvariant();
+                type = (fi.Symbol.Name ?? "").ToUpperInvariant();
+            }
+            string full = $"{fam} {type}";
+            return full.Contains("BE TONG LOT") || full.Contains("BÊ TÔNG LÓT") || full.Contains("BTL") ||
+                   (full.Contains("LOT") && !full.Contains("DA DAM") && !full.Contains("CPDD"));
+        }
+
+        private static bool IsDddInstance(Element? elem)
+        {
+            if (elem == null || !elem.IsValidObject) return false;
+            string fam = "";
+            string type = "";
+            if (elem is FamilyInstance fi && fi.Symbol != null)
+            {
+                fam = (fi.Symbol.FamilyName ?? "").ToUpperInvariant();
+                type = (fi.Symbol.Name ?? "").ToUpperInvariant();
+            }
+            string full = $"{fam} {type}";
+            return (full.Contains("DA DAM") || full.Contains("ĐÁ DĂM") || full.Contains("DEM") || full.Contains("ĐỆM") || full.Contains("CPDD")) &&
+                   !full.Contains("TUONG");
+        }
+
+        private static bool IsTuongDauInstance(Element? elem)
+        {
+            if (elem == null || !elem.IsValidObject) return false;
+            string fam = "";
+            string type = "";
+            if (elem is FamilyInstance fi && fi.Symbol != null)
+            {
+                fam = (fi.Symbol.FamilyName ?? "").ToUpperInvariant();
+                type = (fi.Symbol.Name ?? "").ToUpperInvariant();
+            }
+            string full = $"{fam} {type}";
+            return full.Contains("TUONG DAU") || full.Contains("TƯỜNG ĐẦU");
+        }
+
+        public class CastInPlaceDetails
+        {
+            public FamilyInstance? BarrelLeft { get; set; }
+            public FamilyInstance? BarrelRight { get; set; }
+            public List<FamilyInstance> MidBarrels { get; set; } = new();
+
+            public FamilyInstance? BtlLeft { get; set; }
+            public FamilyInstance? DddLeft { get; set; }
+            public FamilyInstance? BtlRight { get; set; }
+            public FamilyInstance? DddRight { get; set; }
+            public List<FamilyInstance> MidBtls { get; set; } = new();
+            public List<FamilyInstance> MidDdds { get; set; } = new();
+        }
+
+        internal static void ExecuteAllCulvertCuts(
+            Document doc,
+            bool isRowCastInPlace,
+            List<FamilyInstance> upOutlets,
+            List<FamilyInstance> dnOutlets,
+            List<FamilyInstance> barrels,
+            List<FamilyInstance> beddings,
+            List<FamilyInstance> manholes,
+            CastInPlaceDetails? cipDetails = null)
+        {
+            try { doc.Regenerate(); } catch { }
+
+            var tuongDauTL = upOutlets.FirstOrDefault(IsTuongDauInstance);
+            var dddTL = upOutlets.FirstOrDefault(IsDddInstance);
+            var btlTL = upOutlets.FirstOrDefault(IsBtlInstance);
+
+            var tuongDauHL = dnOutlets.FirstOrDefault(IsTuongDauInstance);
+            var dddHL = dnOutlets.FirstOrDefault(IsDddInstance);
+            var btlHL = dnOutlets.FirstOrDefault(IsBtlInstance);
+
+            var firstBar = cipDetails?.BarrelLeft ?? barrels.FirstOrDefault();
+            var lastBar = cipDetails?.BarrelRight ?? barrels.LastOrDefault();
+
+            // 1. YÊU CẦU 4: Cắt TƯỜNG ĐẦU CỬA XẢ với CỐNG HỘP tiếp xúc (ở cả 2 đầu thượng lưu và hạ lưu)
+            if (firstBar != null && firstBar.IsValidObject)
+            {
+                if (tuongDauTL != null && tuongDauTL.IsValidObject)
+                {
+                    TryCutGeometrySafe(doc, tuongDauTL, firstBar);
+                    CutSubComponentsSafe(doc, tuongDauTL, firstBar);
+                    CutSubComponentsSafe(doc, firstBar, tuongDauTL);
+                }
+                foreach (var upInst in upOutlets)
+                {
+                    if (upInst != null && upInst.IsValidObject)
+                    {
+                        TryCutGeometrySafe(doc, upInst, firstBar);
+                        CutSubComponentsSafe(doc, upInst, firstBar);
+                        CutSubComponentsSafe(doc, firstBar, upInst);
+                    }
+                }
+            }
+
+            if (lastBar != null && lastBar.IsValidObject)
+            {
+                if (tuongDauHL != null && tuongDauHL.IsValidObject)
+                {
+                    TryCutGeometrySafe(doc, tuongDauHL, lastBar);
+                    CutSubComponentsSafe(doc, tuongDauHL, lastBar);
+                    CutSubComponentsSafe(doc, lastBar, tuongDauHL);
+                }
+                foreach (var dnInst in dnOutlets)
+                {
+                    if (dnInst != null && dnInst.IsValidObject)
+                    {
+                        TryCutGeometrySafe(doc, dnInst, lastBar);
+                        CutSubComponentsSafe(doc, dnInst, lastBar);
+                        CutSubComponentsSafe(doc, lastBar, dnInst);
+                    }
+                }
+            }
+
+            if (isRowCastInPlace)
+            {
+                var btlLeft = cipDetails?.BtlLeft ?? beddings.FirstOrDefault(IsBtlInstance);
+                var dddLeft = cipDetails?.DddLeft ?? beddings.FirstOrDefault(IsDddInstance);
+                var btlRight = cipDetails?.BtlRight ?? beddings.LastOrDefault(IsBtlInstance);
+                var dddRight = cipDetails?.DddRight ?? beddings.LastOrDefault(IsDddInstance);
+
+                // 2. YÊU CẦU 2: Cắt phần ĐÁ DĂM ĐỆM của TƯỜNG ĐẦU CỬA XẢ với lớp BTL & ĐÁ DĂM ĐỆM của CỐNG HỘP ĐỔ TẠI CHỖ
+                // Thượng lưu (Liên ngoài trái):
+                if (dddTL != null && dddTL.IsValidObject)
+                {
+                    if (btlLeft != null && btlLeft.IsValidObject)
+                    {
+                        TryCutGeometrySafe(doc, dddTL, btlLeft);
+                        CutSubComponentsSafe(doc, dddTL, btlLeft);
+                    }
+                    if (dddLeft != null && dddLeft.IsValidObject)
+                    {
+                        TryCutGeometrySafe(doc, dddTL, dddLeft);
+                        CutSubComponentsSafe(doc, dddTL, dddLeft);
+                    }
+                }
+
+                // Hạ lưu (Liên ngoài phải đối xứng):
+                if (dddHL != null && dddHL.IsValidObject)
+                {
+                    if (btlRight != null && btlRight.IsValidObject)
+                    {
+                        TryCutGeometrySafe(doc, dddHL, btlRight);
+                        CutSubComponentsSafe(doc, dddHL, btlRight);
+                    }
+                    if (dddRight != null && dddRight.IsValidObject)
+                    {
+                        TryCutGeometrySafe(doc, dddHL, dddRight);
+                        CutSubComponentsSafe(doc, dddHL, dddRight);
+                    }
+                }
+
+                // Cắt cống hộp liên ngoài với lớp BTL
+                if (firstBar != null && btlLeft != null && btlLeft.IsValidObject)
+                {
+                    TryCutGeometrySafe(doc, btlLeft, firstBar);
+                    CutSubComponentsSafe(doc, btlLeft, firstBar);
+                    TryCutGeometrySafe(doc, firstBar, btlLeft);
+                }
+                if (lastBar != null && btlRight != null && btlRight.IsValidObject)
+                {
+                    TryCutGeometrySafe(doc, btlRight, lastBar);
+                    CutSubComponentsSafe(doc, btlRight, lastBar);
+                    TryCutGeometrySafe(doc, lastBar, btlRight);
+                }
+
+                // 3. YÊU CẦU 3: Đối với LIÊN TRONG: cut cống hộp đổ tại chỗ với lớp BTL, cut cống hộp đổ tại chỗ với đá dăm đệm
+                if (cipDetails?.MidBarrels != null && cipDetails.MidBarrels.Count > 0)
+                {
+                    for (int i = 0; i < cipDetails.MidBarrels.Count; i++)
+                    {
+                        var bar = cipDetails.MidBarrels[i];
+                        if (bar == null || !bar.IsValidObject) continue;
+
+                        FamilyInstance? btl = (i < cipDetails.MidBtls.Count) ? cipDetails.MidBtls[i] : null;
+                        FamilyInstance? ddd = (i < cipDetails.MidDdds.Count) ? cipDetails.MidDdds[i] : null;
+
+                        if (btl != null && btl.IsValidObject)
+                        {
+                            TryCutGeometrySafe(doc, btl, bar);
+                            CutSubComponentsSafe(doc, btl, bar);
+                            TryCutGeometrySafe(doc, bar, btl);
+                        }
+
+                        if (ddd != null && ddd.IsValidObject)
+                        {
+                            TryCutGeometrySafe(doc, ddd, bar);
+                            CutSubComponentsSafe(doc, ddd, bar);
+                            TryCutGeometrySafe(doc, bar, ddd);
+                        }
+                    }
+                }
+                else
+                {
+                    var midBars = barrels.Skip(1).Take(Math.Max(0, barrels.Count - 2)).ToList();
+                    foreach (var bar in midBars)
+                    {
+                        if (bar == null || !bar.IsValidObject) continue;
+                        XYZ? bCenter = GetElementCenterPoint(bar);
+
+                        var btlInst = beddings
+                            .Where(b => b != null && b.IsValidObject && IsBtlInstance(b))
+                            .OrderBy(b => {
+                                XYZ? c = GetElementCenterPoint(b);
+                                return (bCenter != null && c != null) ? bCenter.DistanceTo(c) : double.MaxValue;
+                            })
+                            .FirstOrDefault();
+
+                        var dddInst = beddings
+                            .Where(b => b != null && b.IsValidObject && IsDddInstance(b))
+                            .OrderBy(b => {
+                                XYZ? c = GetElementCenterPoint(b);
+                                return (bCenter != null && c != null) ? bCenter.DistanceTo(c) : double.MaxValue;
+                            })
+                            .FirstOrDefault();
+
+                        if (btlInst != null && btlInst.IsValidObject)
+                        {
+                            TryCutGeometrySafe(doc, btlInst, bar);
+                            CutSubComponentsSafe(doc, btlInst, bar);
+                            TryCutGeometrySafe(doc, bar, btlInst);
+                        }
+                        if (dddInst != null && dddInst.IsValidObject)
+                        {
+                            TryCutGeometrySafe(doc, dddInst, bar);
+                            CutSubComponentsSafe(doc, dddInst, bar);
+                            TryCutGeometrySafe(doc, bar, dddInst);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Cống đúc sẵn: Cut BTL & đá dăm đệm cống hộp với khối Cửa xả
+                var firstBed = beddings.FirstOrDefault();
+                var lastBed = beddings.LastOrDefault();
+
+                if (firstBed != null && firstBed.IsValidObject)
+                {
+                    if (dddTL != null && dddTL.IsValidObject) TryCutGeometrySafe(doc, dddTL, firstBed);
+                    foreach (var upInst in upOutlets)
+                    {
+                        if (upInst != null && upInst.IsValidObject) TryCutGeometrySafe(doc, firstBed, upInst);
+                    }
+                }
+
+                if (lastBed != null && lastBed.IsValidObject && lastBed.Id != firstBed?.Id)
+                {
+                    if (dddHL != null && dddHL.IsValidObject) TryCutGeometrySafe(doc, dddHL, lastBed);
+                    foreach (var dnInst in dnOutlets)
+                    {
+                        if (dnInst != null && dnInst.IsValidObject) TryCutGeometrySafe(doc, lastBed, dnInst);
+                    }
+                }
+            }
+        }
+
+        private static FamilyInstance? PlaceBeddingInstance(
+            Document doc,
+            CulvertComponentItem? comp,
+            XYZ pStart,
+            XYZ pEnd,
+            double rotAngle,
+            BimInfoConfig bimConfig,
+            IEnumerable<CustomBimParameterItem>? customBimParams,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            CulvertRowData rowData,
+            string componentName,
+            List<FamilyInstance>? createdBeddings,
+            IEnumerable<CulvertMaterialItem>? materialSettings = null)
+        {
+            if (comp == null || !comp.IsActive || comp.SelectedSymbol == null) return null;
+            double lenFeet = (pEnd - pStart).GetLength();
+            if (lenFeet <= 0.01) return null;
+
+            var sym = comp.SelectedSymbol.GetFreshSymbol(doc);
+            if (sym == null) return null;
+            ActivateSymbol(sym);
+
+            double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
+            XYZ offZ = new XYZ(0, 0, offFeetZ);
+            XYZ ptA = pStart + offZ;
+            XYZ ptB = pEnd + offZ;
+
+            FamilyInstance? inst = null;
+            try
+            {
+                if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
+                {
+                    inst = CreateAdaptiveInstanceSafe(doc, sym, new[] { ptA, ptB });
+                }
+                else
+                {
+                    XYZ ptMid = (ptA + ptB) * 0.5;
+                    inst = CreateInstanceSafe(doc, ptMid, sym);
+                    SafeRotate(doc, inst.Id, ptMid, rotAngle);
+
+                    string[] possibleLenParams = new[] { "L", "Length", "ChieuDai", "L_dot_chuan", "L_dot_bu", "Chiều dài", "L_DOT", "CH_L" };
+                    foreach (var pName in possibleLenParams)
+                    {
+                        Parameter p = inst.LookupParameter(pName);
+                        if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+                        {
+                            p.Set(lenFeet);
+                            break;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            if (inst == null) return null;
+            createdBeddings?.Add(inst);
+
+            try { BimParameterService.SetElementBimProperties(inst, bimConfig, componentName, comp.CategoryType ?? "", null, null, null, null, null); } catch { }
+            try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType ?? ""); } catch { }
+            try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống"); } catch { }
+            try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
+
+            return inst;
+        }
+
+        private static FamilyInstance? PlaceSingleBarrelComponent(
+            Document doc,
+            CulvertComponentItem comp,
+            XYZ ptStart,
+            XYZ ptEnd,
+            double lenFeet,
+            double angle,
+            BimInfoConfig bimConfig,
+            IEnumerable<CustomBimParameterItem>? customBimParams,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            CulvertRowData rowData,
+            string tenCauKien,
+            double? zDau,
+            double? zCuoi,
+            IEnumerable<CulvertMaterialItem>? materialSettings = null,
+            List<FamilyInstance>? createdBarrels = null)
+        {
+            if (comp == null || !comp.IsActive || comp.SelectedSymbol == null) return null;
+            var sym = comp.SelectedSymbol.GetFreshSymbol(doc);
+            if (sym == null) return null;
+            ActivateSymbol(sym);
+
+            double offFeetZ = UnitUtils.ConvertToInternalUnits(comp.OffsetZ, UnitTypeId.Meters);
+            XYZ offZ = new XYZ(0, 0, offFeetZ);
+            XYZ ptA = ptStart + offZ;
+            XYZ ptB = ptEnd + offZ;
+
+            FamilyInstance? inst = null;
+            try
+            {
+                if (AdaptiveComponentInstanceUtils.IsAdaptiveFamilySymbol(sym))
+                {
+                    inst = CreateAdaptiveInstanceSafe(doc, sym, new[] { ptA, ptB });
+                }
+                else
+                {
+                    XYZ ptMid = (ptA + ptB) * 0.5;
+                    inst = CreateInstanceSafe(doc, ptMid, sym);
+                    SafeRotate(doc, inst.Id, ptMid, angle);
+                }
+            }
+            catch { }
+
+            if (inst == null) return null;
+            createdBarrels?.Add(inst);
+
+            try
+            {
+                string[] possibleLenParams = new[] { "L", "Length", "ChieuDai", "L_dot_chuan", "L_dot_bu", "Chiều dài", "L_DOT", "CH_L" };
+                foreach (var pName in possibleLenParams)
+                {
+                    Parameter p = inst.LookupParameter(pName);
+                    if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+                    {
+                        p.Set(lenFeet);
+                        break;
+                    }
+                }
+            }
+            catch { }
+
+            try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCauKien, comp.CategoryType, zDau, zCuoi, null, null, null); } catch { }
+            try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType); } catch { }
+            try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống"); } catch { }
+            try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType); } catch { }
+
+            return inst;
+        }
+
+        /// <summary>
+        /// Dựng Cống Hộp Đổ Tại Chỗ chuyên biệt theo Yêu cầu 3 & 4 (Hình 2, 3, 4):
+        /// - Tách biệt 3 cấu kiện: Cống hộp (liên ngoài trái), Cống hộp (liên trong), Cống hộp (liên ngoài phải)
+        /// - Áp dụng tham số Tab 02 độc lập cho từng liên
+        /// - Rải BTL & Đá dăm đệm theo đúng hình 3 & 4:
+        ///   + Liên ngoài trái: Đá dăm từ mép ngoài tường đầu đến Điểm 2; BTL từ mép ngoài tường đầu đến Điểm 2 lùi lại biến B. Cut geometry giữa cống hộp và BTL.
+        ///   + Liên trong: Đá dăm & BTL từ mép ngoài cống đến mép ngoài cống. Cut geometry giữa cống hộp và BTL.
+        ///   + Liên ngoài phải: Đá dăm từ Điểm 2 đến mép ngoài tường đầu HL; BTL từ Điểm 2 tiến vào biến B đến mép ngoài tường đầu HL. Cut geometry giữa cống hộp và BTL.
+        /// </summary>
+        private static void BuildCastInPlaceBoxCulvert(
+            Document doc,
+            CulvertRowData data,
+            BimInfoConfig bimConfig,
+            IEnumerable<CustomBimParameterItem>? customBimParams,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            IList<CulvertComponentItem> barrelComponents,
+            XYZ p1,
+            XYZ p2,
+            XYZ u,
+            double rotAngle,
+            double totalLengthFeet,
+            double lStdFeet,
+            double jointGapFeet,
+            CulvertArrayMode arrayMode,
+            IEnumerable<CulvertMaterialItem>? materialSettings = null,
+            List<FamilyInstance>? createdBarrels = null,
+            List<FamilyInstance>? createdBeddings = null,
+            CastInPlaceDetails? outDetails = null)
+        {
+            if (barrelComponents == null || barrelComponents.Count == 0 || totalLengthFeet <= 0.01) return;
+
+            var compLeft = barrelComponents.FirstOrDefault(c => c.CategoryType == "Cống hộp (liên ngoài trái)")
+                           ?? barrelComponents.FirstOrDefault(c => c.CategoryType?.IndexOf("ngoài trái", StringComparison.OrdinalIgnoreCase) >= 0)
+                           ?? barrelComponents.FirstOrDefault(c => c.CategoryType?.IndexOf("trái", StringComparison.OrdinalIgnoreCase) >= 0)
+                           ?? barrelComponents.FirstOrDefault(c => !IsBeddingComponent(c));
+
+            var compMid = barrelComponents.FirstOrDefault(c => c.CategoryType == "Cống hộp (liên trong)")
+                          ?? barrelComponents.FirstOrDefault(c => c.CategoryType?.IndexOf("trong", StringComparison.OrdinalIgnoreCase) >= 0)
+                          ?? compLeft;
+
+            var compRight = barrelComponents.FirstOrDefault(c => c.CategoryType == "Cống hộp (liên ngoài phải)")
+                            ?? barrelComponents.FirstOrDefault(c => c.CategoryType?.IndexOf("ngoài phải", StringComparison.OrdinalIgnoreCase) >= 0)
+                            ?? barrelComponents.FirstOrDefault(c => c.CategoryType?.IndexOf("phải", StringComparison.OrdinalIgnoreCase) >= 0)
+                            ?? compLeft;
+
+            var compBtl = barrelComponents.FirstOrDefault(c => c.CategoryType == "Bê tông lót thân cống" ||
+                                                               c.CategoryType?.IndexOf("bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                               c.CategoryType?.IndexOf("btl", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            var compDdd = barrelComponents.FirstOrDefault(c => c.CategoryType == "Đá dăm đệm thân cống" ||
+                                                               c.CategoryType?.IndexOf("đá dăm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                               c.CategoryType?.IndexOf("đệm", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            // Xác định biến B (chiều dài vát đáy notch/vai kê của family TNN_CH_THAN CONG_2x3x2)
+            double bParamM = 0.40;
+            var sampleBarrelComp = compLeft ?? compMid ?? compRight;
+            if (sampleBarrelComp?.SelectedSymbol != null)
+            {
+                var sym = sampleBarrelComp.SelectedSymbol.GetFreshSymbol(doc);
+                if (sym != null)
+                {
+                    var pB = sym.LookupParameter("B") ?? sym.LookupParameter("B_BOX") ?? sym.LookupParameter("CH_B");
+                    if (pB != null && pB.StorageType == StorageType.Double && pB.AsDouble() > 0.05)
+                    {
+                        bParamM = UnitUtils.ConvertFromInternalUnits(pB.AsDouble(), UnitTypeId.Meters);
+                    }
+                }
+            }
+            var mappingB = familyParameterMappings?.FirstOrDefault(m => 
+                string.Equals(m.InternalName, "B", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(m.InternalName, "CH_B", StringComparison.OrdinalIgnoreCase));
+            if (mappingB != null && !string.IsNullOrWhiteSpace(mappingB.CustomValue))
+            {
+                string valStrB = data.GetParamOverride(mappingB.CategoryName, mappingB.InternalName, mappingB.CustomValue);
+                if (double.TryParse(valStrB.Replace("mm", "").Replace("m", "").Trim(), out double dValB))
+                {
+                    bParamM = (Math.Abs(dValB) >= 10.0) ? dValB / 1000.0 : dValB;
+                }
+            }
+            if (bParamM <= 0.05) bParamM = 0.40;
+            double bParamFeet = UnitUtils.ConvertToInternalUnits(bParamM, UnitTypeId.Meters);
+
+            // Xác định vị trí mép sau cấu kiện đá dăm đệm của tường đầu sân cống (1.45m theo CAD hoặc CX_L1 + 0.15m):
+            double cxL1M = 1.30;
+            var mappingL1 = familyParameterMappings?.FirstOrDefault(m => 
+                string.Equals(m.InternalName, "CX_L1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(m.InternalName, "L1", StringComparison.OrdinalIgnoreCase));
+            if (mappingL1 != null && !string.IsNullOrWhiteSpace(mappingL1.CustomValue))
+            {
+                string valStrL1 = data.GetParamOverride(mappingL1.CategoryName, mappingL1.InternalName, mappingL1.CustomValue);
+                if (double.TryParse(valStrL1.Replace("mm", "").Replace("m", "").Trim(), out double dValL1))
+                {
+                    cxL1M = (Math.Abs(dValL1) >= 10.0) ? dValL1 / 1000.0 : dValL1;
+                }
+            }
+            if (cxL1M <= 0.05) cxL1M = 1.30;
+            double dFootingBackM = (cxL1M >= 0.5) ? (cxL1M + 0.15) : 1.45; // 1.30m + 0.15m = 1.45m chuẩn theo CAD
+            double dFootingBackFeet = UnitUtils.ConvertToInternalUnits(dFootingBackM, UnitTypeId.Meters);
+
+            XYZ pFootingBackTL = p1 - u * dFootingBackFeet;
+            XYZ pFootingBackHL = p2 + u * dFootingBackFeet;
+
+            double L = totalLengthFeet;
+            double pitch = lStdFeet + jointGapFeet;
+
+            // Tính toán danh sách phân đoạn (distStart, distEnd, compType)
+            // compType: 0 = Left, 1 = Mid, 2 = Right
+            var segments = new List<(double start, double end, int type)>();
+
+            if (L <= lStdFeet + 0.1)
+            {
+                // Chỉ có 1 đốt duy nhất
+                segments.Add((0.0, L, 0));
+            }
+            else if (L <= 2 * lStdFeet + jointGapFeet + 0.1)
+            {
+                // Có 2 đốt: Liên ngoài trái và Liên ngoài phải
+                double lSeg = (L - jointGapFeet) / 2.0;
+                segments.Add((0.0, lSeg, 0));
+                segments.Add((lSeg + jointGapFeet, L, 2));
+            }
+            else
+            {
+                // >= 3 đốt: Liên ngoài trái, các liên trong, Liên ngoài phải
+                if (arrayMode == CulvertArrayMode.CenterOut)
+                {
+                    int nMid = (int)Math.Floor((L - 2 * lStdFeet - jointGapFeet) / pitch);
+                    if (nMid < 1) nMid = 1;
+                    double midTotal = nMid * lStdFeet + (nMid - 1) * jointGapFeet;
+                    double rem = L - midTotal - 2 * jointGapFeet;
+                    double lEdge = rem / 2.0;
+
+                    double minEdgeFeet = UnitUtils.ConvertToInternalUnits(1.0, UnitTypeId.Meters);
+                    if (lEdge < minEdgeFeet && nMid > 1)
+                    {
+                        nMid--;
+                        midTotal = nMid * lStdFeet + (nMid - 1) * jointGapFeet;
+                        rem = L - midTotal - 2 * jointGapFeet;
+                        lEdge = rem / 2.0;
+                    }
+
+                    // Đốt 0: Liên ngoài trái
+                    segments.Add((0.0, lEdge, 0));
+                    double cur = lEdge + jointGapFeet;
+
+                    // Các đốt giữa: Liên trong
+                    for (int m = 0; m < nMid; m++)
+                    {
+                        segments.Add((cur, cur + lStdFeet, 1));
+                        cur += lStdFeet + jointGapFeet;
+                    }
+
+                    // Đốt cuối: Liên ngoài phải
+                    segments.Add((cur, L, 2));
+                }
+                else
+                {
+                    // OneWay / StartToTarget: Đốt đầu và các đốt giữa dùng L chuẩn, đốt cuối nhận phần bù trừ
+                    int totalN = (int)Math.Floor((L + jointGapFeet) / pitch);
+                    if (totalN < 2) totalN = 2;
+
+                    double cur = 0.0;
+                    // Đốt 0: Liên ngoài trái
+                    segments.Add((cur, cur + lStdFeet, 0));
+                    cur += lStdFeet + jointGapFeet;
+
+                    // Các đốt giữa: Liên trong
+                    for (int m = 1; m < totalN - 1; m++)
+                    {
+                        segments.Add((cur, cur + lStdFeet, 1));
+                        cur += lStdFeet + jointGapFeet;
+                    }
+
+                    // Đốt cuối: Liên ngoài phải
+                    if (L - cur > 0.01)
+                    {
+                        segments.Add((cur, L, 2));
+                    }
+                    else if (segments.Count > 0)
+                    {
+                        var lastSeg = segments[segments.Count - 1];
+                        segments.RemoveAt(segments.Count - 1);
+                        segments.Add((lastSeg.start, L, 2));
+                    }
+                }
+            }
+
+            int N = segments.Count;
+            FamilyInstance? barrelLeft = null;
+            FamilyInstance? barrelRight = null;
+            var barrelMidList = new List<FamilyInstance>();
+
+            FamilyInstance? btlLeft = null;
+            FamilyInstance? dddLeft = null;
+            FamilyInstance? btlRight = null;
+            FamilyInstance? dddRight = null;
+            var btlMidList = new List<FamilyInstance>();
+            var dddMidList = new List<FamilyInstance>();
+
+            for (int i = 0; i < N; i++)
+            {
+                var seg = segments[i];
+                XYZ ptA = p1 + u * seg.start;
+                XYZ ptB = p1 + u * seg.end;
+                double segLen = (ptB - ptA).GetLength();
+
+                CulvertComponentItem? curBarrelComp = (seg.type == 0) ? (compLeft ?? compMid ?? compRight)
+                                                    : (seg.type == 2) ? (compRight ?? compMid ?? compLeft)
+                                                    : (compMid ?? compLeft ?? compRight);
+
+                if (curBarrelComp == null) continue;
+
+                string barrelName = (seg.type == 0) ? "Cống hộp (liên ngoài trái)"
+                                  : (seg.type == 2) ? "Cống hộp (liên ngoài phải)"
+                                  : $"Cống hộp (liên trong)_{i}";
+
+                // 1. Đặt Thân cống hộp
+                var barrelInst = PlaceSingleBarrelComponent(
+                    doc,
+                    curBarrelComp,
+                    ptA,
+                    ptB,
+                    segLen,
+                    rotAngle,
+                    bimConfig,
+                    customBimParams,
+                    familyParameterMappings,
+                    data,
+                    barrelName,
+                    (i == 0) ? data.Z1 : null,
+                    (i == N - 1) ? data.Z2 : null,
+                    materialSettings,
+                    createdBarrels);
+
+                if (seg.type == 0) barrelLeft = barrelInst;
+                else if (seg.type == 2) barrelRight = barrelInst;
+                else if (barrelInst != null) barrelMidList.Add(barrelInst);
+
+                // 2. Đặt BTL và Đá dăm đệm theo đúng Yêu cầu 2 (Hình 1 mới & CAD 145):
+                if (N == 1)
+                {
+                    // Cống chỉ có 1 đốt: BTL & Đá dăm từ mép sau tường đầu TL đến mép sau tường đầu HL
+                    XYZ pBedA = pFootingBackTL;
+                    XYZ pBedB = pFootingBackHL;
+                    btlLeft = PlaceBeddingInstance(doc, compBtl, pBedA, pBedB, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, "Bê tông lót thân cống", createdBeddings, materialSettings);
+                    dddLeft = PlaceBeddingInstance(doc, compDdd, pBedA, pBedB, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, "Đá dăm đệm thân cống", createdBeddings, materialSettings);
+                }
+                else if (seg.type == 0)
+                {
+                    // LIÊN NGOÀI TRÁI (Hình 1 & CAD 145):
+                    // BTL & Đá dăm: Điểm bắt đầu luôn bắt đầu từ mép sau của cấu kiện đá dăm đệm của tường đầu sân cống (pFootingBackTL),
+                    // và điểm cuối sẽ là mép ngoài của cống hộp đổ tại chỗ (ptB - Điểm số 2 trên hình)
+                    XYZ pBedA = pFootingBackTL;
+                    XYZ pBedB = ptB;
+                    btlLeft = PlaceBeddingInstance(doc, compBtl, pBedA, pBedB, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, "Bê tông lót liên ngoài trái", createdBeddings, materialSettings);
+                    dddLeft = PlaceBeddingInstance(doc, compDdd, pBedA, pBedB, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, "Đá dăm đệm liên ngoài trái", createdBeddings, materialSettings);
+                }
+                else if (seg.type == 2)
+                {
+                    // LIÊN NGOÀI PHẢI (Hình 1 đối xứng & CAD 145):
+                    // BTL & Đá dăm: Điểm bắt đầu là mép ngoài của cống hộp đổ tại chỗ (ptA - Điểm số 2 đối xứng),
+                    // và điểm cuối là mép sau cấu kiện đá dăm đệm của tường đầu sân cống HL (pFootingBackHL)
+                    XYZ pBedA = ptA;
+                    XYZ pBedB = pFootingBackHL;
+                    btlRight = PlaceBeddingInstance(doc, compBtl, pBedA, pBedB, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, "Bê tông lót liên ngoài phải", createdBeddings, materialSettings);
+                    dddRight = PlaceBeddingInstance(doc, compDdd, pBedA, pBedB, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, "Đá dăm đệm liên ngoài phải", createdBeddings, materialSettings);
+                }
+                else
+                {
+                    // LIÊN TRONG (Hình 4):
+                    // BTL & Đá dăm: Rải từ mép ngoài cống đến mép ngoài cống (ptA đến ptB)
+                    XYZ pBedA = ptA;
+                    XYZ pBedB = ptB;
+                    var btl = PlaceBeddingInstance(doc, compBtl, pBedA, pBedB, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, $"Bê tông lót liên trong {i}", createdBeddings, materialSettings);
+                    var ddd = PlaceBeddingInstance(doc, compDdd, pBedA, pBedB, rotAngle, bimConfig, customBimParams, familyParameterMappings, data, $"Đá dăm đệm liên trong {i}", createdBeddings, materialSettings);
+                    if (btl != null) btlMidList.Add(btl);
+                    if (ddd != null) dddMidList.Add(ddd);
+                }
+            }
+
+            if (outDetails != null)
+            {
+                outDetails.BarrelLeft = barrelLeft;
+                outDetails.BarrelRight = barrelRight;
+                outDetails.MidBarrels = barrelMidList;
+                outDetails.BtlLeft = btlLeft;
+                outDetails.DddLeft = dddLeft;
+                outDetails.BtlRight = btlRight;
+                outDetails.DddRight = dddRight;
+                outDetails.MidBtls = btlMidList;
+                outDetails.MidDdds = dddMidList;
+            }
+        }
+
         private static void BuildBranchV2(
             Document doc,
             CulvertRowData data,
@@ -2747,6 +3441,13 @@ namespace InfraBIM.CulvertTool.Services
             double zDauCulvert = data.Z1 - lNgamSanM;
             double zCuoiCulvert = data.Z2 - lNgamSanM;
 
+            // YÊU CẦU 1: Lớp BTL và đá dăm đệm lúc nào cũng bắt đầu từ mép ngoài của tường đầu sân cống (Hình 1)
+            // Thụt vào 0.15m (150mm theo CAD Hình 3) từ P1 và P2
+            double dHwOffsetM = 0.15;
+            double dHwOffsetFeet = UnitUtils.ConvertToInternalUnits(dHwOffsetM, UnitTypeId.Meters);
+            XYZ pBedStart = p1 - u * dHwOffsetFeet;
+            XYZ pBedEnd = p2 + u * dHwOffsetFeet;
+
             if (data.SoHopNoi == 0)
             {
                 // TH1: Không có hộp nối
@@ -2757,7 +3458,8 @@ namespace InfraBIM.CulvertTool.Services
                         bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, zCuoiCulvert, 1, branchSuffix, materialSettings,
                         createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                    PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, totalLengthFeet, u, rotAngle,
+                    double totalBedLen = Math.Max(0.0, (pBedEnd - pBedStart).GetLength());
+                    PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pBedStart, totalBedLen, u, rotAngle,
                         bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
                 }
             }
@@ -2797,9 +3499,9 @@ namespace InfraBIM.CulvertTool.Services
                     bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: false, isVaiKeGlobal: false, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                // BTL & đá dăm Đoạn 1: đến mép ngoài hộp nối
-                double len1_bedding = Math.Max(0.0, (pHN1_out_up - p1).GetLength());
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, len1_bedding, u, rotAngle,
+                // BTL & đá dăm Đoạn 1: từ mép ngoài tường đầu TL đến mép ngoài hộp nối
+                double len1_bedding = Math.Max(0.0, (pHN1_out_up - pBedStart).GetLength());
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pBedStart, len1_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
 
                 // Đoạn 2: Từ mép thành trong Hộp 1 đến P2 (đốt bù trừ co dãn bắt đầu từ mép thành trong: isReverseBuffer = true)
@@ -2807,8 +3509,8 @@ namespace InfraBIM.CulvertTool.Services
                     bimConfig, customBimParams, familyParameterMappings, data, null, zCuoiCulvert, dotCount1 + 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: true, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                // BTL & đá dăm Đoạn 2: từ mép ngoài hộp nối đến P2
-                double len2_bedding = Math.Max(0.0, (p2 - pHN1_out_dn).GetLength());
+                // BTL & đá dăm Đoạn 2: từ mép ngoài hộp nối đến mép ngoài tường đầu HL
+                double len2_bedding = Math.Max(0.0, (pBedEnd - pHN1_out_dn).GetLength());
                 PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN1_out_dn, len2_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdBeddings);
             }
@@ -2868,8 +3570,9 @@ namespace InfraBIM.CulvertTool.Services
                     bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: false, isVaiKeGlobal: false, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                double len1_bedding = Math.Max(0.0, (pHN1_out_up - p1).GetLength());
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, p1, len1_bedding, u, rotAngle,
+                // BTL & đá dăm Đoạn 1: từ mép ngoài tường đầu TL đến mép ngoài hộp nối 1
+                double len1_bedding = Math.Max(0.0, (pHN1_out_up - pBedStart).GetLength());
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pBedStart, len1_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
 
                 // Đoạn 2: Từ mép thành trong hộp nối 1 đến mép thành trong hộp nối 2 (đốt bù trừ co dãn khóa cứng tại pHN2_in_up)
@@ -2878,6 +3581,7 @@ namespace InfraBIM.CulvertTool.Services
                     bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
+                // BTL & đá dăm Đoạn 2: giữa 2 hộp nối
                 double len2_bedding = Math.Max(0.0, (pHN2_out_up - pHN1_out_dn).GetLength());
                 PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN1_out_dn, len2_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdBeddings);
@@ -2888,7 +3592,8 @@ namespace InfraBIM.CulvertTool.Services
                     bimConfig, customBimParams, familyParameterMappings, data, null, zCuoiCulvert, dotCount2 + 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: true, isVaiKeGlobal: false, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                double len3_bedding = Math.Max(0.0, (p2 - pHN2_out_dn).GetLength());
+                // BTL & đá dăm Đoạn 3: từ mép ngoài hộp nối 2 đến mép ngoài tường đầu HL
+                double len3_bedding = Math.Max(0.0, (pBedEnd - pHN2_out_dn).GetLength());
                 PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN2_out_dn, len3_bedding, u, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 3, materialSettings, createdBeddings);
             }

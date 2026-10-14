@@ -467,11 +467,12 @@ namespace InfraBIM.CulvertTool.Views
             }
 
             double totalL = geom.TotalLengthM;
-            double bW = geom.BarrelWidthM > 0 ? geom.BarrelWidthM : 1.5;   // Khẩu độ rộng trong
-            double bH = geom.BarrelHeightM > 0 ? geom.BarrelHeightM : 1.5;   // Khẩu độ cao trong
+            int nCua = Math.Max(1, geom.SoCua);
+            double bW = geom.BarrelWidthM > 0 ? geom.BarrelWidthM : 1.5;   // Khẩu độ rộng trong 1 cửa
+            double bH = geom.BarrelHeightM > 0 ? geom.BarrelHeightM : 1.5;   // Khẩu độ cao trong 1 cửa
             double tWall = geom.WallThicknessM > 0 ? geom.WallThicknessM : 0.20; // Chiều dày thành cống
             double tSlab = tWall;                                            // Chiều dày bản đáy và nắp
-            double wOut = bW + (2.0 * tWall);                                // Bề rộng phủ bì cống
+            double wOut = (nCua * bW) + ((nCua + 1) * tWall);                // Bề rộng phủ bì cống (gồm nCua cửa và nCua+1 vách)
             double hOut = bH + (2.0 * tSlab);                                // Chiều cao phủ bì cống
 
             // Hàm tính độ hạ cao độ đáy tại vị trí X dọc tuyến (theo độ dốc thủy lực thực tế)
@@ -544,10 +545,15 @@ namespace InfraBIM.CulvertTool.Views
                 // Vách bên phải (Right Sidewall)
                 AddSlopedBoxMesh(_rootModelGroup, x0, y0, y0 + bH, x1, y1, y1 + bH, wOut / 2.0 - tWall, wOut / 2.0, segMat);
 
-                // Nếu là cống đôi (cống hộp 2 cửa), thêm vách ngăn giữa
-                if (geom.SoCua >= 2 && !geom.IsRoundCulvert)
+                // Nếu là cống nhiều cửa (nCua >= 2), thêm các vách ngăn giữa
+                if (nCua >= 2 && !geom.IsRoundCulvert)
                 {
-                    AddSlopedBoxMesh(_rootModelGroup, x0, y0, y0 + bH, x1, y1, y1 + bH, -tWall / 2.0, tWall / 2.0, segMat);
+                    for (int c = 1; c < nCua; c++)
+                    {
+                        double zWallStart = -wOut / 2.0 + c * (bW + tWall);
+                        double zWallEnd = zWallStart + tWall;
+                        AddSlopedBoxMesh(_rootModelGroup, x0, y0, y0 + bH, x1, y1, y1 + bH, zWallStart, zWallEnd, segMat);
+                    }
                 }
 
                 // Vành gioăng / ron mối nối giữa các đốt
@@ -857,9 +863,8 @@ namespace InfraBIM.CulvertTool.Views
         private static void BuildBeddingLayers(Model3DGroup group, CulvertPreviewGeometry geom, double totalL, double wOut, double tSlab, Func<double, double> dropFunc)
         {
             double ngamSan = geom.L_Ngam;
-            double lMongCX = 0.40; // BTL và đá dăm cống hộp bắt đầu sau mép đá dăm đệm cửa xả (tại P1) và kéo dài đến P2 (Hình 3)
-            double xStartBedding = Math.Min(lMongCX, totalL / 2.0);
-            double xEndBedding = Math.Max(totalL - lMongCX, totalL / 2.0);
+            double xStartBedding = geom.IsCastInPlace ? -1.45 : Math.Min(0.40, totalL / 2.0);
+            double xEndBedding = geom.IsCastInPlace ? (totalL + 1.45) : Math.Max(totalL - 0.40, totalL / 2.0);
             if (xEndBedding <= xStartBedding) return;
 
             // Xác định các đoạn rải BTL & Đá dăm (loại trừ các vị trí hộp nối)

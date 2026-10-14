@@ -524,7 +524,7 @@
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
-                                            <TextBlock Grid.Row="0" Text="💡 Cấu kiện cống đổ tại chỗ: Thân cống (2x3x2), Bê tông lót, Đá dăm đệm (Độc lập, không bị ghi đè)" Foreground="{StaticResource MintLight}" FontSize="11" Margin="0,0,0,4"/>
+                                            <TextBlock Grid.Row="0" Text="💡 Cấu kiện cống đổ tại chỗ: Liên ngoài trái, Liên trong, Liên ngoài phải, Bê tông lót, Đá dăm đệm" Foreground="{StaticResource MintLight}" FontSize="11" Margin="0,0,0,4"/>
 
                                             <!-- DataGrid Cống Đổ Tại Chỗ -->
                                             <DataGrid Grid.Row="1" ItemsSource="{Binding CastInPlaceBarrelComponents}" Height="215"

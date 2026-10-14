@@ -75,6 +75,12 @@ namespace InfraBIM.CulvertTool.Services
             geom.BarrelWidthM = w;
             geom.BarrelHeightM = h;
 
+            var matchBox3 = Regex.Match((row.KhauDo ?? "").Trim().ToUpperInvariant(), @"^(\d+)\s*[X*x]\s*(\d+(\.\d+)?)\s*[X*x]\s*(\d+(\.\d+)?)");
+            if (matchBox3.Success && int.TryParse(matchBox3.Groups[1].Value, out int parsedSoCua) && parsedSoCua > 1)
+            {
+                geom.SoCua = parsedSoCua;
+            }
+
             double totalL = geom.TotalLengthM;
             if (totalL <= 0.5) return geom;
 
@@ -466,7 +472,22 @@ namespace InfraBIM.CulvertTool.Services
                 return;
             }
 
-            // Khớp cống hộp: 1.5x1.5, 2.0x2.0, 1x1, 2.5x2.5
+            // Khớp cống hộp 3 thông số: e.g. 2x3x2 (2 cửa, rộng 3.0, cao 2.0)
+            var matchBox3 = Regex.Match(s, @"^(\d+)\s*[X*x]\s*(\d+(\.\d+)?)\s*[X*x]\s*(\d+(\.\d+)?)");
+            if (matchBox3.Success)
+            {
+                if (double.TryParse(matchBox3.Groups[2].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double wVal))
+                {
+                    width = wVal;
+                }
+                if (double.TryParse(matchBox3.Groups[4].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double hVal))
+                {
+                    height = hVal;
+                }
+                return;
+            }
+
+            // Khớp cống hộp 2 thông số: 1.5x1.5, 2.0x2.0, 1x1, 2.5x2.5, 3x2
             var matchBox = Regex.Match(s, @"(\d+(\.\d+)?)\s*[X*x]\s*(\d+(\.\d+)?)");
             if (matchBox.Success)
             {
