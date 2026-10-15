@@ -874,17 +874,17 @@
             <!-- ============================================== -->
             <TabItem Header="02 PARAMETER HÌNH HỌC">
                 <Grid Margin="4">
-                    <Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
                         <!-- Khung 1: Master Definition, Family selection, Batch Apply -->
-                        <RowDefinition Height="1.15*" MinHeight="240"/>
-                        <!-- GridSplitter kéo thả giữa 2 khung -->
-                        <RowDefinition Height="6"/>
+                        <ColumnDefinition Width="1.15*" MinWidth="480"/>
+                        <!-- GridSplitter kéo thả giữa 2 khung dọc -->
+                        <ColumnDefinition Width="6"/>
                         <!-- Khung 2: Lý trình Inspector & Override Editor -->
-                        <RowDefinition Height="*" MinHeight="180"/>
-                    </Grid.RowDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="400"/>
+                    </Grid.ColumnDefinitions>
 
-                    <!-- KHUNG 1: KHAI BÁO & GÁN THAM SỐ HÌNH HỌC THEO CỤM CẤU KIỆN (FAMILY) -->
-                    <GroupBox Grid.Row="0" Header="KHUNG 1: CỤM CẤU KIỆN, FAMILY &amp; THAM SỐ CHUNG (ÁP DỤNG HÀNG LOẠT HOẶC MẶC ĐỊNH)">
+                    <!-- KHUNG 1: CỤM CẤU KIỆN, FAMILY & THAM SỐ CHUNG (ÁP DỤNG HÀNG LOẠT HOẶC MẶC ĐỊNH) -->
+                    <GroupBox Grid.Column="0" Header="KHUNG 1: CỤM CẤU KIỆN, FAMILY &amp; THAM SỐ CHUNG (ÁP DỤNG HÀNG LOẠT HOẶC MẶC ĐỊNH)">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <!-- Hàng 0: Toolbar lọc cụm cấu kiện, dropdown family, quét, nhóm tham số -->
@@ -1062,107 +1062,113 @@
                                 </Border>
 
                                 <!-- 2. DROPDOWN CHỌN FAMILY CỦA CỤM ĐÃ CHỌN & NÚT QUÉT THAM SỐ -->
-                                <Grid Grid.Row="1" Margin="0,0,0,4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
+                                <Border Grid.Row="1" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,3">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        
+                                        <!-- Dòng 1: Dropdown Family & Nút quét -->
+                                        <Grid Grid.Row="0" Margin="0,0,0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Family cấu kiện:" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
+                                            <ComboBox Grid.Column="1" ItemsSource="{Binding FilteredAssignedFamiliesForTab02}" SelectedItem="{Binding SelectedComponentForTab02}" Height="26" VerticalContentAlignment="Center">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                            <Border Background="#1E3A8A" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="3" Padding="4,1" Margin="0,0,5,0">
+                                                                <TextBlock Text="{Binding GroupType}" Foreground="{StaticResource MintLight}" FontSize="10.5" FontWeight="SemiBold"/>
+                                                            </Border>
+                                                            <TextBlock Text="[" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
+                                                            <TextBlock Text="{Binding CategoryType}" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
+                                                            <TextBlock Text="] " Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
+                                                            <TextBlock Text="{Binding SelectedSymbol.DisplayName}" Foreground="#FFFFFF"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <Button Grid.Column="2" Content="🔄 Quét tham số" Command="{Binding ScanFamilyParamsCommand}" Margin="4,0,0,0" Padding="8,3" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
+                                        </Grid>
 
-                                    <TextBlock Text="Family cấu kiện:" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding FilteredAssignedFamiliesForTab02}" SelectedItem="{Binding SelectedComponentForTab02}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <Border Background="#1E3A8A" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="3" Padding="4,1" Margin="0,0,5,0">
-                                                        <TextBlock Text="{Binding GroupType}" Foreground="{StaticResource MintLight}" FontSize="10.5" FontWeight="SemiBold"/>
-                                                    </Border>
-                                                    <TextBlock Text="[" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
-                                                    <TextBlock Text="{Binding CategoryType}" Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
-                                                    <TextBlock Text="] " Foreground="{StaticResource CyanLight}" FontWeight="Bold"/>
-                                                    <TextBlock Text="{Binding SelectedSymbol.DisplayName}" Foreground="#FFFFFF"/>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="5,0,0,0">
-                                        <Button Content="🔄 Quét tham số" Command="{Binding ScanFamilyParamsCommand}" Margin="0,0,4,0" Padding="10,4" Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold"/>
-                                        <Button Content="📋 SAO CHÉP GIÁ TRỊ ĐÃ NHẬP SANG CÙNG CỤM (CỬA XẢ / SÂN GIA CỐ)" Command="{Binding CopyCustomParamsToOtherComponentsCommand}" Padding="10,4" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" ToolTip="Sao chép các giá trị số liệu bạn đã nhập ở cột 'Giá trị tùy biến' sang các cấu kiện khác trong cùng cụm (Cửa xả / Sân gia cố). Chỉ sao chép giá trị số liệu, không sao chép tham số và giữ nguyên các biến Yes/No."/>
-                                    </StackPanel>
-                                </Grid>
+                                        <!-- Dòng 2: Nút Sao chép sang cùng cụm -->
+                                        <Button Grid.Row="1" Content="📋 SAO CHÉP GIÁ TRỊ ĐÃ NHẬP SANG CÙNG CỤM (CỬA XẢ / SÂN GIA CỐ)" Command="{Binding CopyCustomParamsToOtherComponentsCommand}" Padding="8,3" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" HorizontalAlignment="Stretch" ToolTip="Sao chép các giá trị số liệu bạn đã nhập ở cột 'Giá trị tùy biến' sang các cấu kiện khác trong cùng cụm (Cửa xả / Sân gia cố). Chỉ sao chép giá trị số liệu, không sao chép tham số và giữ nguyên các biến Yes/No."/>
+                                    </Grid>
+                                </Border>
 
-                                <!-- 3. BỘ LỌC THAM SỐ ĐƠN GIẢN THEO KHUNG ĐỎ (TẤT CẢ / DIMENSIONS / OTHER) -->
-                                <Border Grid.Row="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,2,0,2">
-                                    <DockPanel LastChildFill="False">
-                                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="Nhóm tham số:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <!-- 3. BỘ LỌC THAM SỐ (TẤT CẢ / DIMENSIONS / OTHER / TYPE / INSTANCE / SEARCH) -->
+                                <Border Grid.Row="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,3">
+                                    <WrapPanel VerticalAlignment="Center" Orientation="Horizontal">
+                                        <TextBlock Text="Nhóm:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,4,0"/>
 
-                                            <Button Content="📁 Tất cả (Khung đỏ)" Command="{Binding SetTab02ParamCategoryFilterCommand}" CommandParameter="All" Margin="0,0,4,0" Padding="8,3" FontSize="11.5">
-                                                <Button.Style>
-                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Tab02ParamCategoryFilter}" Value="All">
-                                                                <Setter Property="Background" Value="#0284C7"/>
-                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                                <Setter Property="FontWeight" Value="Bold"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
+                                        <Button Content="📁 Tất cả" Command="{Binding SetTab02ParamCategoryFilterCommand}" CommandParameter="All" Margin="0,0,3,2" Padding="6,2" FontSize="11">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Tab02ParamCategoryFilter}" Value="All">
+                                                            <Setter Property="Background" Value="#0284C7"/>
+                                                            <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
 
-                                            <Button Content="📐 Kích thước (Dimensions)" Command="{Binding SetTab02ParamCategoryFilterCommand}" CommandParameter="Dimensions" Margin="0,0,4,0" Padding="8,3" FontSize="11.5">
-                                                <Button.Style>
-                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Tab02ParamCategoryFilter}" Value="Dimensions">
-                                                                <Setter Property="Background" Value="#0284C7"/>
-                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                                <Setter Property="FontWeight" Value="Bold"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
+                                        <Button Content="📐 Kích thước" Command="{Binding SetTab02ParamCategoryFilterCommand}" CommandParameter="Dimensions" Margin="0,0,3,2" Padding="6,2" FontSize="11">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Tab02ParamCategoryFilter}" Value="Dimensions">
+                                                            <Setter Property="Background" Value="#0284C7"/>
+                                                            <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
 
-                                            <Button Content="⚙️ Khác (Other)" Command="{Binding SetTab02ParamCategoryFilterCommand}" CommandParameter="Other" Margin="0,0,10,0" Padding="8,3" FontSize="11.5">
-                                                <Button.Style>
-                                                    <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Tab02ParamCategoryFilter}" Value="Other">
-                                                                <Setter Property="Background" Value="#0284C7"/>
-                                                                <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                                <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                                <Setter Property="FontWeight" Value="Bold"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
+                                        <Button Content="⚙️ Khác" Command="{Binding SetTab02ParamCategoryFilterCommand}" CommandParameter="Other" Margin="0,0,6,2" Padding="6,2" FontSize="11">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Tab02ParamCategoryFilter}" Value="Other">
+                                                            <Setter Property="Background" Value="#0284C7"/>
+                                                            <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
 
-                                            <!-- Lọc Type / Instance -->
-                                            <Border Width="1" Background="{StaticResource NavyBorder}" Margin="2,2,8,2"/>
-                                            <CheckBox Content="🏷️ Type" IsChecked="{Binding ShowTypeParams}" Foreground="{StaticResource TextWhite}" VerticalAlignment="Center" Margin="0,0,6,0" ToolTip="Hiển thị thuộc tính Loại (Type)"/>
-                                            <CheckBox Content="⚡ Instance" IsChecked="{Binding ShowInstanceParams}" Foreground="{StaticResource MintLight}" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Hiển thị thuộc tính Biến thể (Instance)"/>
+                                        <!-- Lọc Type / Instance -->
+                                        <Border Width="1" Height="16" Background="{StaticResource NavyBorder}" Margin="0,2,6,2"/>
+                                        <CheckBox Content="🏷️ Type" IsChecked="{Binding ShowTypeParams}" Foreground="{StaticResource TextWhite}" VerticalAlignment="Center" Margin="0,0,5,2" ToolTip="Hiển thị thuộc tính Loại (Type)"/>
+                                        <CheckBox Content="⚡ Instance" IsChecked="{Binding ShowInstanceParams}" Foreground="{StaticResource MintLight}" VerticalAlignment="Center" Margin="0,0,6,2" ToolTip="Hiển thị thuộc tính Biến thể (Instance)"/>
 
-                                            <!-- Chọn để sao chép giá trị -->
-                                            <Border Width="1" Background="{StaticResource NavyBorder}" Margin="2,2,8,2"/>
-                                            <TextBlock Text="Chọn giá trị:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                            <Button Content="☑️ Tất cả" Command="{Binding SelectAllParamsForCopyCommand}" Margin="0,0,4,0" Padding="6,2" FontSize="11" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Chọn tất cả các giá trị số liệu đã nhập để sao chép"/>
-                                            <Button Content="◻️ Bỏ chọn" Command="{Binding UnselectAllParamsForCopyCommand}" Margin="0,0,8,0" Padding="6,2" FontSize="11" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Bỏ chọn tất cả giá trị"/>
-                                        </StackPanel>
+                                        <!-- Chọn để sao chép giá trị -->
+                                        <Border Width="1" Height="16" Background="{StaticResource NavyBorder}" Margin="0,2,6,2"/>
+                                        <Button Content="☑️ Tất cả" Command="{Binding SelectAllParamsForCopyCommand}" Margin="0,0,3,2" Padding="5,2" FontSize="10.5" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Chọn tất cả các giá trị số liệu đã nhập để sao chép"/>
+                                        <Button Content="◻️ Bỏ chọn" Command="{Binding UnselectAllParamsForCopyCommand}" Margin="0,0,6,2" Padding="5,2" FontSize="10.5" Style="{StaticResource CulvertPresetButtonStyle}" ToolTip="Bỏ chọn tất cả giá trị"/>
 
                                         <!-- Ô tìm kiếm tham số nhanh -->
-                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="🔍 Tìm:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,0,2">
+                                            <TextBlock Text="🔍" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,2,0"/>
                                             <TextBox Text="{Binding ParamSearchFilter, UpdateSourceTrigger=PropertyChanged}" 
-                                                     Width="110" Height="22" VerticalContentAlignment="Center"
+                                                     Width="90" Height="22" VerticalContentAlignment="Center"
                                                      Background="{StaticResource NavyDark}" Foreground="#FFF" BorderBrush="{StaticResource CyanDark}"
                                                      ToolTip="Nhập tên tham số để lọc nhanh"/>
                                         </StackPanel>
-                                    </DockPanel>
+                                    </WrapPanel>
                                 </Border>
                             </Grid>
 
@@ -1201,33 +1207,32 @@
                             </DataGrid>
 
                             <!-- HÀNG 2: GÁN THÔNG SỐ CẤU KIỆN ĐÃ CHỌN CHO PHẠM VI LÝ TRÌNH (TỪ STT ĐẾN STT) -->
-                            <Border Grid.Row="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,4,0,0">
-                                <DockPanel LastChildFill="False">
-                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="⚡ Gán thông số cấu kiện này cho phạm vi lý trình:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Từ STT:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <TextBox Text="{Binding BatchFromSTT, UpdateSourceTrigger=PropertyChanged}" Width="50" Height="22" TextAlignment="Center" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Đến STT:" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <TextBox Text="{Binding BatchToSTT, UpdateSourceTrigger=PropertyChanged}" Width="50" Height="22" TextAlignment="Center" Margin="0,0,10,0"/>
-                                        <Button Content="⚡ ÁP DỤNG CHO CÁC LÝ TRÌNH ĐÃ CHỌN" Command="{Binding ApplyAllCustomParamsToStationRangeCommand}" 
-                                                Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold" Padding="12,3" Cursor="Hand" BorderBrush="{StaticResource MintLight}"/>
-                                    </StackPanel>
-                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Grid.Row="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,4,0,0">
+                                <DockPanel LastChildFill="True">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
                                         <TextBlock Text="Tổng: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
                                         <TextBlock Text="{Binding AllCulvertRows.Count}" Foreground="{StaticResource TextWhite}" FontWeight="Bold" FontSize="11"/>
                                         <TextBlock Text=" cống" Foreground="{StaticResource TextMuted}" FontSize="11"/>
                                     </StackPanel>
+                                    <WrapPanel VerticalAlignment="Center" Orientation="Horizontal">
+                                        <TextBlock Text="Phạm vi STT: Từ" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBox Text="{Binding BatchFromSTT, UpdateSourceTrigger=PropertyChanged}" Width="45" Height="22" TextAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="đến" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBox Text="{Binding BatchToSTT, UpdateSourceTrigger=PropertyChanged}" Width="45" Height="22" TextAlignment="Center" Margin="0,0,8,0"/>
+                                        <Button Content="⚡ ÁP DỤNG CHO DẢI LÝ TRÌNH" Command="{Binding ApplyAllCustomParamsToStationRangeCommand}" 
+                                                Background="{StaticResource MintDark}" Foreground="#FFF" FontWeight="Bold" Padding="10,3" Cursor="Hand" BorderBrush="{StaticResource MintLight}"/>
+                                    </WrapPanel>
                                 </DockPanel>
                             </Border>
                         </Grid>
                     </GroupBox>
 
-                    <!-- SPLITTER GIỮA KHUNG 1 VÀ KHUNG 2 -->
-                    <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" 
-                                  Background="{StaticResource NavyBorder}" Cursor="SizeNS" ShowsPreview="True"/>
+                    <!-- SPLITTER GIỮA KHUNG 1 VÀ KHUNG 2 (CHIA DỌC TRÁI - PHẢI) -->
+                    <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Center" VerticalAlignment="Stretch" 
+                                  Background="{StaticResource NavyBorder}" Cursor="SizeWE" ShowsPreview="True"/>
 
                     <!-- KHUNG 2: KIỂM TRA & TÙY BIẾN THAM SỐ CHI TIẾT THEO TỪNG LÝ TRÌNH -->
-                    <GroupBox Grid.Row="2" Header="KHUNG 2: KIỂM TRA &amp; TÙY BIẾN THAM SỐ CHI TIẾT THEO TỪNG LÝ TRÌNH" Margin="0,2,0,0">
+                    <GroupBox Grid.Column="2" Header="KHUNG 2: KIỂM TRA &amp; TÙY BIẾN THAM SỐ CHI TIẾT THEO TỪNG LÝ TRÌNH" Margin="2,0,0,0">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <!-- Hàng 0: Toolbar chọn lý trình xổ xuống, nút sao chép, làm mới -->
@@ -1238,13 +1243,22 @@
 
                             <!-- TOOLBAR KHUNG 2 -->
                             <Border Grid.Row="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,4">
-                                <DockPanel LastChildFill="False">
-                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="🎯 Chọn lý trình kiểm tra:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
 
-                                        <ComboBox ItemsSource="{Binding AllCulvertRows}" 
+                                    <!-- Dòng 1: Chọn lý trình kiểm tra ComboBox chiếm full width -->
+                                    <Grid Grid.Row="0" Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="🎯 Chọn lý trình kiểm tra:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding AllCulvertRows}" 
                                                   SelectedItem="{Binding SelectedCulvertRowForInspector}"
-                                                  Width="340" Height="26" VerticalContentAlignment="Center">
+                                                  Height="26" VerticalContentAlignment="Center">
                                             <ComboBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -1260,23 +1274,28 @@
                                                 </DataTemplate>
                                             </ComboBox.ItemTemplate>
                                         </ComboBox>
+                                    </Grid>
 
-                                        <Button Content="📋 Sao chép từ Khung 1 sang lý trình này" Command="{Binding CopyKhung1ToInspectorRowCommand}" 
-                                                Margin="8,0,4,0" Padding="8,3" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="SemiBold"
-                                                ToolTip="Sao chép các giá trị tùy biến đang nhập ở Khung 1 sang riêng lý trình đang chọn này"/>
-                                        <Button Content="🔄 Làm mới" Command="{Binding RefreshInspectorParamsCommand}" 
-                                                Margin="0,0,4,0" Padding="8,3" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" Foreground="{StaticResource CyanLight}"
-                                                ToolTip="Cập nhật lại danh sách tham số theo lý trình đang chọn"/>
-                                    </StackPanel>
+                                    <!-- Dòng 2: Nút thao tác & thông tin cấu kiện đang xem -->
+                                    <DockPanel Grid.Row="1" LastChildFill="True">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                                            <TextBlock Text="Cấu kiện: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                            <TextBlock Text="{Binding SelectedComponentForTab02.CategoryType}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11"/>
+                                            <TextBlock Text=" (" Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                            <TextBlock Text="{Binding InspectorParameterMappings.Count}" Foreground="{StaticResource TextWhite}" FontWeight="Bold" FontSize="11"/>
+                                            <TextBlock Text=" tham số)" Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                        </StackPanel>
 
-                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="Cấu kiện đang xem: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                        <TextBlock Text="{Binding SelectedComponentForTab02.CategoryType}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11"/>
-                                        <TextBlock Text=" (" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                        <TextBlock Text="{Binding InspectorParameterMappings.Count}" Foreground="{StaticResource TextWhite}" FontWeight="Bold" FontSize="11"/>
-                                        <TextBlock Text=" tham số)" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                    </StackPanel>
-                                </DockPanel>
+                                        <WrapPanel VerticalAlignment="Center" Orientation="Horizontal">
+                                            <Button Content="📋 Sao chép từ Khung 1 sang lý trình này" Command="{Binding CopyKhung1ToInspectorRowCommand}" 
+                                                    Margin="0,0,4,0" Padding="8,3" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="SemiBold"
+                                                    ToolTip="Sao chép các giá trị tùy biến đang nhập ở Khung 1 sang riêng lý trình đang chọn này"/>
+                                            <Button Content="🔄 Làm mới" Command="{Binding RefreshInspectorParamsCommand}" 
+                                                    Margin="0,0,4,0" Padding="8,3" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" Foreground="{StaticResource CyanLight}"
+                                                    ToolTip="Cập nhật lại danh sách tham số theo lý trình đang chọn"/>
+                                        </WrapPanel>
+                                    </DockPanel>
+                                </Grid>
                             </Border>
 
                             <!-- BẢNG THAM SỐ KHUNG 2 (CHỈ CÓ 4 CỘT: Chọn, STT, Tham số, Giá trị tùy biến) -->
@@ -1291,11 +1310,11 @@
                                       ScrollViewer.CanContentScroll="True">
                                 <DataGrid.Columns>
                                     <DataGridCheckBoxColumn Header="Chọn" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="50" MinWidth="45"/>
-                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" IsReadOnly="True" Width="55" MinWidth="45" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="Tham số" Binding="{Binding InternalName}" IsReadOnly="True" Width="*" MinWidth="180" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
+                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" IsReadOnly="True" Width="50" MinWidth="40" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="Tham số" Binding="{Binding InternalName}" IsReadOnly="True" Width="*" MinWidth="140" FontWeight="SemiBold" Foreground="{StaticResource CyanLight}"/>
 
                                     <!-- CỘT GIÁ TRỊ TÙY BIẾN CỦA LÝ TRÌNH NÀY -->
-                                    <DataGridTemplateColumn Header="Giá trị tùy biến (Lý trình này)" Width="190" MinWidth="140">
+                                    <DataGridTemplateColumn Header="Giá trị tùy biến (Lý trình này)" Width="180" MinWidth="130">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <Grid>
