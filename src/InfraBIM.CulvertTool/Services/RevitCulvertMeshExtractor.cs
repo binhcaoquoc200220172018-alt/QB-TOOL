@@ -87,6 +87,7 @@ namespace InfraBIM.CulvertTool.Services
                 {
                     var failOpts = t.GetFailureHandlingOptions();
                     failOpts.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
+                    failOpts.SetClearAfterRollback(true);
                     t.SetFailureHandlingOptions(failOpts);
 
                     t.Start();

@@ -2437,113 +2437,254 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
-        internal static bool TryCutGeometrySafe(Document doc, Element? eToCut, Element? eCutter)
+        private static bool BoundingBoxesIntersect(Element? elemA, Element? elemB, double toleranceFeet = 0.5)
         {
-            if (doc == null || eToCut == null || eCutter == null || !eToCut.IsValidObject || !eCutter.IsValidObject) return false;
-            if (eToCut.Id == eCutter.Id) return false;
+            if (elemA == null || elemB == null || !elemA.IsValidObject || !elemB.IsValidObject) return false;
+            try
+            {
+                var bbA = elemA.get_BoundingBox(null);
+                var bbB = elemB.get_BoundingBox(null);
+                if (bbA == null || bbB == null) return true; // nếu không lấy được bbox thì cho phép thử
+
+                if (bbA.Max.X + toleranceFeet < bbB.Min.X || bbB.Max.X + toleranceFeet < bbA.Min.X) return false;
+                if (bbA.Max.Y + toleranceFeet < bbB.Min.Y || bbB.Max.Y + toleranceFeet < bbA.Min.Y) return false;
+                if (bbA.Max.Z + toleranceFeet < bbB.Min.Z || bbB.Max.Z + toleranceFeet < bbA.Min.Z) return false;
+                return true;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        internal static bool TryCutHeadwallWithCulvertVoid(Document doc, Element? tuongDau, Element? culvertBarrel)
+        {
+            if (doc == null || tuongDau == null || culvertBarrel == null || !tuongDau.IsValidObject || !culvertBarrel.IsValidObject) return false;
+            if (tuongDau.Id == culvertBarrel.Id) return false;
+
+            // 1. Kiểm tra nếu đã cut trước đó
+            try
+            {
+                if (InstanceVoidCutUtils.InstanceVoidCutExists(tuongDau, culvertBarrel)) return true;
+            }
+            catch { }
+
+            // 2. Kiểm tra va chạm BoundingBox
+            if (!BoundingBoxesIntersect(tuongDau, culvertBarrel, 0.5))
+            {
+                return false;
+            }
+
+            // 3. Unjoin nếu đã Join
+            try
+            {
+                if (JoinGeometryUtils.AreElementsJoined(doc, tuongDau, culvertBarrel))
+                {
+                    JoinGeometryUtils.UnjoinGeometry(doc, tuongDau, culvertBarrel);
+                }
+            }
+            catch { }
+
+            // 4. Thử InstanceVoidCut (Void trong cống hộp cắt Tường đầu) trong SubTransaction cô lập
+            bool voidSuccess = false;
+            try
+            {
+                if (InstanceVoidCutUtils.CanBeCutWithVoid(tuongDau))
+                {
+                    using (var st = new SubTransaction(doc))
+                    {
+                        st.Start();
+                        try
+                        {
+                            InstanceVoidCutUtils.AddInstanceVoidCut(doc, tuongDau, culvertBarrel);
+                            doc.Regenerate();
+                            st.Commit();
+                            voidSuccess = true;
+                        }
+                        catch
+                        {
+                            if (st.HasStarted() && !st.HasEnded()) st.RollBack();
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 5. Nếu tuongDau chứa các cấu kiện con (nested subcomponents), thử cut từng cấu kiện con
+            if (!voidSuccess && tuongDau is FamilyInstance fi)
+            {
+                try
+                {
+                    var subIds = fi.GetSubComponentIds();
+                    if (subIds != null && subIds.Count > 0)
+                    {
+                        foreach (var sId in subIds)
+                        {
+                            var subElem = doc.GetElement(sId);
+                            if (subElem != null && subElem.IsValidObject && BoundingBoxesIntersect(subElem, culvertBarrel, 0.5))
+                            {
+                                try
+                                {
+                                    if (InstanceVoidCutUtils.CanBeCutWithVoid(subElem) && !InstanceVoidCutUtils.InstanceVoidCutExists(subElem, culvertBarrel))
+                                    {
+                                        using (var st = new SubTransaction(doc))
+                                        {
+                                            st.Start();
+                                            try
+                                            {
+                                                InstanceVoidCutUtils.AddInstanceVoidCut(doc, subElem, culvertBarrel);
+                                                doc.Regenerate();
+                                                st.Commit();
+                                                voidSuccess = true;
+                                            }
+                                            catch
+                                            {
+                                                if (st.HasStarted() && !st.HasEnded()) st.RollBack();
+                                            }
+                                        }
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            // 6. Nếu InstanceVoidCut không khả thi hoặc không cắt được, fallback sang SolidSolidCutUtils hoặc JoinGeometryUtils
+            if (!voidSuccess)
+            {
+                return TryCutSolidSolid(doc, tuongDau, culvertBarrel);
+            }
+
+            return voidSuccess;
+        }
+
+        internal static bool TryCutSolidSolid(Document doc, Element? elemA, Element? elemB)
+        {
+            if (doc == null || elemA == null || elemB == null || !elemA.IsValidObject || !elemB.IsValidObject) return false;
+            if (elemA.Id == elemB.Id) return false;
 
             // 1. Kiểm tra nếu 2 đối tượng đã được Cut trước đó
             try
             {
-                var cuttingSolids = SolidSolidCutUtils.GetCuttingSolids(eToCut);
-                if (cuttingSolids != null && cuttingSolids.Contains(eCutter.Id))
-                {
-                    return true;
-                }
+                var cuttingSolidsA = SolidSolidCutUtils.GetCuttingSolids(elemA);
+                if (cuttingSolidsA != null && cuttingSolidsA.Contains(elemB.Id)) return true;
+                var cuttingSolidsB = SolidSolidCutUtils.GetCuttingSolids(elemB);
+                if (cuttingSolidsB != null && cuttingSolidsB.Contains(elemA.Id)) return true;
             }
             catch { }
 
-            try
+            // 2. Kiểm tra va chạm BoundingBox
+            if (!BoundingBoxesIntersect(elemA, elemB, 0.5))
             {
-                if (InstanceVoidCutUtils.InstanceVoidCutExists(eToCut, eCutter) ||
-                    InstanceVoidCutUtils.InstanceVoidCutExists(eCutter, eToCut))
-                {
-                    return true;
-                }
+                return false;
             }
-            catch { }
 
-            // 2. Unjoin các đối tượng nếu đã Join trước đó để tránh lỗi "Can't cut joined element"
+            // 3. Unjoin các đối tượng nếu đã Join trước đó
             try
             {
-                if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
+                if (JoinGeometryUtils.AreElementsJoined(doc, elemA, elemB))
                 {
-                    JoinGeometryUtils.UnjoinGeometry(doc, eToCut, eCutter);
+                    JoinGeometryUtils.UnjoinGeometry(doc, elemA, elemB);
                 }
             }
             catch { }
 
             bool cutSuccess = false;
 
-            // ƯU TIÊN 0: Thử InstanceVoidCutUtils (Cắt bằng Void rỗng "Cut with Voids When Loaded")
-            // Hướng A: eToCut (ví dụ Tường đầu) bị cắt bởi eCutter (Cống hộp)
+            // 4. Thử SolidSolidCutUtils elemA bị cắt bởi elemB
             try
             {
-                InstanceVoidCutUtils.AddInstanceVoidCut(doc, eToCut, eCutter);
-                cutSuccess = true;
+                if (SolidSolidCutUtils.CanElementCutElement(elemB, elemA, out _))
+                {
+                    using (var st = new SubTransaction(doc))
+                    {
+                        st.Start();
+                        try
+                        {
+                            SolidSolidCutUtils.AddCutBetweenSolids(doc, elemA, elemB);
+                            doc.Regenerate();
+                            st.Commit();
+                            cutSuccess = true;
+                        }
+                        catch
+                        {
+                            if (st.HasStarted() && !st.HasEnded()) st.RollBack();
+                        }
+                    }
+                }
             }
             catch { }
 
-            // Hướng B: eCutter bị cắt bởi eToCut
+            // 5. Thử chiều ngược lại elemB bị cắt bởi elemA
             if (!cutSuccess)
             {
                 try
                 {
-                    InstanceVoidCutUtils.AddInstanceVoidCut(doc, eCutter, eToCut);
-                    cutSuccess = true;
-                }
-                catch { }
-            }
-
-            // ƯU TIÊN 1: Thử Cut Geometry chuẩn của Revit (SolidSolidCutUtils)
-            if (!cutSuccess)
-            {
-                try
-                {
-                    if (SolidSolidCutUtils.CanElementCutElement(eCutter, eToCut, out _))
+                    if (SolidSolidCutUtils.CanElementCutElement(elemA, elemB, out _))
                     {
-                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eToCut, eCutter);
-                        cutSuccess = true;
-                    }
-                }
-                catch { }
-            }
-
-            if (!cutSuccess)
-            {
-                try
-                {
-                    if (SolidSolidCutUtils.CanElementCutElement(eToCut, eCutter, out _))
-                    {
-                        SolidSolidCutUtils.AddCutBetweenSolids(doc, eCutter, eToCut);
-                        cutSuccess = true;
-                    }
-                }
-                catch { }
-            }
-
-            // ƯU TIÊN 2: JoinGeometryUtils và SwitchJoinOrder (chuẩn Revit boolean CSG)
-            if (!cutSuccess)
-            {
-                try
-                {
-                    if (!JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
-                    {
-                        JoinGeometryUtils.JoinGeometry(doc, eToCut, eCutter);
-                    }
-                    if (JoinGeometryUtils.AreElementsJoined(doc, eToCut, eCutter))
-                    {
-                        if (!JoinGeometryUtils.IsCuttingElementInJoin(doc, eCutter, eToCut))
+                        using (var st = new SubTransaction(doc))
                         {
-                            JoinGeometryUtils.SwitchJoinOrder(doc, eToCut, eCutter);
+                            st.Start();
+                            try
+                            {
+                                SolidSolidCutUtils.AddCutBetweenSolids(doc, elemB, elemA);
+                                doc.Regenerate();
+                                st.Commit();
+                                cutSuccess = true;
+                            }
+                            catch
+                            {
+                                if (st.HasStarted() && !st.HasEnded()) st.RollBack();
+                            }
                         }
-                        cutSuccess = true;
+                    }
+                }
+                catch { }
+            }
+
+            // 6. Fallback JoinGeometryUtils & SwitchJoinOrder
+            if (!cutSuccess)
+            {
+                try
+                {
+                    using (var st = new SubTransaction(doc))
+                    {
+                        st.Start();
+                        try
+                        {
+                            if (!JoinGeometryUtils.AreElementsJoined(doc, elemA, elemB))
+                            {
+                                JoinGeometryUtils.JoinGeometry(doc, elemA, elemB);
+                            }
+                            if (JoinGeometryUtils.AreElementsJoined(doc, elemA, elemB))
+                            {
+                                if (!JoinGeometryUtils.IsCuttingElementInJoin(doc, elemB, elemA))
+                                {
+                                    JoinGeometryUtils.SwitchJoinOrder(doc, elemA, elemB);
+                                }
+                            }
+                            doc.Regenerate();
+                            st.Commit();
+                            cutSuccess = true;
+                        }
+                        catch
+                        {
+                            if (st.HasStarted() && !st.HasEnded()) st.RollBack();
+                        }
                     }
                 }
                 catch { }
             }
 
             return cutSuccess;
+        }
+
+        internal static bool TryCutGeometrySafe(Document doc, Element? eToCut, Element? eCutter)
+        {
+            return TryCutSolidSolid(doc, eToCut, eCutter);
         }
 
         internal static bool IsVaiKeOrTaiParamName(string? name)
@@ -2647,7 +2788,7 @@ namespace InfraBIM.CulvertTool.Services
             return null;
         }
 
-        private static void CutSubComponentsSafe(Document doc, Element? elemA, Element? elemB)
+        private static void CutSubComponentsSolidSafe(Document doc, Element? elemA, Element? elemB)
         {
             if (doc == null || elemA == null || elemB == null || !elemA.IsValidObject || !elemB.IsValidObject) return;
             try
@@ -2660,16 +2801,20 @@ namespace InfraBIM.CulvertTool.Services
                         foreach (var sId in subIds)
                         {
                             var subElem = doc.GetElement(sId);
-                            if (subElem != null && subElem.IsValidObject)
+                            if (subElem != null && subElem.IsValidObject && BoundingBoxesIntersect(subElem, elemB, 0.5))
                             {
-                                TryCutGeometrySafe(doc, subElem, elemB);
-                                TryCutGeometrySafe(doc, elemB, subElem);
+                                TryCutSolidSolid(doc, subElem, elemB);
                             }
                         }
                     }
                 }
             }
             catch { }
+        }
+
+        private static void CutSubComponentsSafe(Document doc, Element? elemA, Element? elemB)
+        {
+            CutSubComponentsSolidSafe(doc, elemA, elemB);
         }
 
         private static bool IsBtlInstance(Element? elem)
@@ -2753,43 +2898,16 @@ namespace InfraBIM.CulvertTool.Services
             var firstBar = cipDetails?.BarrelLeft ?? barrels.FirstOrDefault();
             var lastBar = cipDetails?.BarrelRight ?? barrels.LastOrDefault();
 
-            // 1. YÊU CẦU 4: Cắt TƯỜNG ĐẦU CỬA XẢ với CỐNG HỘP tiếp xúc (ở cả 2 đầu thượng lưu và hạ lưu)
-            if (firstBar != null && firstBar.IsValidObject)
+            // 1. YÊU CẦU 2 & 4: Cắt TƯỜNG ĐẦU CỬA XẢ với CỐNG HỘP tiếp xúc (ở cả 2 đầu thượng lưu và hạ lưu)
+            // Cắt đúng bằng khối Void đã tạo trong Family Cống hộp ("Cut with Voids When Loaded")
+            if (tuongDauTL != null && firstBar != null)
             {
-                if (tuongDauTL != null && tuongDauTL.IsValidObject)
-                {
-                    TryCutGeometrySafe(doc, tuongDauTL, firstBar);
-                    CutSubComponentsSafe(doc, tuongDauTL, firstBar);
-                    CutSubComponentsSafe(doc, firstBar, tuongDauTL);
-                }
-                foreach (var upInst in upOutlets)
-                {
-                    if (upInst != null && upInst.IsValidObject)
-                    {
-                        TryCutGeometrySafe(doc, upInst, firstBar);
-                        CutSubComponentsSafe(doc, upInst, firstBar);
-                        CutSubComponentsSafe(doc, firstBar, upInst);
-                    }
-                }
+                TryCutHeadwallWithCulvertVoid(doc, tuongDauTL, firstBar);
             }
 
-            if (lastBar != null && lastBar.IsValidObject)
+            if (tuongDauHL != null && lastBar != null)
             {
-                if (tuongDauHL != null && tuongDauHL.IsValidObject)
-                {
-                    TryCutGeometrySafe(doc, tuongDauHL, lastBar);
-                    CutSubComponentsSafe(doc, tuongDauHL, lastBar);
-                    CutSubComponentsSafe(doc, lastBar, tuongDauHL);
-                }
-                foreach (var dnInst in dnOutlets)
-                {
-                    if (dnInst != null && dnInst.IsValidObject)
-                    {
-                        TryCutGeometrySafe(doc, dnInst, lastBar);
-                        CutSubComponentsSafe(doc, dnInst, lastBar);
-                        CutSubComponentsSafe(doc, lastBar, dnInst);
-                    }
-                }
+                TryCutHeadwallWithCulvertVoid(doc, tuongDauHL, lastBar);
             }
 
             if (isRowCastInPlace)
@@ -2805,13 +2923,13 @@ namespace InfraBIM.CulvertTool.Services
                 {
                     if (btlLeft != null && btlLeft.IsValidObject)
                     {
-                        TryCutGeometrySafe(doc, dddTL, btlLeft);
-                        CutSubComponentsSafe(doc, dddTL, btlLeft);
+                        TryCutSolidSolid(doc, dddTL, btlLeft);
+                        CutSubComponentsSolidSafe(doc, dddTL, btlLeft);
                     }
                     if (dddLeft != null && dddLeft.IsValidObject)
                     {
-                        TryCutGeometrySafe(doc, dddTL, dddLeft);
-                        CutSubComponentsSafe(doc, dddTL, dddLeft);
+                        TryCutSolidSolid(doc, dddTL, dddLeft);
+                        CutSubComponentsSolidSafe(doc, dddTL, dddLeft);
                     }
                 }
 
@@ -2820,28 +2938,26 @@ namespace InfraBIM.CulvertTool.Services
                 {
                     if (btlRight != null && btlRight.IsValidObject)
                     {
-                        TryCutGeometrySafe(doc, dddHL, btlRight);
-                        CutSubComponentsSafe(doc, dddHL, btlRight);
+                        TryCutSolidSolid(doc, dddHL, btlRight);
+                        CutSubComponentsSolidSafe(doc, dddHL, btlRight);
                     }
                     if (dddRight != null && dddRight.IsValidObject)
                     {
-                        TryCutGeometrySafe(doc, dddHL, dddRight);
-                        CutSubComponentsSafe(doc, dddHL, dddRight);
+                        TryCutSolidSolid(doc, dddHL, dddRight);
+                        CutSubComponentsSolidSafe(doc, dddHL, dddRight);
                     }
                 }
 
                 // Cắt cống hộp liên ngoài với lớp BTL
                 if (firstBar != null && btlLeft != null && btlLeft.IsValidObject)
                 {
-                    TryCutGeometrySafe(doc, btlLeft, firstBar);
-                    CutSubComponentsSafe(doc, btlLeft, firstBar);
-                    TryCutGeometrySafe(doc, firstBar, btlLeft);
+                    TryCutSolidSolid(doc, btlLeft, firstBar);
+                    CutSubComponentsSolidSafe(doc, btlLeft, firstBar);
                 }
                 if (lastBar != null && btlRight != null && btlRight.IsValidObject)
                 {
-                    TryCutGeometrySafe(doc, btlRight, lastBar);
-                    CutSubComponentsSafe(doc, btlRight, lastBar);
-                    TryCutGeometrySafe(doc, lastBar, btlRight);
+                    TryCutSolidSolid(doc, btlRight, lastBar);
+                    CutSubComponentsSolidSafe(doc, btlRight, lastBar);
                 }
 
                 // 3. YÊU CẦU 3: Đối với LIÊN TRONG: cut cống hộp đổ tại chỗ với lớp BTL, cut cống hộp đổ tại chỗ với đá dăm đệm
@@ -2857,16 +2973,14 @@ namespace InfraBIM.CulvertTool.Services
 
                         if (btl != null && btl.IsValidObject)
                         {
-                            TryCutGeometrySafe(doc, btl, bar);
-                            CutSubComponentsSafe(doc, btl, bar);
-                            TryCutGeometrySafe(doc, bar, btl);
+                            TryCutSolidSolid(doc, btl, bar);
+                            CutSubComponentsSolidSafe(doc, btl, bar);
                         }
 
                         if (ddd != null && ddd.IsValidObject)
                         {
-                            TryCutGeometrySafe(doc, ddd, bar);
-                            CutSubComponentsSafe(doc, ddd, bar);
-                            TryCutGeometrySafe(doc, bar, ddd);
+                            TryCutSolidSolid(doc, ddd, bar);
+                            CutSubComponentsSolidSafe(doc, ddd, bar);
                         }
                     }
                 }
@@ -2896,43 +3010,64 @@ namespace InfraBIM.CulvertTool.Services
 
                         if (btlInst != null && btlInst.IsValidObject)
                         {
-                            TryCutGeometrySafe(doc, btlInst, bar);
-                            CutSubComponentsSafe(doc, btlInst, bar);
-                            TryCutGeometrySafe(doc, bar, btlInst);
+                            TryCutSolidSolid(doc, btlInst, bar);
+                            CutSubComponentsSolidSafe(doc, btlInst, bar);
                         }
                         if (dddInst != null && dddInst.IsValidObject)
                         {
-                            TryCutGeometrySafe(doc, dddInst, bar);
-                            CutSubComponentsSafe(doc, dddInst, bar);
-                            TryCutGeometrySafe(doc, bar, dddInst);
+                            TryCutSolidSolid(doc, dddInst, bar);
+                            CutSubComponentsSolidSafe(doc, dddInst, bar);
                         }
                     }
                 }
             }
             else
             {
-                // Cống đúc sẵn: Cut BTL & đá dăm đệm cống hộp với khối Cửa xả
+                // Cống đúc sẵn: Cut BTL & đá dăm đệm cống hộp với BTL & đá dăm đệm của Cửa xả
                 var firstBed = beddings.FirstOrDefault();
                 var lastBed = beddings.LastOrDefault();
 
                 if (firstBed != null && firstBed.IsValidObject)
                 {
-                    if (dddTL != null && dddTL.IsValidObject) TryCutGeometrySafe(doc, dddTL, firstBed);
-                    foreach (var upInst in upOutlets)
-                    {
-                        if (upInst != null && upInst.IsValidObject) TryCutGeometrySafe(doc, firstBed, upInst);
-                    }
+                    if (dddTL != null && dddTL.IsValidObject) TryCutSolidSolid(doc, dddTL, firstBed);
+                    if (btlTL != null && btlTL.IsValidObject) TryCutSolidSolid(doc, btlTL, firstBed);
                 }
 
                 if (lastBed != null && lastBed.IsValidObject && lastBed.Id != firstBed?.Id)
                 {
-                    if (dddHL != null && dddHL.IsValidObject) TryCutGeometrySafe(doc, dddHL, lastBed);
-                    foreach (var dnInst in dnOutlets)
+                    if (dddHL != null && dddHL.IsValidObject) TryCutSolidSolid(doc, dddHL, lastBed);
+                    if (btlHL != null && btlHL.IsValidObject) TryCutSolidSolid(doc, btlHL, lastBed);
+                }
+            }
+
+            // Cống kỹ thuật: Cut Hố kỹ thuật và Hộp nối
+            if (manholes != null && manholes.Count > 0)
+            {
+                var hkt1 = manholes.FirstOrDefault(m => m != null && m.IsValidObject && (m.Symbol?.FamilyName?.Contains("HO KY THUAT") == true || m.Symbol?.FamilyName?.Contains("HỐ KỸ THUẬT") == true));
+                var hkt2 = manholes.LastOrDefault(m => m != null && m.IsValidObject && (m.Symbol?.FamilyName?.Contains("HO KY THUAT") == true || m.Symbol?.FamilyName?.Contains("HỐ KỸ THUẬT") == true));
+                var hn = manholes.FirstOrDefault(m => m != null && m.IsValidObject && (m.Symbol?.FamilyName?.Contains("HOP NOI") == true || m.Symbol?.FamilyName?.Contains("HỘP NỐI") == true));
+
+                if (hkt1 != null && firstBar != null) TryCutSolidSolid(doc, hkt1, firstBar);
+                if (hkt2 != null && lastBar != null) TryCutSolidSolid(doc, hkt2, lastBar);
+
+                var firstBed = beddings.FirstOrDefault();
+                var lastBed = beddings.LastOrDefault();
+                if (hkt1 != null && firstBed != null) TryCutSolidSolid(doc, hkt1, firstBed);
+                if (hkt2 != null && lastBed != null) TryCutSolidSolid(doc, hkt2, lastBed);
+
+                if (hn != null)
+                {
+                    foreach (var bar in barrels)
                     {
-                        if (dnInst != null && dnInst.IsValidObject) TryCutGeometrySafe(doc, lastBed, dnInst);
+                        if (bar != null && bar.IsValidObject && BoundingBoxesIntersect(hn, bar, 0.5))
+                        {
+                            TryCutSolidSolid(doc, hn, bar);
+                        }
                     }
                 }
             }
+
+            try { doc.Regenerate(); } catch { }
         }
 
         /// <summary>
