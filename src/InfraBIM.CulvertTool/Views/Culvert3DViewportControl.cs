@@ -140,41 +140,41 @@ namespace InfraBIM.CulvertTool.Views
             var overlayGrid = new Grid { IsHitTestVisible = true };
             Children.Add(overlayGrid);
 
-            // a. HUD Thông tin ở góc trên bên trái
+            // a. HUD Thông tin ở góc trên bên trái (Gọn gàng, rõ ràng, không lặp lại)
             var hudPanel = new Border
             {
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(14, 14, 0, 0),
-                Background = new SolidColorBrush(Color.FromArgb(215, 10, 17, 32)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(140, 56, 189, 248)),
+                Margin = new Thickness(12, 12, 0, 0),
+                Background = new SolidColorBrush(Color.FromArgb(220, 10, 17, 32)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(160, 56, 189, 248)),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(12, 9, 14, 9)
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(10, 6, 12, 6)
             };
 
             var hudStack = new StackPanel();
             _hudTitle = new TextBlock
             {
-                Text = "🧊 MÔ HÌNH 3D REVIT - REVIEW TRỰC QUAN CỐNG NGANG",
+                Text = "🧊 3D PREVIEW - REVIT MODEL",
                 Foreground = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
                 FontWeight = FontWeights.Bold,
-                FontSize = 12.5,
-                Margin = new Thickness(0, 0, 0, 4)
+                FontSize = 12.0
             };
             _hudInfo = new TextBlock
             {
-                Text = "Chọn cống để hiển thị dữ liệu 3D...",
-                Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
-                FontSize = 11.5,
-                LineHeight = 16.0
+                Text = "Đang xem phối cảnh 3D",
+                Foreground = new SolidColorBrush(Color.FromRgb(134, 239, 172)),
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 11.0,
+                Margin = new Thickness(0, 2, 0, 0)
             };
             var hudTips = new TextBlock
             {
-                Text = "🖱️ Chuột trái: Xoay 360° (Orbit)  |  Chuột phải: Di chuyển (Pan)  |  Cuộn: Thu phóng (Zoom)  |  Đúp chuột: Fit",
+                Text = "🖱️ Trái: Xoay | Phải: Di chuyển | Cuộn: Zoom | Đúp: Fit",
                 Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
-                FontSize = 10.5,
-                Margin = new Thickness(0, 5, 0, 0)
+                FontSize = 10.0,
+                Margin = new Thickness(0, 3, 0, 0)
             };
 
             hudStack.Children.Add(_hudTitle);
@@ -182,57 +182,6 @@ namespace InfraBIM.CulvertTool.Views
             hudStack.Children.Add(hudTips);
             hudPanel.Child = hudStack;
             overlayGrid.Children.Add(hudPanel);
-
-            // b. ViewCube Controls Toolbar ở góc trên bên phải
-            var toolbarPanel = new Border
-            {
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 14, 14, 0),
-                Background = new SolidColorBrush(Color.FromArgb(220, 15, 23, 42)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(120, 56, 189, 248)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(6, 4, 6, 4)
-            };
-
-            var btnStack = new StackPanel { Orientation = Orientation.Horizontal };
-
-            Button CreateToolBtn(string label, string tooltip, RoutedEventHandler handler)
-            {
-                var btn = new Button
-                {
-                    Content = label,
-                    ToolTip = tooltip,
-                    Background = new SolidColorBrush(Color.FromArgb(230, 24, 42, 68)),
-                    Foreground = new SolidColorBrush(Color.FromRgb(241, 245, 249)),
-                    BorderBrush = new SolidColorBrush(Color.FromArgb(180, 56, 189, 248)),
-                    BorderThickness = new Thickness(1),
-                    Padding = new Thickness(8, 4, 8, 4),
-                    Margin = new Thickness(2, 0, 2, 0),
-                    FontSize = 11.0,
-                    FontWeight = FontWeights.SemiBold,
-                    Cursor = Cursors.Hand
-                };
-                btn.Click += handler;
-                return btn;
-            }
-
-            btnStack.Children.Add(CreateToolBtn("🧊 3D ISO", "Phối cảnh góc Isometric 3D chuẩn", (s, e) => SetViewIsometric()));
-            btnStack.Children.Add(CreateToolBtn("🏠 ĐỨNG", "Mặt đứng chiếu ngang (Front View)", (s, e) => SetViewFront()));
-            btnStack.Children.Add(CreateToolBtn("📐 BẰNG", "Mặt bằng nhìn từ trên xuống (Top View)", (s, e) => SetViewTop()));
-            btnStack.Children.Add(CreateToolBtn("⬛ BÊN", "Mặt cắt bên cống (Right Side View)", (s, e) => SetViewRight()));
-            btnStack.Children.Add(CreateToolBtn("🎯 FIT", "Thu phóng vừa toàn bộ mô hình (hoặc đúp chuột)", (s, e) => FitView()));
-
-            var btnToggleBedding = CreateToolBtn("👁️ BTL/ĐÁ", "Ẩn/Hiện lớp bê tông lót & đá dăm đệm", (s, e) =>
-            {
-                _showBedding = !_showBedding;
-                RebuildModel();
-            });
-            btnStack.Children.Add(btnToggleBedding);
-
-            toolbarPanel.Child = btnStack;
-            overlayGrid.Children.Add(toolbarPanel);
 
             // c. Chú thích màu sắc (Legend HUD) ở góc dưới bên trái
             var legendPanel = new Border
@@ -382,6 +331,12 @@ namespace InfraBIM.CulvertTool.Views
             UpdateCamera();
         }
 
+        public void ToggleBedding()
+        {
+            _showBedding = !_showBedding;
+            RebuildModel();
+        }
+
         private void OnMouseDown(object sender, MouseButtonEventArgs e)
         {
             _lastMousePos = e.GetPosition(this);
@@ -478,18 +433,15 @@ namespace InfraBIM.CulvertTool.Views
             // Hàm tính độ hạ cao độ đáy tại vị trí X dọc tuyến (theo độ dốc thủy lực thực tế)
             double Drop(double x) => totalL > 0.01 ? (x / totalL) * geom.DeltaH : 0.0;
 
-            // Cập nhật thẻ HUD
-            _hudInfo.Text = $"📍 Cống STT {geom.STT} | Lý trình: {geom.LyTrinh} | {geom.LoaiCong} ({geom.KhauDo})\n" +
-                            $"📏 Tổng chiều dài: L = {totalL:N2}m | Số đốt: {geom.Segments.Count} đốt | Hộp nối: {geom.Manholes.Count} hộp\n" +
-                            $"📐 Đáy TL Z1 = {geom.Z1:N3}m ➔ Đáy HL Z2 = {geom.Z2:N3}m (ΔH = {geom.DeltaH:N3}m | i = {geom.CalculatedSlopePercent:N2}%)";
+            // Cập nhật thẻ HUD ngắn gọn, không lặp lại thông số ở bảng dưới
+            _hudTitle.Text = "🧊 3D PREVIEW - REVIT MODEL";
+            _hudInfo.Text = $"STT {geom.STT}: {geom.LyTrinh} [{geom.LoaiCong}] - L={totalL:N2}m";
 
             // 0. NẾU CÓ MÔ HÌNH THỰC TẾ TRÍCH XUẤT TỪ REVIT DOCUMENT (REAL REVIT MESHES - YÊU CẦU 1 & 2)
             if (geom.RealRevitMeshes != null && geom.RealRevitMeshes.Count > 0)
             {
-                _hudTitle.Text = "🧊 MÔ HÌNH 3D REVIT THỰC TẾ (REAL REVIT FAMILY GEOMETRY)";
-                _hudInfo.Text = $"📍 Cống STT {geom.STT} | Lý trình: {geom.LyTrinh} | {geom.LoaiCong} ({geom.KhauDo})\n" +
-                                $"⚡ Đang hiển thị 100% hình học thực tế trích xuất từ Revit ({geom.RealRevitMeshes.Count} cấu kiện Solid/Mesh)\n" +
-                                $"📐 Đáy TL Z1 = {geom.Z1:N3}m ➔ Đáy HL Z2 = {geom.Z2:N3}m (ΔH = {geom.DeltaH:N3}m | i = {geom.CalculatedSlopePercent:N2}%)";
+                _hudTitle.Text = "🧊 3D REVIT THỰC TẾ (FAMILY GEOMETRY)";
+                _hudInfo.Text = $"STT {geom.STT}: {geom.LyTrinh} ({geom.RealRevitMeshes.Count} Solid/Mesh)";
 
                 foreach (var (mesh, brush) in geom.RealRevitMeshes)
                 {
@@ -863,8 +815,9 @@ namespace InfraBIM.CulvertTool.Views
         private static void BuildBeddingLayers(Model3DGroup group, CulvertPreviewGeometry geom, double totalL, double wOut, double tSlab, Func<double, double> dropFunc)
         {
             double ngamSan = geom.L_Ngam;
-            double xStartBedding = geom.IsCastInPlace ? -1.45 : Math.Min(0.40, totalL / 2.0);
-            double xEndBedding = geom.IsCastInPlace ? (totalL + 1.45) : Math.Max(totalL - 0.40, totalL / 2.0);
+            double cxTdDdW = geom.CX_TD_DD_W > 0.05 ? geom.CX_TD_DD_W : 1.45;
+            double xStartBedding = -cxTdDdW;
+            double xEndBedding = totalL + cxTdDdW;
             if (xEndBedding <= xStartBedding) return;
 
             // Xác định các đoạn rải BTL & Đá dăm (loại trừ các vị trí hộp nối)

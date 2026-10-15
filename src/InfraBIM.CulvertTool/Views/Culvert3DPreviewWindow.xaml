@@ -108,6 +108,7 @@
                     <Button Content="🏠 ĐỨNG" Click="SetFront_Click" ToolTip="Mặt đứng chiếu ngang (Front View)" Style="{StaticResource ModeToggleBtn}"/>
                     <Button Content="📐 BẰNG" Click="SetTop_Click" ToolTip="Mặt bằng nhìn từ trên xuống (Top View)" Style="{StaticResource ModeToggleBtn}"/>
                     <Button Content="⬛ BÊN" Click="SetRight_Click" ToolTip="Mặt cắt bên cống (Right View)" Style="{StaticResource ModeToggleBtn}"/>
+                    <Button Content="👁️ BTL/ĐÁ" Click="ToggleBedding_Click" ToolTip="Ẩn / Hiện lớp bê tông lót &amp; đá dăm đệm" Style="{StaticResource ModeToggleBtn}"/>
 
                     <!-- Điều khiển Zoom / Pan / Fit -->
                     <Border Width="1" Background="{StaticResource NavyBorder}" Margin="6,2,10,2"/>
@@ -139,53 +140,53 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- CARD 1: CAO ĐỘ THƯỢNG LƯU / HẠ LƯU / ĐỘ DỐC -->
-                <Border Grid.Column="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,6,0">
+                <Border Grid.Column="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="10,8" Margin="0,0,6,0">
                     <StackPanel>
-                        <TextBlock Text="📐 CAO ĐỘ &amp; ĐỘ DỐC THỦY LỰC" Foreground="{StaticResource CyanLight}" FontWeight="Bold" FontSize="12" Margin="0,0,0,4"/>
+                        <TextBlock Text="📐 CAO ĐỘ &amp; ĐỘ DỐC THỦY LỰC" Foreground="{StaticResource CyanLight}" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,6"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z1, StringFormat='Đáy Thượng lưu Z1: {0:N3} m'}" Foreground="{StaticResource MintLight}" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z_Top1, StringFormat='Đỉnh Thượng lưu Zt1: {0:N3} m'}" Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.DoDocPercent, StringFormat='Độ dốc thiết kế: {0:N2} %'}" Foreground="{StaticResource TextWhite}" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z1, StringFormat='Đáy TL Z1: {0:N3} m'}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z_Top1, StringFormat='Đỉnh TL Zt1: {0:N3} m'}" Foreground="{StaticResource TextMuted}" FontSize="11.5" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.DoDocPercent, StringFormat='i thiết kế: {0:N2} %'}" Foreground="{StaticResource TextWhite}" FontSize="11.5" Margin="0,4,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z2, StringFormat='Đáy Hạ lưu Z2: {0:N3} m'}" Foreground="#FDE047" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z_Top2, StringFormat='Đỉnh Hạ lưu Zt2: {0:N3} m'}" Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.CalculatedSlopePercent, StringFormat='Độ dốc tính toán: {0:N2} %'}" Foreground="{StaticResource CyanLight}" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z2, StringFormat='Đáy HL Z2: {0:N3} m'}" Foreground="#FDE047" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Z_Top2, StringFormat='Đỉnh HL Zt2: {0:N3} m'}" Foreground="{StaticResource TextMuted}" FontSize="11.5" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.CalculatedSlopePercent, StringFormat='i tính toán: {0:N2} %'}" Foreground="{StaticResource CyanLight}" FontWeight="SemiBold" FontSize="11.5" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
                 </Border>
 
                 <!-- CARD 2: KÍCH THƯỚC HÌNH HỌC & CẤU KIỆN -->
-                <Border Grid.Column="1" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,6,0">
+                <Border Grid.Column="1" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="10,8" Margin="0,0,6,0">
                     <StackPanel>
-                        <TextBlock Text="🧱 KÍCH THƯỚC HÌNH HỌC &amp; CẤU KIỆN" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="12" Margin="0,0,0,4"/>
+                        <TextBlock Text="🧱 KÍCH THƯỚC HÌNH HỌC &amp; CẤU KIỆN" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,6"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.TotalLengthM, StringFormat='Chiều dài cống L: {0:N2} m'}" Foreground="{StaticResource TextWhite}" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.KhauDo, StringFormat='Khẩu độ cống: {0}'}" Foreground="{StaticResource CyanLight}"/>
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.Segments.Count, StringFormat='Số đốt cống: {0} đốt'}" Foreground="{StaticResource MintLight}"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.TotalLengthM, StringFormat='Chiều dài L: {0:N2} m'}" Foreground="{StaticResource TextWhite}" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.KhauDo, StringFormat='Khẩu độ: {0}'}" Foreground="{StaticResource CyanLight}" FontSize="11.5" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Segments.Count, StringFormat='Đốt cống: {0} đốt'}" Foreground="{StaticResource MintLight}" FontSize="11.5" Margin="0,4,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.Manholes.Count, StringFormat='Số hộp nối (hố ga): {0} hộp'}" Foreground="{StaticResource TextWhite}"/>
-                                <TextBlock Text="{Binding CurrentPreviewGeometry.DeltaH, StringFormat='Chênh cao đáy ΔH: {0:N3} m'}" Foreground="{StaticResource TextMuted}"/>
-                                <TextBlock Text="BTL &amp; Đá dăm: Đã ngắt tại hộp nối" Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.DeltaH, StringFormat='Chênh cao ΔH: {0:N3} m'}" Foreground="{StaticResource TextWhite}" FontWeight="SemiBold" FontSize="12"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.Manholes.Count, StringFormat='Hộp nối: {0} hộp'}" Foreground="{StaticResource CyanLight}" FontSize="11.5" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding CurrentPreviewGeometry.CX_TD_DD_W, StringFormat='Độ thụt BTL: {0:N2} m'}" Foreground="{StaticResource TextMuted}" FontSize="11.5" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
                 </Border>
 
                 <!-- CARD 3: ĐÁNH GIÁ THỦY LỰC & NÚT ĐÓNG -->
-                <Border Grid.Column="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8,6">
+                <Border Grid.Column="2" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="10,8">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
@@ -193,8 +194,8 @@
                         </Grid.RowDefinitions>
 
                         <StackPanel Grid.Row="0">
-                            <TextBlock Text="KẾT LUẬN THỦY LỰC:" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                            <TextBlock Text="{Binding CurrentPreviewGeometry.ElevationStatus}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="13" TextWrapping="Wrap"/>
+                            <TextBlock Text="KẾT LUẬN THỦY LỰC:" Foreground="{StaticResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding CurrentPreviewGeometry.ElevationStatus}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="13" TextWrapping="Wrap" Margin="0,3,0,0"/>
                         </StackPanel>
 
                         <Button Grid.Row="1" Content="✕ ĐÓNG REVIEW" Click="CloseButton_Click" 

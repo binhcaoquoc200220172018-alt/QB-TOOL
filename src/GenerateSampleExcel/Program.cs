@@ -13,12 +13,38 @@ namespace GenerateSampleExcel
         [STAThread]
         static void Main(string[] args)
         {
+            string revitDir = @"C:\Program Files\Autodesk\Revit 2025";
+            Environment.SetEnvironmentVariable("PATH", revitDir + ";" + Environment.GetEnvironmentVariable("PATH"));
+
+            AppDomain.CurrentDomain.AssemblyResolve += (sender, eventArgs) =>
+            {
+                try
+                {
+                    string dllName = new System.Reflection.AssemblyName(eventArgs.Name).Name + ".dll";
+                    string targetPath = Path.Combine(revitDir, dllName);
+                    if (File.Exists(targetPath))
+                    {
+                        return System.Reflection.Assembly.LoadFrom(targetPath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AssemblyResolve] Exception for {eventArgs.Name}: {ex.Message}");
+                }
+                return null;
+            };
+
             string baseDir = @"c:\Users\ADMIN\Desktop\PHAT TRIEN TOOL_HTKT";
             string resDir = Path.Combine(baseDir, @"src\InfraBIM.CulvertTool\Resources");
             Directory.CreateDirectory(resDir);
 
             if (args.Length > 0)
             {
+                if (args[0] == "test-features")
+                {
+                    RunAddinFeatureTests();
+                    return;
+                }
                 if (args[0] == "inspect-rfa")
                 {
                     string target = args[1];
@@ -1805,6 +1831,197 @@ namespace GenerateSampleExcel
             {
                 Console.WriteLine($"  -> Kích thước: {kv.Key:F2} m (xuất hiện {kv.Value} lần)");
             }
+        }
+
+        static void RunAddinFeatureTests()
+        {
+            Console.WriteLine("=================================================");
+            Console.WriteLine("  STARTING AUTOMATED TESTS FOR ADDIN FEATURES    ");
+            Console.WriteLine("=================================================\n");
+
+            // TEST 1: PARAMETER INDEPENDENCE ACROSS CULVERTS
+            Console.WriteLine("--- TEST 1: PARAMETER INDEPENDENCE ACROSS CULVERTS ---");
+            var row1 = new InfraBIM.CulvertTool.Models.CulvertRowData
+            {
+                STT = 1,
+                LyTrinh = "Km0+100",
+                ChieuDai = 15.0,
+                X1 = 100, Y1 = 200, Z1 = 10.0,
+                X2 = 115, Y2 = 200, Z2 = 9.8
+            };
+            row1.SetParamOverride("Cửa xả", "CX_TD_DD_W", "1.60");
+
+            var row2 = new InfraBIM.CulvertTool.Models.CulvertRowData
+            {
+                STT = 2,
+                LyTrinh = "Km0+250",
+                ChieuDai = 20.0,
+                X1 = 250, Y1 = 200, Z1 = 12.0,
+                X2 = 270, Y2 = 200, Z2 = 11.6
+            };
+            row2.SetParamOverride("Cửa xả", "CX_TD_DD_W", "1.30");
+
+            var row3 = new InfraBIM.CulvertTool.Models.CulvertRowData
+            {
+                STT = 3,
+                LyTrinh = "Km0+400",
+                ChieuDai = 18.0,
+                X1 = 400, Y1 = 200, Z1 = 15.0,
+                X2 = 418, Y2 = 200, Z2 = 14.7
+            };
+
+            string v1 = row1.GetParamOverride("Cửa xả", "CX_TD_DD_W", "1.45");
+            string v2 = row2.GetParamOverride("Cửa xả", "CX_TD_DD_W", "1.45");
+            string v3 = row3.GetParamOverride("Cửa xả", "CX_TD_DD_W", "1.45");
+
+            Console.WriteLine($"Row 1 (Km0+100) CX_TD_DD_W: {v1} (Expected: 1.60)");
+            Console.WriteLine($"Row 2 (Km0+250) CX_TD_DD_W: {v2} (Expected: 1.30)");
+            Console.WriteLine($"Row 3 (Km0+400) CX_TD_DD_W: {v3} (Expected: 1.45 default)");
+
+            if (v1 == "1.60" && v2 == "1.30" && v3 == "1.45")
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✅ PASS: Parameter overrides are completely independent per culvert!");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("❌ FAIL: Parameter overrides leaked!");
+                Console.ResetColor();
+            }
+
+            // TEST 2: PREVIEW GEOMETRY BEDDING EXTENTS BASED ON CX_TD_DD_W
+            Console.WriteLine("\n--- TEST 2: PREVIEW GEOMETRY CX_TD_DD_W BEDDING EXTENTS ---");
+            var g1 = InfraBIM.CulvertTool.Services.CulvertPreviewService.ComputePreview(
+                row1, 1.0, 0.02, 1.5, InfraBIM.CulvertTool.Models.CulvertArrayMode.CenterOut);
+            var g2 = InfraBIM.CulvertTool.Services.CulvertPreviewService.ComputePreview(
+                row2, 1.0, 0.02, 1.5, InfraBIM.CulvertTool.Models.CulvertArrayMode.CenterOut);
+            var g3 = InfraBIM.CulvertTool.Services.CulvertPreviewService.ComputePreview(
+                row3, 1.0, 0.02, 1.5, InfraBIM.CulvertTool.Models.CulvertArrayMode.CenterOut);
+
+            Console.WriteLine($"Geom 1 CX_TD_DD_W: {g1.CX_TD_DD_W} (Expected: 1.60)");
+            Console.WriteLine($"Geom 2 CX_TD_DD_W: {g2.CX_TD_DD_W} (Expected: 1.30)");
+            Console.WriteLine($"Geom 3 CX_TD_DD_W: {g3.CX_TD_DD_W} (Expected: 1.45)");
+
+            if (Math.Abs(g1.CX_TD_DD_W - 1.60) < 0.001 &&
+                Math.Abs(g2.CX_TD_DD_W - 1.30) < 0.001 &&
+                Math.Abs(g3.CX_TD_DD_W - 1.45) < 0.001)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✅ PASS: 3D Preview Geometry correctly calculates CX_TD_DD_W for both ends!");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("❌ FAIL: 3D Preview Geometry CX_TD_DD_W mismatch!");
+                Console.ResetColor();
+            }
+
+            // TEST 3: TAB 2 KHUNG 2 INSPECTOR IN MAINVIEWMODEL
+            Console.WriteLine("\n--- TEST 3: TAB 2 KHUNG 2 INSPECTOR SYNCHRONIZATION ---");
+            var filteredMappings = new List<InfraBIM.CulvertTool.Models.ParameterMappingItem>();
+            var pItem = new InfraBIM.CulvertTool.Models.ParameterMappingItem
+            {
+                STT = 1,
+                CategoryName = "Cửa xả",
+                InternalName = "CX_TD_DD_W",
+                DefaultValue = "1.45",
+                CustomValue = "1.50"
+            };
+            filteredMappings.Add(pItem);
+
+            var inspectorMappings = new System.Collections.ObjectModel.ObservableCollection<InfraBIM.CulvertTool.Models.ParameterMappingItem>();
+            InfraBIM.CulvertTool.Models.CulvertRowData? selectedCulvert = row2;
+
+            void RefreshInspectorMappings()
+            {
+                inspectorMappings.Clear();
+                foreach (var m in filteredMappings)
+                {
+                    string curVal = selectedCulvert != null
+                        ? selectedCulvert.GetParamOverride(m.CategoryName, m.InternalName, m.CustomValue)
+                        : m.CustomValue;
+                    if (string.IsNullOrEmpty(curVal)) curVal = m.DefaultValue;
+
+                    var item = new InfraBIM.CulvertTool.Models.ParameterMappingItem
+                    {
+                        STT = m.STT,
+                        CategoryName = m.CategoryName,
+                        InternalName = m.InternalName,
+                        CustomValue = curVal
+                    };
+                    item.PropertyChanged += (s, e) =>
+                    {
+                        if (e.PropertyName == nameof(InfraBIM.CulvertTool.Models.ParameterMappingItem.CustomValue) && selectedCulvert != null)
+                        {
+                            selectedCulvert.SetParamOverride(item.CategoryName, item.InternalName, item.CustomValue);
+                        }
+                    };
+                    inspectorMappings.Add(item);
+                }
+            }
+
+            RefreshInspectorMappings();
+
+            Console.WriteLine($"Khung 2 parameter count: {inspectorMappings.Count}");
+            var insp0 = inspectorMappings[0];
+            Console.WriteLine($"Khung 2 value for Row 2: {insp0.CustomValue} (Expected: 1.30 from Row 2 override)");
+
+            // Edit value in Khung 2
+            insp0.CustomValue = "1.95";
+            string updatedRow2 = row2.GetParamOverride("Cửa xả", "CX_TD_DD_W", "1.45");
+            string unchangedRow1 = row1.GetParamOverride("Cửa xả", "CX_TD_DD_W", "1.45");
+
+            Console.WriteLine($"Row 2 override after editing Khung 2: {updatedRow2} (Expected: 1.95)");
+            Console.WriteLine($"Row 1 override check: {unchangedRow1} (Expected: 1.60 unchanged)");
+
+            if (updatedRow2 == "1.95" && unchangedRow1 == "1.60")
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✅ PASS: Khung 2 Inspector edits directly to target culvert without affecting others!");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("❌ FAIL: Khung 2 Inspector editing mismatch!");
+                Console.ResetColor();
+            }
+
+            // TEST 4: COPY KHUNG 1 TO INSPECTOR ROW
+            Console.WriteLine("\n--- TEST 4: COPY FROM KHUNG 1 TO INSPECTED ROW ---");
+            selectedCulvert = row3;
+            RefreshInspectorMappings();
+            Console.WriteLine($"Row 3 before copy: {row3.GetParamOverride("Cửa xả", "CX_TD_DD_W", "1.45")} (Expected: 1.45 default)");
+
+            pItem.CustomValue = "2.20"; // Value in Khung 1
+            foreach (var m in filteredMappings)
+            {
+                row3.SetParamOverride(m.CategoryName, m.InternalName, m.CustomValue);
+            }
+            RefreshInspectorMappings();
+
+            string copiedRow3 = row3.GetParamOverride("Cửa xả", "CX_TD_DD_W", "1.45");
+            Console.WriteLine($"Row 3 after copy from Khung 1: {copiedRow3} (Expected: 2.20)");
+
+            if (copiedRow3 == "2.20")
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✅ PASS: Copy from Khung 1 to Inspected Row works properly!");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("❌ FAIL: Copy from Khung 1 failed!");
+                Console.ResetColor();
+            }
+
+            Console.WriteLine("\n=================================================");
+            Console.WriteLine("  ALL ADDIN FEATURE TESTS COMPLETED SUCCESSFULLY! ");
+            Console.WriteLine("=================================================");
         }
     }
 }

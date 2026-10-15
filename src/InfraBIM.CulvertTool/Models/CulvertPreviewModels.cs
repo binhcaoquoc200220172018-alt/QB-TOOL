@@ -102,6 +102,7 @@ namespace InfraBIM.CulvertTool.Models
         public double B_HT2 { get; set; } = 1.5;
         public double OffsetZ_BTL { get; set; } = -0.10;
         public double OffsetZ_Cat { get; set; } = -0.20;
+        public double CX_TD_DD_W { get; set; } = 1.45; // Độ thụt mép ngoài tường đầu cửa xả của BTL và đá dăm đệm (m)
 
         public bool IsCastInPlace { get; set; } = false;
         public double JointGapM { get; set; } = 0.01;

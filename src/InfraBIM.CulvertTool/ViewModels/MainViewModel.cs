@@ -737,6 +737,22 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         public ObservableCollection<ParameterMappingItem> ParameterMappings { get; } = new();
         public ObservableCollection<ParameterMappingItem> FilteredParameterMappings { get; } = new();
+
+        // Khung 2: Kiểm tra & Tùy biến tham số chi tiết theo từng Lý trình
+        private CulvertRowData? _selectedCulvertRowForInspector;
+        public CulvertRowData? SelectedCulvertRowForInspector
+        {
+            get => _selectedCulvertRowForInspector;
+            set
+            {
+                if (SetProperty(ref _selectedCulvertRowForInspector, value))
+                {
+                    RefreshInspectorParameterMappings();
+                }
+            }
+        }
+
+        public ObservableCollection<ParameterMappingItem> InspectorParameterMappings { get; } = new();
         #endregion
 
         #region Properties - DataGrids & Validation
@@ -978,6 +994,10 @@ namespace InfraBIM.CulvertTool.ViewModels
 
         public Action? RequestClose { get; set; }
         #endregion
+
+        public MainViewModel() : this(null!, null!, null!)
+        {
+        }
 
         public MainViewModel(UIApplication uiApp, ExternalEvent externalEvent, RevitExternalEventHandler eventHandler)
         {
@@ -2589,6 +2609,7 @@ namespace InfraBIM.CulvertTool.ViewModels
 
             SelectedParamForBatch = FilteredParameterMappings.FirstOrDefault();
             UpdateBatchTableForSelectedParam();
+            RefreshInspectorParameterMappings();
         }
 
         public void UpdateBatchTableForSelectedParam()
@@ -2608,6 +2629,115 @@ namespace InfraBIM.CulvertTool.ViewModels
             }
             catch { }
         }
+
+        #region Khung 2: Inspector & Editor theo từng Lý trình
+        private bool _isUpdatingInspector = false;
+
+        public void RefreshInspectorParameterMappings()
+        {
+            if (_isUpdatingInspector) return;
+            _isUpdatingInspector = true;
+            try
+            {
+                foreach (var oldItem in InspectorParameterMappings)
+                {
+                    oldItem.PropertyChanged -= OnInspectorItemPropertyChanged;
+                }
+                InspectorParameterMappings.Clear();
+
+                var targetRow = SelectedCulvertRowForInspector 
+                             ?? FilteredCulvertRows.FirstOrDefault() 
+                             ?? AllCulvertRows.FirstOrDefault();
+
+                if (_selectedCulvertRowForInspector == null && targetRow != null)
+                {
+                    _selectedCulvertRowForInspector = targetRow;
+                    OnPropertyChanged(nameof(SelectedCulvertRowForInspector));
+                }
+
+                string cat = SelectedComponentForTab02?.CategoryType ?? string.Empty;
+
+                foreach (var m in FilteredParameterMappings)
+                {
+                    string curVal = targetRow != null
+                        ? targetRow.GetParamOverride(cat, m.InternalName, m.CustomValue)
+                        : m.CustomValue;
+
+                    if (string.IsNullOrEmpty(curVal))
+                    {
+                        curVal = m.DefaultValue;
+                    }
+
+                    var item = new ParameterMappingItem
+                    {
+                        STT = m.STT,
+                        IsSelected = m.IsSelected,
+                        CategoryName = m.CategoryName,
+                        FamilyName = m.FamilyName,
+                        InternalName = m.InternalName,
+                        DisplayName = m.DisplayName,
+                        GroupName = m.GroupName,
+                        IsDimension = m.IsDimension,
+                        IsOther = m.IsOther,
+                        IsVisibility = m.IsVisibility,
+                        DataType = m.DataType,
+                        DefaultValue = m.DefaultValue,
+                        CustomValue = curVal,
+                        MappedField = m.MappedField,
+                        IsInstance = m.IsInstance
+                    };
+
+                    item.PropertyChanged += OnInspectorItemPropertyChanged;
+                    InspectorParameterMappings.Add(item);
+                }
+            }
+            finally
+            {
+                _isUpdatingInspector = false;
+            }
+        }
+
+        private void OnInspectorItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (_isUpdatingInspector) return;
+            if (e.PropertyName == nameof(ParameterMappingItem.CustomValue))
+            {
+                if (sender is ParameterMappingItem item && SelectedCulvertRowForInspector != null)
+                {
+                    string cat = SelectedComponentForTab02?.CategoryType ?? item.CategoryName;
+                    SelectedCulvertRowForInspector.SetParamOverride(cat, item.InternalName, item.CustomValue ?? string.Empty);
+                }
+            }
+        }
+
+        public RelayCommand CopyKhung1ToInspectorRowCommand => new(_ =>
+        {
+            var targetRow = SelectedCulvertRowForInspector;
+            if (targetRow == null)
+            {
+                MessageBox.Show("Vui lòng chọn một lý trình ở Khung 2 để sao chép.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            string cat = SelectedComponentForTab02?.CategoryType ?? string.Empty;
+
+            int count = 0;
+            foreach (var m in FilteredParameterMappings)
+            {
+                if (!string.IsNullOrWhiteSpace(m.CustomValue))
+                {
+                    targetRow.SetParamOverride(cat, m.InternalName, m.CustomValue);
+                    count++;
+                }
+            }
+            RefreshInspectorParameterMappings();
+            MessageBox.Show($"Đã sao chép {count} thông số từ Khung 1 vào Lý trình {targetRow.LyTrinh} (STT {targetRow.STT}).", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+        });
+
+        public RelayCommand RefreshInspectorParamsCommand => new(_ =>
+        {
+            RefreshInspectorParameterMappings();
+        });
+        #endregion
 
         private void ScanCurrentSelectedFamilyParameters()
         {
@@ -2703,6 +2833,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
             }
             UpdatePreviewGeometry();
+            RefreshInspectorParameterMappings();
 
             MessageBox.Show($"Đã gán giá trị '{BatchApplyValue}' cho tham số '{pName}' của Family '{SelectedParamForBatch.FamilyName}' (Phạm vi cống STT {BatchFromSTT} - {BatchToSTT}, {count} cống).", "Hoàn thành", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -2763,6 +2894,7 @@ namespace InfraBIM.CulvertTool.ViewModels
                 ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
             }
             UpdatePreviewGeometry();
+            RefreshInspectorParameterMappings();
 
             MessageBox.Show($"Đã gán thành công {paramsToApply.Count} tham số tùy biến cho {count} lý trình (Phạm vi STT {BatchFromSTT} đến {BatchToSTT}).", "Hoàn tất gán tham số", MessageBoxButton.OK, MessageBoxImage.Information);
         }

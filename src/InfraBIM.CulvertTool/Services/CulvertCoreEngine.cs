@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
@@ -2934,6 +2935,120 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
+        /// <summary>
+        /// Xác định khoảng thụt vào mép sau của cấu kiện đá dăm đệm tường đầu sân cống (CX_TD_DD_W)
+        /// Điểm 1 trên Excel thụt lùi đoạn CX_TD_DD_W (P1 - u * CX_TD_DD_W),
+        /// Điểm 2 trên Excel thụt tới đoạn CX_TD_DD_W (P2 + u * CX_TD_DD_W).
+        /// Áp dụng cho cả BTL và Đá dăm đệm của Cống hộp đúc sẵn và Cống hộp đổ tại chỗ.
+        /// </summary>
+        public static double ResolveCxTdDdW(
+            Document doc,
+            CulvertRowData data,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            IList<CulvertComponentItem>? outletComponents,
+            FamilyInstance? sampleOutletInst = null)
+        {
+            double cxTdDdW_M = 0.0;
+
+            // 1. Kiểm tra trong data.ParameterOverrides với key chứa "CX_TD_DD_W" hoặc "CX_TD_DD"
+            if (data.ParameterOverrides != null)
+            {
+                foreach (var kvp in data.ParameterOverrides)
+                {
+                    if (kvp.Key.IndexOf("CX_TD_DD_W", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        kvp.Key.IndexOf("CX_TD_DD_B", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        if (double.TryParse(kvp.Value.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double dVal))
+                        {
+                            cxTdDdW_M = (Math.Abs(dVal) >= 10.0) ? dVal / 1000.0 : dVal;
+                            if (cxTdDdW_M > 0.05) return cxTdDdW_M;
+                        }
+                    }
+                }
+            }
+
+            // 2. Kiểm tra trong familyParameterMappings
+            var mapping = familyParameterMappings?.FirstOrDefault(m => 
+                string.Equals(m.InternalName, "CX_TD_DD_W", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(m.InternalName, "CX_TD_DD_B", StringComparison.OrdinalIgnoreCase));
+            if (mapping != null && !string.IsNullOrWhiteSpace(mapping.CustomValue))
+            {
+                string valStr = data.GetParamOverride(mapping.CategoryName, mapping.InternalName, mapping.CustomValue);
+                if (double.TryParse(valStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double dVal))
+                {
+                    cxTdDdW_M = (Math.Abs(dVal) >= 10.0) ? dVal / 1000.0 : dVal;
+                    if (cxTdDdW_M > 0.05) return cxTdDdW_M;
+                }
+            }
+
+            // 3. Kiểm tra từ outletComponents symbol trong Revit
+            if (outletComponents != null)
+            {
+                foreach (var oc in outletComponents)
+                {
+                    if (oc.IsActive && oc.SelectedSymbol != null)
+                    {
+                        var oSym = oc.SelectedSymbol.GetFreshSymbol(doc);
+                        if (oSym != null)
+                        {
+                            var p = oSym.LookupParameter("CX_TD_DD_W") ?? oSym.LookupParameter("CX_TD_DD_B");
+                            if (p != null && p.StorageType == StorageType.Double && p.AsDouble() > 0.05)
+                            {
+                                return UnitUtils.ConvertFromInternalUnits(p.AsDouble(), UnitTypeId.Meters);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Kiểm tra từ sampleOutletInst hoặc FilteredElementCollector
+            if (sampleOutletInst != null)
+            {
+                var p = sampleOutletInst.LookupParameter("CX_TD_DD_W") ?? sampleOutletInst.Symbol?.LookupParameter("CX_TD_DD_W")
+                     ?? sampleOutletInst.LookupParameter("CX_TD_DD_B") ?? sampleOutletInst.Symbol?.LookupParameter("CX_TD_DD_B");
+                if (p != null && p.StorageType == StorageType.Double && p.AsDouble() > 0.05)
+                {
+                    return UnitUtils.ConvertFromInternalUnits(p.AsDouble(), UnitTypeId.Meters);
+                }
+            }
+            else
+            {
+                var sampleOInst = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .FirstOrDefault(fi => fi.Symbol != null && (fi.Symbol.FamilyName.Contains("SAN CONG") || fi.Symbol.FamilyName.Contains("CUA XA")));
+                if (sampleOInst != null)
+                {
+                    var p = sampleOInst.LookupParameter("CX_TD_DD_W") ?? sampleOInst.Symbol?.LookupParameter("CX_TD_DD_W")
+                         ?? sampleOInst.LookupParameter("CX_TD_DD_B") ?? sampleOInst.Symbol?.LookupParameter("CX_TD_DD_B");
+                    if (p != null && p.StorageType == StorageType.Double && p.AsDouble() > 0.05)
+                    {
+                        return UnitUtils.ConvertFromInternalUnits(p.AsDouble(), UnitTypeId.Meters);
+                    }
+                }
+            }
+
+            // 5. Fallback thông minh: nếu có CX_L1 thì CX_L1 + 0.15m (1.30m + 0.15m = 1.45m), hoặc 1.45m
+            double cxL1M = 1.30;
+            var mappingL1 = familyParameterMappings?.FirstOrDefault(m => 
+                string.Equals(m.InternalName, "CX_L1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(m.InternalName, "L1", StringComparison.OrdinalIgnoreCase));
+            if (mappingL1 != null && !string.IsNullOrWhiteSpace(mappingL1.CustomValue))
+            {
+                string valStrL1 = data.GetParamOverride(mappingL1.CategoryName, mappingL1.InternalName, mappingL1.CustomValue);
+                if (double.TryParse(valStrL1.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double dValL1))
+                {
+                    cxL1M = (Math.Abs(dValL1) >= 10.0) ? dValL1 / 1000.0 : dValL1;
+                }
+            }
+            if (cxL1M > 0.05)
+            {
+                return cxL1M + 0.15; // 1.30m + 0.15m = 1.45m
+            }
+
+            return 1.45;
+        }
+
         private static FamilyInstance? PlaceBeddingInstance(
             Document doc,
             CulvertComponentItem? comp,
@@ -3150,25 +3265,12 @@ namespace InfraBIM.CulvertTool.Services
             if (bParamM <= 0.05) bParamM = 0.40;
             double bParamFeet = UnitUtils.ConvertToInternalUnits(bParamM, UnitTypeId.Meters);
 
-            // Xác định vị trí mép sau cấu kiện đá dăm đệm của tường đầu sân cống (1.45m theo CAD hoặc CX_L1 + 0.15m):
-            double cxL1M = 1.30;
-            var mappingL1 = familyParameterMappings?.FirstOrDefault(m => 
-                string.Equals(m.InternalName, "CX_L1", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(m.InternalName, "L1", StringComparison.OrdinalIgnoreCase));
-            if (mappingL1 != null && !string.IsNullOrWhiteSpace(mappingL1.CustomValue))
-            {
-                string valStrL1 = data.GetParamOverride(mappingL1.CategoryName, mappingL1.InternalName, mappingL1.CustomValue);
-                if (double.TryParse(valStrL1.Replace("mm", "").Replace("m", "").Trim(), out double dValL1))
-                {
-                    cxL1M = (Math.Abs(dValL1) >= 10.0) ? dValL1 / 1000.0 : dValL1;
-                }
-            }
-            if (cxL1M <= 0.05) cxL1M = 1.30;
-            double dFootingBackM = (cxL1M >= 0.5) ? (cxL1M + 0.15) : 1.45; // 1.30m + 0.15m = 1.45m chuẩn theo CAD
-            double dFootingBackFeet = UnitUtils.ConvertToInternalUnits(dFootingBackM, UnitTypeId.Meters);
+            // YÊU CẦU 1 & 2: Xác định vị trí bắt đầu BTL và đá dăm đệm tại Cửa xả 1 (P1 - u * CX_TD_DD_W) và Cửa xả 2 (P2 + u * CX_TD_DD_W)
+            double cxTdDdW_M = ResolveCxTdDdW(doc, data, familyParameterMappings, null);
+            double cxTdDdW_Feet = UnitUtils.ConvertToInternalUnits(cxTdDdW_M, UnitTypeId.Meters);
 
-            XYZ pFootingBackTL = p1 - u * dFootingBackFeet;
-            XYZ pFootingBackHL = p2 + u * dFootingBackFeet;
+            XYZ pFootingBackTL = p1 - u * cxTdDdW_Feet;
+            XYZ pFootingBackHL = p2 + u * cxTdDdW_Feet;
 
             double L = totalLengthFeet;
             double pitch = lStdFeet + jointGapFeet;
@@ -3441,12 +3543,13 @@ namespace InfraBIM.CulvertTool.Services
             double zDauCulvert = data.Z1 - lNgamSanM;
             double zCuoiCulvert = data.Z2 - lNgamSanM;
 
-            // YÊU CẦU 1: Lớp BTL và đá dăm đệm lúc nào cũng bắt đầu từ mép ngoài của tường đầu sân cống (Hình 1)
-            // Thụt vào 0.15m (150mm theo CAD Hình 3) từ P1 và P2
-            double dHwOffsetM = 0.15;
-            double dHwOffsetFeet = UnitUtils.ConvertToInternalUnits(dHwOffsetM, UnitTypeId.Meters);
-            XYZ pBedStart = p1 - u * dHwOffsetFeet;
-            XYZ pBedEnd = p2 + u * dHwOffsetFeet;
+            // YÊU CẦU 1 & 2: Lớp BTL và đá dăm đệm bắt đầu từ mép ngoài của tường đầu sân cống:
+            // Cửa xả 1: P1 thụt ra ngoài 1 đoạn đúng bằng CX_TD_DD_W (P1 - u * CX_TD_DD_W)
+            // Cửa xả 2: P2 thụt ra ngoài 1 đoạn đúng bằng CX_TD_DD_W (P2 + u * CX_TD_DD_W)
+            double cxTdDdW_M = ResolveCxTdDdW(doc, data, familyParameterMappings, null);
+            double cxTdDdW_Feet = UnitUtils.ConvertToInternalUnits(cxTdDdW_M, UnitTypeId.Meters);
+            XYZ pBedStart = p1 - u * cxTdDdW_Feet;
+            XYZ pBedEnd = p2 + u * cxTdDdW_Feet;
 
             if (data.SoHopNoi == 0)
             {

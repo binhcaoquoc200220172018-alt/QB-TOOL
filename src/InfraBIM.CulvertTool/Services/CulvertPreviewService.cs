@@ -70,6 +70,34 @@ namespace InfraBIM.CulvertTool.Services
                 L_SGC_HL = row.L_SGC_HL > 0.05 ? row.L_SGC_HL : 3.0
             };
 
+            // CX_TD_DD_W: Độ thụt mép ngoài tường đầu cửa xả của BTL và đá dăm đệm
+            double cxTdDdW = 1.45;
+            string cxVal = row.GetParamOverride("Cửa xả", "CX_TD_DD_W", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxVal)) cxVal = row.GetParamOverride(null, "CX_TD_DD_W", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxVal)) cxVal = row.GetParamOverride("Cửa xả", "CX_TD_DD_B", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxVal)) cxVal = row.GetParamOverride(null, "CX_TD_DD_B", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxVal) && row.ParameterOverrides != null)
+            {
+                foreach (var kvp in row.ParameterOverrides)
+                {
+                    if (kvp.Key.IndexOf("CX_TD_DD_W", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        kvp.Key.IndexOf("CX_TD_DD_B", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        cxVal = kvp.Value;
+                        break;
+                    }
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(cxVal))
+            {
+                if (double.TryParse(cxVal.Replace("mm", "").Replace("m", "").Trim(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedVal))
+                {
+                    cxTdDdW = (Math.Abs(parsedVal) >= 10.0) ? parsedVal / 1000.0 : parsedVal;
+                }
+            }
+            if (cxTdDdW <= 0.05) cxTdDdW = 1.45;
+            geom.CX_TD_DD_W = cxTdDdW;
+
             // Phân tích khẩu độ
             ParseDimensions(row.KhauDo ?? "", out double w, out double h);
             geom.BarrelWidthM = w;
