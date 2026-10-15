@@ -222,12 +222,11 @@ namespace InfraBIM.CulvertTool.Views
                 _hudLegend.Children.Add(item);
             }
 
-            AddLegendItem("Thân cống", Color.FromRgb(63, 68, 78));
+            AddLegendItem("Thân cống", Color.FromRgb(100, 116, 139));
             AddLegendItem("Hộp nối", Color.FromRgb(2, 132, 199));
-            AddLegendItem("Cửa xả", Color.FromRgb(2, 132, 199));
-            AddLegendItem("Sân gia cố", Color.FromRgb(2, 132, 199));
+            AddLegendItem("Cửa xả & Sân gia cố", Color.FromRgb(14, 165, 233));
             AddLegendItem("Tim cống", Color.FromRgb(225, 29, 72));
-            AddLegendItem("BTL & Đá", Color.FromRgb(202, 138, 4));
+            AddLegendItem("BTL & Đá dăm", Color.FromRgb(202, 138, 4));
 
             legendPanel.Child = _hudLegend;
             overlayGrid.Children.Add(legendPanel);
@@ -585,10 +584,9 @@ namespace InfraBIM.CulvertTool.Views
         private static void BuildInletOutlet3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double bH, double tSlab, double tWall, bool isUpstream, bool showBedding)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            // Chiều dài tổng của cửa xả khớp chuẩn Revit (CX_L1 1.30m + CX_L san cong 2.16m = 3.46m)
-            double cxL1 = 1.30;
+            // Chiều dài bản đáy sân cống khớp chuẩn Revit (CX_L san cong 2.16m)
             double lSanCong = 2.16;
-            double totalCX = cxL1 + lSanCong; // 3.46m
+            double totalCX = lSanCong;
             double xApronEdge = xCenter + (dir * totalCX);
             double postW = 0.35;
             double hwThick = 0.40;
@@ -732,7 +730,7 @@ namespace InfraBIM.CulvertTool.Views
         private static void BuildApronAssembly3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double tSlab, bool isUpstream, bool showBedding, double sgcLengthM = 3.0)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            double totalCX = 3.46; // Chiều dài sân cống chính khớp 100% Revit & CAD (CX_L1 1.30m + CX_L san cong 2.16m = 3.46m)
+            double totalCX = 2.16; // Chiều dài sân cống chính khớp 100% Revit & CAD (CX_L san cong 2.16m)
             double xApronEdge = xCenter + (dir * totalCX); // Điểm tiếp giáp 0 gap giữa Sân cống và Sân gia cố
 
             double postW = 0.35;
@@ -815,35 +813,72 @@ namespace InfraBIM.CulvertTool.Views
         private static void BuildBeddingLayers(Model3DGroup group, CulvertPreviewGeometry geom, double totalL, double wOut, double tSlab, Func<double, double> dropFunc)
         {
             double ngamSan = geom.L_Ngam;
-            double cxTdDdW = geom.CX_TD_DD_W > 0.05 ? geom.CX_TD_DD_W : 1.45;
-            double xStartBedding = -cxTdDdW;
-            double xEndBedding = totalL + cxTdDdW;
+            double cxTdDdW = geom.CX_TD_DD_W > 0.05 ? geom.CX_TD_DD_W : 0.40;
+            double xStartBedding = cxTdDdW;
+            double xEndBedding = totalL - cxTdDdW;
             if (xEndBedding <= xStartBedding) return;
 
-            // Xác định các đoạn rải BTL & Đá dăm (loại trừ các vị trí hộp nối)
+            bool isCip = geom.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         geom.LoaiCong?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            // Xác định các đoạn rải BTL & Đá dăm
             var spans = new List<(double Start, double End)>();
-            if (geom.Manholes.Count == 0)
+            if (isCip && geom.Segments.Count > 0)
             {
-                spans.Add((xStartBedding, xEndBedding));
+                int segCount = geom.Segments.Count;
+                if (segCount == 1)
+                {
+                    spans.Add((xStartBedding, xEndBedding));
+                }
+                else
+                {
+                    for (int i = 0; i < segCount; i++)
+                    {
+                        var seg = geom.Segments[i];
+                        if (i == 0)
+                        {
+                            // Liên ngoài trái: bắt đầu từ mép tường đầu (xStartBedding) đến mép ngoài cống hộp
+                            spans.Add((xStartBedding, seg.EndDistanceM));
+                        }
+                        else if (i == segCount - 1)
+                        {
+                            // Liên ngoài phải: bắt đầu từ mép ngoài cống hộp đến mép tường đầu HL (xEndBedding)
+                            spans.Add((seg.StartDistanceM, xEndBedding));
+                        }
+                        else
+                        {
+                            // Liên trong: rải từ mép ngoài đến mép ngoài của đốt cống giữa
+                            spans.Add((seg.StartDistanceM, seg.EndDistanceM));
+                        }
+                    }
+                }
             }
             else
             {
-                double curX = xStartBedding;
-                foreach (var mh in geom.Manholes)
+                // Cống đúc sẵn (loại trừ các vị trí hộp nối nếu có)
+                if (geom.Manholes.Count == 0)
                 {
-                    double mhW = Math.Max(mh.WidthM, 1.2);
-                    double mhStart = Math.Max(xStartBedding, mh.DistanceFromP1M - (mhW / 2.0));
-                    double mhEnd = Math.Min(xEndBedding, mh.DistanceFromP1M + (mhW / 2.0));
-
-                    if (mhStart > curX + 0.1)
-                    {
-                        spans.Add((curX, mhStart));
-                    }
-                    curX = Math.Max(curX, mhEnd);
+                    spans.Add((xStartBedding, xEndBedding));
                 }
-                if (curX < xEndBedding - 0.1)
+                else
                 {
-                    spans.Add((curX, xEndBedding));
+                    double curX = xStartBedding;
+                    foreach (var mh in geom.Manholes)
+                    {
+                        double mhW = Math.Max(mh.WidthM, 1.2);
+                        double mhStart = Math.Max(xStartBedding, mh.DistanceFromP1M - (mhW / 2.0));
+                        double mhEnd = Math.Min(xEndBedding, mh.DistanceFromP1M + (mhW / 2.0));
+
+                        if (mhStart > curX + 0.05)
+                        {
+                            spans.Add((curX, mhStart));
+                        }
+                        curX = Math.Max(curX, mhEnd);
+                    }
+                    if (curX < xEndBedding - 0.05)
+                    {
+                        spans.Add((curX, xEndBedding));
+                    }
                 }
             }
 

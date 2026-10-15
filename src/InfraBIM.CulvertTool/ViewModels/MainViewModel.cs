@@ -2843,20 +2843,23 @@ namespace InfraBIM.CulvertTool.ViewModels
             var paramsToApply = new List<(string? CategoryName, string InternalName, string Value)>();
             foreach (var p in FilteredParameterMappings)
             {
+                // Chỉ áp dụng những tham số được người dùng chọn (IsSelected == true)
+                // Các tham số không chọn phải giữ nguyên, độc lập giữa các cống, không được tự động gán "0" làm đá biến
+                if (!p.IsSelected) continue;
+
                 if (p.IsYesNoParameter)
                 {
                     string valTrim = (p.CustomValue ?? "").Trim().ToLowerInvariant();
-                    // Nếu bỏ tick hoặc chọn Không/No/0 => gán "0"
-                    if (!p.IsSelected || valTrim == "0" || valTrim == "no" || valTrim == "false" || valTrim == "không" || valTrim == "khong" || valTrim == "tắt")
+                    if (valTrim == "0" || valTrim == "no" || valTrim == "false" || valTrim == "không" || valTrim == "khong" || valTrim == "tắt")
                     {
                         paramsToApply.Add((p.CategoryName, p.InternalName, "0"));
                     }
-                    else if (p.IsSelected)
+                    else
                     {
                         paramsToApply.Add((p.CategoryName, p.InternalName, "1"));
                     }
                 }
-                else if (p.IsSelected && !string.IsNullOrWhiteSpace(p.CustomValue))
+                else if (!string.IsNullOrWhiteSpace(p.CustomValue))
                 {
                     paramsToApply.Add((p.CategoryName, p.InternalName, p.CustomValue));
                 }

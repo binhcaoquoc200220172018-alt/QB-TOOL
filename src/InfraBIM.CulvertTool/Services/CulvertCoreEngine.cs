@@ -1352,8 +1352,8 @@ namespace InfraBIM.CulvertTool.Services
             }
 
             // 3. Đặt Sân gia cố Thượng lưu & Hạ lưu:
-            // YÊU CẦU 2: Điểm 1 của SGC phải đặt ở Điểm 1 của Excel nhưng dịch chuyển một đoạn CX_L1 + CX_L san cong
-            double lOuterCX_M = cxL1M + lSanCongM;
+            // Sân gia cố liền kề ngay mép ngoài của Sân cống (lSanCongM), không có khoảng cách hở
+            double lOuterCX_M = lSanCongM;
             double lOuterCX_Feet = UnitUtils.ConvertToInternalUnits(lOuterCX_M, UnitTypeId.Meters);
 
             XYZ uOutTL = -new XYZ(u.X, u.Y, 0).Normalize();
@@ -2661,10 +2661,14 @@ namespace InfraBIM.CulvertTool.Services
                             }
                             if (JoinGeometryUtils.AreElementsJoined(doc, elemA, elemB))
                             {
-                                if (!JoinGeometryUtils.IsCuttingElementInJoin(doc, elemB, elemA))
+                                try
                                 {
-                                    JoinGeometryUtils.SwitchJoinOrder(doc, elemA, elemB);
+                                    if (!JoinGeometryUtils.IsCuttingElementInJoin(doc, elemB, elemA))
+                                    {
+                                        JoinGeometryUtils.SwitchJoinOrder(doc, elemA, elemB);
+                                    }
                                 }
+                                catch { }
                             }
                             doc.Regenerate();
                             st.Commit();
@@ -3400,12 +3404,12 @@ namespace InfraBIM.CulvertTool.Services
             if (bParamM <= 0.05) bParamM = 0.40;
             double bParamFeet = UnitUtils.ConvertToInternalUnits(bParamM, UnitTypeId.Meters);
 
-            // YÊU CẦU 1 & 2: Xác định vị trí bắt đầu BTL và đá dăm đệm tại Cửa xả 1 (P1 - u * CX_TD_DD_W) và Cửa xả 2 (P2 + u * CX_TD_DD_W)
+            // Xác định vị trí bắt đầu BTL và đá dăm đệm tại Cửa xả 1 (cách vô: p1 + u * CX_TD_DD_W) và Cửa xả 2 (cách vô: p2 - u * CX_TD_DD_W)
             double cxTdDdW_M = ResolveCxTdDdW(doc, data, familyParameterMappings, null);
             double cxTdDdW_Feet = UnitUtils.ConvertToInternalUnits(cxTdDdW_M, UnitTypeId.Meters);
 
-            XYZ pFootingBackTL = p1 - u * cxTdDdW_Feet;
-            XYZ pFootingBackHL = p2 + u * cxTdDdW_Feet;
+            XYZ pFootingBackTL = p1 + u * cxTdDdW_Feet;
+            XYZ pFootingBackHL = p2 - u * cxTdDdW_Feet;
 
             double L = totalLengthFeet;
             double pitch = lStdFeet + jointGapFeet;
@@ -3678,13 +3682,13 @@ namespace InfraBIM.CulvertTool.Services
             double zDauCulvert = data.Z1 - lNgamSanM;
             double zCuoiCulvert = data.Z2 - lNgamSanM;
 
-            // YÊU CẦU 1 & 2: Lớp BTL và đá dăm đệm bắt đầu từ mép ngoài của tường đầu sân cống:
-            // Cửa xả 1: P1 thụt ra ngoài 1 đoạn đúng bằng CX_TD_DD_W (P1 - u * CX_TD_DD_W)
-            // Cửa xả 2: P2 thụt ra ngoài 1 đoạn đúng bằng CX_TD_DD_W (P2 + u * CX_TD_DD_W)
+            // Lớp BTL và đá dăm đệm bắt đầu từ mép tường đầu cách vô trong thân cống:
+            // Cửa xả 1: từ Điểm 1 cách vô trong 1 đoạn đúng bằng CX_TD_DD_W (p1 + u * CX_TD_DD_W)
+            // Cửa xả 2: từ Điểm 2 cách vô trong 1 đoạn đúng bằng CX_TD_DD_W (p2 - u * CX_TD_DD_W)
             double cxTdDdW_M = ResolveCxTdDdW(doc, data, familyParameterMappings, null);
             double cxTdDdW_Feet = UnitUtils.ConvertToInternalUnits(cxTdDdW_M, UnitTypeId.Meters);
-            XYZ pBedStart = p1 - u * cxTdDdW_Feet;
-            XYZ pBedEnd = p2 + u * cxTdDdW_Feet;
+            XYZ pBedStart = p1 + u * cxTdDdW_Feet;
+            XYZ pBedEnd = p2 - u * cxTdDdW_Feet;
 
             if (data.SoHopNoi == 0)
             {
