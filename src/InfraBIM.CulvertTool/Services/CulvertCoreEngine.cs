@@ -1352,8 +1352,8 @@ namespace InfraBIM.CulvertTool.Services
             }
 
             // 3. Đặt Sân gia cố Thượng lưu & Hạ lưu:
-            // Sân gia cố liền kề ngay mép ngoài của Sân cống (lSanCongM), không có khoảng cách hở
-            double lOuterCX_M = lSanCongM;
+            // Sân gia cố liền kề ngay mép ngoài của Sân cống (CX_L1 + lSanCongM), không có khoảng cách hở
+            double lOuterCX_M = cxL1M + lSanCongM;
             double lOuterCX_Feet = UnitUtils.ConvertToInternalUnits(lOuterCX_M, UnitTypeId.Meters);
 
             XYZ uOutTL = -new XYZ(u.X, u.Y, 0).Normalize();

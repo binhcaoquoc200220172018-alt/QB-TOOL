@@ -584,9 +584,10 @@ namespace InfraBIM.CulvertTool.Views
         private static void BuildInletOutlet3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double bH, double tSlab, double tWall, bool isUpstream, bool showBedding)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            // Chiều dài bản đáy sân cống khớp chuẩn Revit (CX_L san cong 2.16m)
+            // Chiều dài bản đáy sân cống khớp chuẩn Revit (CX_L1 + CX_L san cong = 1.30m + 2.16m = 3.46m)
             double lSanCong = 2.16;
-            double totalCX = lSanCong;
+            double lHeadwall = 1.30;
+            double totalCX = lHeadwall + lSanCong;
             double xApronEdge = xCenter + (dir * totalCX);
             double postW = 0.35;
             double hwThick = 0.40;
@@ -730,7 +731,7 @@ namespace InfraBIM.CulvertTool.Views
         private static void BuildApronAssembly3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double tSlab, bool isUpstream, bool showBedding, double sgcLengthM = 3.0)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            double totalCX = 2.16; // Chiều dài sân cống chính khớp 100% Revit & CAD (CX_L san cong 2.16m)
+            double totalCX = 3.46; // Chiều dài sân cống chính khớp 100% Revit & CAD (CX_L1 + CX_L san cong = 1.30 + 2.16 = 3.46m)
             double xApronEdge = xCenter + (dir * totalCX); // Điểm tiếp giáp 0 gap giữa Sân cống và Sân gia cố
 
             double postW = 0.35;
