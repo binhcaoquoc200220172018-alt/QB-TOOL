@@ -1,4 +1,5 @@
-$addinDir = Join-Path $env:APPDATA 'Autodesk\Revit\Addins\2025\DV_TOOL_HTKT'
+$addinRoot = Join-Path $env:APPDATA 'Autodesk\Revit\Addins\2025'
+$addinDir = Join-Path $addinRoot 'DV_TOOL_HTKT'
 $cand1 = 'src\InfraBIM.CulvertTool\bin\Release\net8.0-windows'
 $cand2 = 'src\InfraBIM.CulvertTool\bin\x64\Release\net8.0-windows'
 
@@ -9,16 +10,25 @@ if (Test-Path (Join-Path $cand2 'DV_TOOL_HTKT.dll')) {
     }
 }
 
+if (!(Test-Path $addinRoot)) {
+    New-Item -ItemType Directory -Path $addinRoot -Force | Out-Null
+}
 if (!(Test-Path $addinDir)) {
     New-Item -ItemType Directory -Path $addinDir -Force | Out-Null
 }
 
-# Clean old backup dlls if unlocked
+# 1. Copy file .addin vao thu muc Addins 2025
+$manifestSource = 'src\InfraBIM.CulvertTool\DV_TOOL_HTKT.addin'
+if (Test-Path $manifestSource) {
+    Copy-Item $manifestSource (Join-Path $addinRoot 'DV_TOOL_HTKT.addin') -Force
+}
+
+# 2. Don dep cac file .old
 Get-ChildItem -Path $addinDir -Filter '*.old' -ErrorAction SilentlyContinue | ForEach-Object {
     try { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue } catch {}
 }
 
-# Rename locked DV_TOOL_HTKT.dll so a new one can be placed
+# 3. Rename file DLL cu neu dang bi khoa (Revit dang mo)
 $targetDll = Join-Path $addinDir 'DV_TOOL_HTKT.dll'
 if (Test-Path $targetDll) {
     try {
@@ -29,9 +39,18 @@ if (Test-Path $targetDll) {
     }
 }
 
-# Copy newly built files
-Copy-Item (Join-Path $sourceDir 'DV_TOOL_HTKT.dll') $targetDll -Force
-Copy-Item (Join-Path $sourceDir 'DV_TOOL_HTKT.pdb') (Join-Path $addinDir 'DV_TOOL_HTKT.pdb') -Force
+# 4. Copy toan bo file build va dependencies tu sourceDir
+if (Test-Path $sourceDir) {
+    Get-ChildItem -Path $sourceDir | Where-Object { 
+        $_.Extension -ne '.old' -and !$_.Name.Contains('_old_') 
+    } | ForEach-Object {
+        Copy-Item $_.FullName $addinDir -Recurse -Force
+    }
+}
 
-$deployed = Get-Item $targetDll
-Write-Output ("DEPLOYED: " + $deployed.FullName + " -> " + $deployed.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss') + " (" + $deployed.Length + " bytes)")
+if (Test-Path $targetDll) {
+    $deployed = Get-Item $targetDll
+    Write-Output ("DEPLOYED: " + $deployed.FullName + " -> " + $deployed.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss') + " (" + $deployed.Length + " bytes)")
+} else {
+    Write-Warning "DV_TOOL_HTKT.dll was not found in $sourceDir. Please build the project first."
+}
