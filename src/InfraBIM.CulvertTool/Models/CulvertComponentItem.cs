@@ -29,6 +29,15 @@ namespace InfraBIM.CulvertTool.Models
             set { _groupType = value; OnPropertyChanged(); }
         }
 
+        private string _profileName = string.Empty;
+        public string ProfileName
+        {
+            get => _profileName;
+            set { _profileName = value; OnPropertyChanged(); OnPropertyChanged(nameof(FullDisplayName)); }
+        }
+
+        public string FullDisplayName => string.IsNullOrEmpty(ProfileName) ? CategoryType : $"{CategoryType} [{ProfileName}]";
+
         private bool _isActive = true;
         public bool IsActive
         {

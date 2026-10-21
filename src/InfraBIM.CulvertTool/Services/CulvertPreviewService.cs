@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using InfraBIM.CulvertTool.Models;
 
@@ -70,18 +71,15 @@ namespace InfraBIM.CulvertTool.Services
                 L_SGC_HL = row.L_SGC_HL > 0.05 ? row.L_SGC_HL : 3.0
             };
 
-            // CX_TD_DD_W: Độ thụt mép ngoài tường đầu cửa xả của BTL và đá dăm đệm
-            double cxTdDdW = 1.45;
+            // CX_TD_DD_W: Độ thụt mép ngoài tường đầu cửa xả của BTL và đá dăm đệm (chuẩn 1000mm = 1.0m)
+            double cxTdDdW = 1.0;
             string cxVal = row.GetParamOverride("Cửa xả", "CX_TD_DD_W", string.Empty);
             if (string.IsNullOrWhiteSpace(cxVal)) cxVal = row.GetParamOverride(null, "CX_TD_DD_W", string.Empty);
-            if (string.IsNullOrWhiteSpace(cxVal)) cxVal = row.GetParamOverride("Cửa xả", "CX_TD_DD_B", string.Empty);
-            if (string.IsNullOrWhiteSpace(cxVal)) cxVal = row.GetParamOverride(null, "CX_TD_DD_B", string.Empty);
             if (string.IsNullOrWhiteSpace(cxVal) && row.ParameterOverrides != null)
             {
                 foreach (var kvp in row.ParameterOverrides)
                 {
-                    if (kvp.Key.IndexOf("CX_TD_DD_W", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        kvp.Key.IndexOf("CX_TD_DD_B", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (kvp.Key.IndexOf("CX_TD_DD_W", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         cxVal = kvp.Value;
                         break;
@@ -97,6 +95,117 @@ namespace InfraBIM.CulvertTool.Services
             }
             if (cxTdDdW <= 0.05) cxTdDdW = 1.45;
             geom.CX_TD_DD_W = cxTdDdW;
+
+            string prof = !string.IsNullOrEmpty(row.AssignedProfileName)
+                ? row.AssignedProfileName
+                : (isCastInPlace ? "Cống đổ tại chỗ" : (row.IsTechnical ? "Cống kỹ thuật" : "Cống đúc sẵn"));
+
+            // Trích xuất kích thước đá dăm đệm B_DDD, H_DDD tùy chỉnh từ Tab 02
+            string bDddStr = row.GetParamOverride(prof, "Đá dăm đệm thân cống", "B_DDD", string.Empty);
+            if (string.IsNullOrWhiteSpace(bDddStr)) bDddStr = row.GetParamOverride(prof, null, "B_DDD", string.Empty);
+            if (string.IsNullOrWhiteSpace(bDddStr) && row.ParameterOverrides != null)
+            {
+                foreach (var kvp in row.ParameterOverrides)
+                {
+                    string kLower = kvp.Key.ToLowerInvariant();
+                    if (isCastInPlace && (kLower.Contains("đúc sẵn") || kLower.Contains("kỹ thuật"))) continue;
+                    if (!isCastInPlace && !row.IsTechnical && (kLower.Contains("đổ tại chỗ") || kLower.Contains("kỹ thuật"))) continue;
+                    if (row.IsTechnical && (kLower.Contains("đổ tại chỗ") || kLower.Contains("đúc sẵn"))) continue;
+
+                    if (kvp.Key.IndexOf("B_DDD", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        kvp.Key.IndexOf("B_DAM", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        bDddStr = kvp.Value;
+                        break;
+                    }
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(bDddStr) && double.TryParse(bDddStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double bDddVal) && bDddVal > 0)
+            {
+                geom.B_DDD = (Math.Abs(bDddVal) >= 10.0) ? bDddVal / 1000.0 : bDddVal;
+            }
+
+            string hDddStr = row.GetParamOverride(prof, "Đá dăm đệm thân cống", "H_DDD", string.Empty);
+            if (string.IsNullOrWhiteSpace(hDddStr)) hDddStr = row.GetParamOverride(prof, null, "H_DDD", string.Empty);
+            if (string.IsNullOrWhiteSpace(hDddStr) && row.ParameterOverrides != null)
+            {
+                foreach (var kvp in row.ParameterOverrides)
+                {
+                    string kLower = kvp.Key.ToLowerInvariant();
+                    if (isCastInPlace && (kLower.Contains("đúc sẵn") || kLower.Contains("kỹ thuật"))) continue;
+                    if (!isCastInPlace && !row.IsTechnical && (kLower.Contains("đổ tại chỗ") || kLower.Contains("kỹ thuật"))) continue;
+                    if (row.IsTechnical && (kLower.Contains("đổ tại chỗ") || kLower.Contains("đúc sẵn"))) continue;
+
+                    if (kvp.Key.IndexOf("H_DDD", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        kvp.Key.IndexOf("H_DAM", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        hDddStr = kvp.Value;
+                        break;
+                    }
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(hDddStr) && double.TryParse(hDddStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double hDddVal) && hDddVal > 0)
+            {
+                geom.H_DDD = (Math.Abs(hDddVal) >= 10.0) ? hDddVal / 1000.0 : hDddVal;
+            }
+
+            // Trích xuất kích thước bê tông lót B_BTL, H_BTL tùy chỉnh từ Tab 02
+            string bBtlStr = row.GetParamOverride(prof, "Bê tông lót thân cống", "B_BTL", string.Empty);
+            if (string.IsNullOrWhiteSpace(bBtlStr)) bBtlStr = row.GetParamOverride(prof, null, "B_BTL", string.Empty);
+            if (string.IsNullOrWhiteSpace(bBtlStr) && row.ParameterOverrides != null)
+            {
+                foreach (var kvp in row.ParameterOverrides)
+                {
+                    string kLower = kvp.Key.ToLowerInvariant();
+                    if (isCastInPlace && (kLower.Contains("đúc sẵn") || kLower.Contains("kỹ thuật"))) continue;
+                    if (!isCastInPlace && !row.IsTechnical && (kLower.Contains("đổ tại chỗ") || kLower.Contains("kỹ thuật"))) continue;
+                    if (row.IsTechnical && (kLower.Contains("đổ tại chỗ") || kLower.Contains("đúc sẵn"))) continue;
+
+                    if (kvp.Key.IndexOf("B_BTL", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        kvp.Key.IndexOf("B_LOT", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        bBtlStr = kvp.Value;
+                        break;
+                    }
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(bBtlStr) && double.TryParse(bBtlStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double bBtlVal) && bBtlVal > 0)
+            {
+                geom.B_BTL = (Math.Abs(bBtlVal) >= 10.0) ? bBtlVal / 1000.0 : bBtlVal;
+            }
+
+            string hBtlStr = row.GetParamOverride(prof, "Bê tông lót thân cống", "H_BTL", string.Empty);
+            if (string.IsNullOrWhiteSpace(hBtlStr)) hBtlStr = row.GetParamOverride(prof, null, "H_BTL", string.Empty);
+            if (string.IsNullOrWhiteSpace(hBtlStr) && row.ParameterOverrides != null)
+            {
+                foreach (var kvp in row.ParameterOverrides)
+                {
+                    string kLower = kvp.Key.ToLowerInvariant();
+                    if (isCastInPlace && (kLower.Contains("đúc sẵn") || kLower.Contains("kỹ thuật"))) continue;
+                    if (!isCastInPlace && !row.IsTechnical && (kLower.Contains("đổ tại chỗ") || kLower.Contains("kỹ thuật"))) continue;
+                    if (row.IsTechnical && (kLower.Contains("đổ tại chỗ") || kLower.Contains("đúc sẵn"))) continue;
+
+                    if (kvp.Key.IndexOf("H_BTL", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        kvp.Key.IndexOf("H_LOT", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        hBtlStr = kvp.Value;
+                        break;
+                    }
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(hBtlStr) && double.TryParse(hBtlStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double hBtlVal) && hBtlVal > 0)
+            {
+                geom.H_BTL = (Math.Abs(hBtlVal) >= 10.0) ? hBtlVal / 1000.0 : hBtlVal;
+            }
+
+            if (geom.B_BTL <= 0.05 && geom.B_DDD > 0.1)
+            {
+                geom.B_BTL = Math.Max(0.5, geom.B_DDD - 0.20);
+            }
+            if (geom.H_BTL <= 0.01)
+            {
+                geom.H_BTL = 0.10;
+            }
 
             // Phân tích khẩu độ
             ParseDimensions(row.KhauDo ?? "", out double w, out double h);

@@ -79,11 +79,19 @@ namespace InfraBIM.CulvertTool.Models
         // Cột cuối: Ghi chú loại cống rải tự động
         public string GhiChu { get; set; } = string.Empty;
 
+        // Hồ sơ loại cống chỉ định (vd: "Cống đổ tại chỗ 1", "Cống đổ tại chỗ 2"...)
+        public string AssignedProfileName { get; set; } = string.Empty;
+
         /// <summary>
         /// Tự động xác định loại cống rải chính xác theo cấu trúc thiết lập
         /// </summary>
         public string DetermineCulvertType()
         {
+            if (!string.IsNullOrEmpty(AssignedProfileName))
+            {
+                return AssignedProfileName;
+            }
+
             string gc = (GhiChu ?? string.Empty).Trim().ToUpperInvariant();
             if (!string.IsNullOrEmpty(gc))
             {
@@ -114,6 +122,10 @@ namespace InfraBIM.CulvertTool.Models
 
         public string ResolvedCulvertType => DetermineCulvertType();
 
+        public bool IsCastInPlace => DetermineCulvertType().Contains("ĐỔ TẠI CHỖ") || (SoCua > 1) || (!string.IsNullOrEmpty(AssignedProfileName) && AssignedProfileName.Contains("đổ tại chỗ", StringComparison.OrdinalIgnoreCase));
+        public bool IsTechnical => DetermineCulvertType().Contains("KỸ THUẬT") || (LoaiCong != null && (LoaiCong.Contains("kỹ thuật", StringComparison.OrdinalIgnoreCase) || LoaiCong.Contains("CKT", StringComparison.OrdinalIgnoreCase))) || (GhiChu != null && (GhiChu.Contains("kỹ thuật", StringComparison.OrdinalIgnoreCase) || GhiChu.Contains("CKT", StringComparison.OrdinalIgnoreCase)));
+        public bool IsPrecast => !IsTechnical && !IsCastInPlace;
+
         // Quản lý giá trị tùy chỉnh tham số cho từng cống (Yêu cầu 4)
         public string ActiveParamName { get; set; } = string.Empty;
         public string ActiveParamValue { get; set; } = string.Empty;
@@ -121,47 +133,185 @@ namespace InfraBIM.CulvertTool.Models
 
         public string GetParamOverride(string? paramName, string defaultValue)
         {
-            return GetParamOverride(null, paramName, defaultValue);
+            return GetParamOverride(null, null, paramName, defaultValue);
         }
 
         public string GetParamOverride(string? categoryName, string? paramName, string defaultValue)
         {
+            return GetParamOverride(null, categoryName, paramName, defaultValue);
+        }
+
+        public string GetParamOverride(string? profileName, string? categoryName, string? paramName, string defaultValue)
+        {
             if (string.IsNullOrEmpty(paramName)) return defaultValue;
+
+            string effectiveProfile = !string.IsNullOrEmpty(profileName)
+                ? profileName
+                : (!string.IsNullOrEmpty(AssignedProfileName)
+                    ? AssignedProfileName
+                    : (IsCastInPlace ? "Cống đổ tại chỗ" : (IsTechnical ? "Cống kỹ thuật" : "Cống đúc sẵn")));
+
+            // 1. Khóa đầy đủ theo cả Profile và Category (vd: "Cống đổ tại chỗ 1::Cống hộp (liên trong)::H")
+            if (!string.IsNullOrEmpty(effectiveProfile) && !string.IsNullOrEmpty(categoryName))
+            {
+                string fullKey = $"{effectiveProfile.Trim()}::{categoryName.Trim()}::{paramName.Trim()}";
+                if (ParameterOverrides.TryGetValue(fullKey, out var pVal) && !string.IsNullOrWhiteSpace(pVal))
+                {
+                    return pVal;
+                }
+
+                // 1b. Khớp tương đối theo nhóm cấu kiện TRONG CÙNG PROFILE (vd: "Đá dăm đệm liên ngoài trái" khớp với "Đá dăm đệm thân cống" của chính profile này)
+                string catClean = categoryName.Trim().ToLowerInvariant();
+                string profPrefix = $"{effectiveProfile.Trim().ToLowerInvariant()}::";
+                foreach (var kvp in ParameterOverrides)
+                {
+                    string kLower = kvp.Key.ToLowerInvariant();
+                    if (kLower.StartsWith(profPrefix) && kLower.EndsWith($"::{paramName.Trim().ToLowerInvariant()}"))
+                    {
+                        if ((catClean.Contains("đá dăm") || catClean.Contains("da dam")) && (kLower.Contains("đá dăm") || kLower.Contains("da dam")))
+                            return kvp.Value;
+                        if ((catClean.Contains("bê tông lót") || catClean.Contains("btl") || catClean.Contains("be tong lot")) && (kLower.Contains("bê tông lót") || kLower.Contains("btl") || kLower.Contains("be tong lot")))
+                            return kvp.Value;
+                        if (catClean.Contains("cống hộp") && kLower.Contains("cống hộp"))
+                        {
+                            bool cLeft = catClean.Contains("trái") || catClean.Contains("trai");
+                            bool cRight = catClean.Contains("phải") || catClean.Contains("phai");
+                            bool cMid = catClean.Contains("trong");
+                            bool kLeft = kLower.Contains("trái") || kLower.Contains("trai");
+                            bool kRight = kLower.Contains("phải") || kLower.Contains("phai");
+                            bool kMid = kLower.Contains("trong");
+
+                            // Nếu cả 2 đều chỉ định vị trí phân đoạn cụ thể khác nhau thì KHÔNG match chéo
+                            if ((cLeft && (kRight || kMid)) || (cRight && (cLeft || kMid)) || (cMid && (kLeft || kRight)))
+                                continue;
+
+                            return kvp.Value;
+                        }
+                    }
+                }
+            }
+
+            // 2. Khóa theo Profile và tên param (vd: "Cống đổ tại chỗ 1::B_DDD")
+            if (!string.IsNullOrEmpty(effectiveProfile))
+            {
+                string profKey = $"{effectiveProfile.Trim()}::{paramName.Trim()}";
+                if (ParameterOverrides.TryGetValue(profKey, out var profVal) && !string.IsNullOrWhiteSpace(profVal))
+                {
+                    return profVal;
+                }
+            }
+
+            // 3. Khóa theo Category (áp dụng cho các cấu kiện chung như Cửa xả, Sân gia cố, Hố ga)
             if (!string.IsNullOrEmpty(categoryName))
             {
+                string catClean = categoryName.Trim().ToLowerInvariant();
+                bool isOutletTarget = catClean.Contains("cửa xả") || catClean.Contains("cua xa") || catClean.Contains("tường") || catClean.Contains("sân cống");
+                bool isApronTarget = catClean.Contains("sân gia cố") || catClean.Contains("san gia co") || catClean.Contains("tấm sân");
+                bool isBarrelTarget = !isOutletTarget && !isApronTarget;
+
+                // Thân cống & đệm thân cống có Profile riêng biệt, KHÔNG lấy khóa Category trần không Profile để tránh đá biến
                 string catKey = $"{categoryName.Trim()}::{paramName.Trim()}";
-                if (ParameterOverrides.TryGetValue(catKey, out var catVal) && !string.IsNullOrWhiteSpace(catVal))
+                if (!isBarrelTarget && ParameterOverrides.TryGetValue(catKey, out var catVal) && !string.IsNullOrWhiteSpace(catVal))
                 {
                     return catVal;
                 }
-                // Không fallback sang biến toàn cục khi đã chỉ định cấu kiện cụ thể,
-                // nhằm đảm bảo các biến của từng cấu kiện (liên ngoài trái, liên trong, liên phải) độc lập 100%
-                return defaultValue;
+
+                // 3b. Khớp tương đối trong cùng cụm cấu kiện (vd: "Cửa xả - Đá dăm đệm" không bị lẫn với "Sân gia cố - Đá dăm đệm")
+                foreach (var kvp in ParameterOverrides)
+                {
+                    if (kvp.Key.EndsWith($"::{paramName.Trim()}", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string kLower = kvp.Key.ToLowerInvariant();
+                        bool kIsOutlet = kLower.Contains("cửa xả") || kLower.Contains("cua xa") || kLower.Contains("tường") || kLower.Contains("sân cống");
+                        bool kIsApron = kLower.Contains("sân gia cố") || kLower.Contains("san gia co") || kLower.Contains("tấm sân");
+                        bool kIsBarrel = !kIsOutlet && !kIsApron;
+
+                        // Chỉ cho phép khớp tương đối nếu thuộc cùng một phân nhóm lớn
+                        if (isOutletTarget == kIsOutlet && isApronTarget == kIsApron && isBarrelTarget == kIsBarrel)
+                        {
+                            // NẾU LÀ THÂN CỐNG / ĐỆM THÂN CỐNG: TUYỆT ĐỐI KHÔNG KHỚP CHÉO GIỮA ĐÚC SẴN VÀ ĐỔ TẠI CHỖ / KỸ THUẬT
+                            if (isBarrelTarget)
+                            {
+                                bool kIsCip = kLower.Contains("đổ tại chỗ") || kLower.Contains("do tai cho");
+                                bool kIsPrecast = kLower.Contains("đúc sẵn") || kLower.Contains("duc san");
+                                bool kIsCkt = kLower.Contains("kỹ thuật") || kLower.Contains("ky thuat");
+
+                                if (IsPrecast && (kIsCip || kIsCkt)) continue;
+                                if (IsCastInPlace && (kIsPrecast || kIsCkt)) continue;
+                                if (IsTechnical && (kIsPrecast || kIsCip)) continue;
+                            }
+
+                            if ((catClean.Contains("đá dăm") || catClean.Contains("da dam")) && (kLower.Contains("đá dăm") || kLower.Contains("da dam")))
+                                return kvp.Value;
+                            if ((catClean.Contains("bê tông lót") || catClean.Contains("btl") || catClean.Contains("be tong lot")) && (kLower.Contains("bê tông lót") || kLower.Contains("btl") || kLower.Contains("be tong lot")))
+                                return kvp.Value;
+                        }
+                    }
+                }
             }
-            if (ParameterOverrides.TryGetValue(paramName, out var val) && !string.IsNullOrWhiteSpace(val))
+
+            // 4. Khóa toàn cục theo tên param CHỈ KHI tham số được gán dạng độc lập (không Profile, không Category)
+            if (ParameterOverrides.TryGetValue(paramName.Trim(), out var val) && !string.IsNullOrWhiteSpace(val))
             {
-                return val;
+                // Các tham số kích thước thân cống và đệm cống TUYỆT ĐỐI KHÔNG nhận fallback toàn cục để chống đá biến
+                bool isBarrelParam = paramName.Equals("B_DDD", StringComparison.OrdinalIgnoreCase) ||
+                                     paramName.Equals("H_DDD", StringComparison.OrdinalIgnoreCase) ||
+                                     paramName.Equals("B_BTL", StringComparison.OrdinalIgnoreCase) ||
+                                     paramName.Equals("H_BTL", StringComparison.OrdinalIgnoreCase) ||
+                                     paramName.Equals("B", StringComparison.OrdinalIgnoreCase) ||
+                                     paramName.Equals("H", StringComparison.OrdinalIgnoreCase) ||
+                                     paramName.Equals("L", StringComparison.OrdinalIgnoreCase) ||
+                                     paramName.Equals("L_Std", StringComparison.OrdinalIgnoreCase);
+
+                if (!isBarrelParam)
+                {
+                    return val;
+                }
             }
+
             return defaultValue;
         }
 
         public void SetParamOverride(string? paramName, string val)
         {
-            SetParamOverride(null, paramName, val);
+            SetParamOverride(null, null, paramName, val);
         }
 
         public void SetParamOverride(string? categoryName, string? paramName, string val)
         {
+            SetParamOverride(null, categoryName, paramName, val);
+        }
+
+        public void SetParamOverride(string? profileName, string? categoryName, string? paramName, string val)
+        {
             if (string.IsNullOrEmpty(paramName)) return;
-            if (!string.IsNullOrEmpty(categoryName))
+
+            string effectiveProfile = !string.IsNullOrEmpty(profileName)
+                ? profileName
+                : (!string.IsNullOrEmpty(AssignedProfileName)
+                    ? AssignedProfileName
+                    : (IsCastInPlace ? "Cống đổ tại chỗ" : (IsTechnical ? "Cống kỹ thuật" : "Cống đúc sẵn")));
+
+            if (!string.IsNullOrEmpty(effectiveProfile) && !string.IsNullOrEmpty(categoryName))
+            {
+                string fullKey = $"{effectiveProfile.Trim()}::{categoryName.Trim()}::{paramName.Trim()}";
+                ParameterOverrides[fullKey] = val;
+            }
+            else if (!string.IsNullOrEmpty(effectiveProfile))
+            {
+                string profKey = $"{effectiveProfile.Trim()}::{paramName.Trim()}";
+                ParameterOverrides[profKey] = val;
+            }
+            else if (!string.IsNullOrEmpty(categoryName))
             {
                 string catKey = $"{categoryName.Trim()}::{paramName.Trim()}";
                 ParameterOverrides[catKey] = val;
             }
             else
             {
-                ParameterOverrides[paramName] = val;
+                ParameterOverrides[paramName.Trim()] = val;
             }
+
             ActiveParamName = paramName;
             ActiveParamValue = val;
         }

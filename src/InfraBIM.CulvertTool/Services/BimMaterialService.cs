@@ -14,9 +14,10 @@ namespace InfraBIM.CulvertTool.Services
         /// <summary>
         /// Lấy danh sách tên tất cả các Material có trong Document
         /// </summary>
-        public static List<string> GetAllMaterialNames(Document doc)
+        public static List<string> GetAllMaterialNames(Document? doc)
         {
             var names = new List<string>();
+            if (doc == null) return names;
             try
             {
                 var materials = new FilteredElementCollector(doc)
@@ -37,6 +38,50 @@ namespace InfraBIM.CulvertTool.Services
             return names;
         }
 
+        private static ElementId? _cachedSolidFillId = null;
+
+        /// <summary>
+        /// Tìm FillPattern Solid Fill trong Revit Document để hiển thị màu đặc trên bề mặt
+        /// </summary>
+        public static ElementId? GetSolidFillPatternId(Document doc)
+        {
+            if (_cachedSolidFillId != null && _cachedSolidFillId != ElementId.InvalidElementId)
+            {
+                var test = doc.GetElement(_cachedSolidFillId);
+                if (test != null) return _cachedSolidFillId;
+            }
+
+            try
+            {
+                var fps = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FillPatternElement))
+                    .Cast<FillPatternElement>();
+
+                foreach (var fp in fps)
+                {
+                    var pat = fp.GetFillPattern();
+                    if (pat != null && pat.IsSolidFill && pat.Target == FillPatternTarget.Model)
+                    {
+                        _cachedSolidFillId = fp.Id;
+                        return _cachedSolidFillId;
+                    }
+                }
+
+                foreach (var fp in fps)
+                {
+                    var pat = fp.GetFillPattern();
+                    if (pat != null && pat.IsSolidFill)
+                    {
+                        _cachedSolidFillId = fp.Id;
+                        return _cachedSolidFillId;
+                    }
+                }
+            }
+            catch { }
+
+            return null;
+        }
+
         /// <summary>
         /// Tìm hoặc tạo mới Material trong Document với tên, màu sắc RGB và độ trong suốt
         /// </summary>
@@ -50,6 +95,10 @@ namespace InfraBIM.CulvertTool.Services
         {
             if (string.IsNullOrWhiteSpace(materialName)) return null;
 
+            ElementId? solidFillId = GetSolidFillPatternId(doc);
+            Color matColor = new Color(r, g, b);
+            int transInt = Math.Clamp((int)transparency, 0, 100);
+
             // Tìm material có sẵn
             var existing = new FilteredElementCollector(doc)
                 .OfClass(typeof(Material))
@@ -60,10 +109,18 @@ namespace InfraBIM.CulvertTool.Services
             {
                 try
                 {
-                    // Cập nhật lại màu sắc nếu cần
-                    existing.Color = new Color(r, g, b);
-                    int transInt = Math.Clamp((int)transparency, 0, 100);
+                    // Tắt Render Appearance để Revit ưu tiên hiển thị Shading Color đúng theo người dùng chọn
+                    existing.UseRenderAppearanceForShading = false;
+                    existing.Color = matColor;
                     existing.Transparency = transInt;
+
+                    if (solidFillId != null && solidFillId != ElementId.InvalidElementId)
+                    {
+                        existing.SurfaceForegroundPatternId = solidFillId;
+                        existing.SurfaceForegroundPatternColor = matColor;
+                        existing.CutForegroundPatternId = solidFillId;
+                        existing.CutForegroundPatternColor = matColor;
+                    }
                 }
                 catch
                 {
@@ -81,9 +138,17 @@ namespace InfraBIM.CulvertTool.Services
                     var newMat = doc.GetElement(newId) as Material;
                     if (newMat != null)
                     {
-                        newMat.Color = new Color(r, g, b);
-                        int transInt = Math.Clamp((int)transparency, 0, 100);
+                        newMat.UseRenderAppearanceForShading = false;
+                        newMat.Color = matColor;
                         newMat.Transparency = transInt;
+
+                        if (solidFillId != null && solidFillId != ElementId.InvalidElementId)
+                        {
+                            newMat.SurfaceForegroundPatternId = solidFillId;
+                            newMat.SurfaceForegroundPatternColor = matColor;
+                            newMat.CutForegroundPatternId = solidFillId;
+                            newMat.CutForegroundPatternColor = matColor;
+                        }
                         return newMat;
                     }
                 }
@@ -97,7 +162,7 @@ namespace InfraBIM.CulvertTool.Services
         }
 
         /// <summary>
-        /// Gán Material vào đối tượng FamilyInstance vừa được đặt trong mô hình
+        /// Gán Material và Graphic Overrides đổi màu trực tiếp vào đối tượng FamilyInstance và toàn bộ Subcomponents
         /// </summary>
         public static bool ApplyMaterialToInstance(
             Document doc, 
@@ -121,7 +186,84 @@ namespace InfraBIM.CulvertTool.Services
                 assigned = TryAssignMaterialParameter(instance.Symbol.Parameters, mat.Id, matItem.MaterialParamName);
             }
 
+            // 3. Đệ quy gán cho các cấu kiện lồng bên trong (Subcomponents) nếu có
+            try
+            {
+                var subIds = instance.GetSubComponentIds();
+                if (subIds != null && subIds.Count > 0)
+                {
+                    foreach (var sId in subIds)
+                    {
+                        var subElem = doc.GetElement(sId) as FamilyInstance;
+                        if (subElem != null)
+                        {
+                            TryAssignMaterialParameter(subElem.Parameters, mat.Id, matItem.MaterialParamName);
+                            if (subElem.Symbol != null)
+                            {
+                                TryAssignMaterialParameter(subElem.Symbol.Parameters, mat.Id, matItem.MaterialParamName);
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 4. QUAN TRỌNG: Thiết lập View Graphic Overrides trực tiếp trong ActiveView
+            // Đảm bảo mô hình Revit 3D lập tức đổi màu chuẩn 100% theo màu người dùng chọn
+            try
+            {
+                ApplyGraphicOverrides(doc, instance, matItem);
+            }
+            catch { }
+
             return assigned;
+        }
+
+        /// <summary>
+        /// Gán màu hiển thị (OverrideGraphicSettings) trực tiếp lên view Revit cho đối tượng và subcomponents
+        /// </summary>
+        public static void ApplyGraphicOverrides(
+            Document doc,
+            FamilyInstance instance,
+            CulvertMaterialItem matItem)
+        {
+            if (doc.ActiveView == null || doc.ActiveView.IsTemplate) return;
+
+            ElementId? solidFillId = GetSolidFillPatternId(doc);
+            Color color = new Color(matItem.ColorR, matItem.ColorG, matItem.ColorB);
+            int trans = Math.Clamp((int)matItem.Transparency, 0, 100);
+
+            var ogs = new OverrideGraphicSettings();
+            if (solidFillId != null && solidFillId != ElementId.InvalidElementId)
+            {
+                ogs.SetSurfaceForegroundPatternId(solidFillId);
+                ogs.SetSurfaceForegroundPatternColor(color);
+                ogs.SetSurfaceForegroundPatternVisible(true);
+
+                ogs.SetCutForegroundPatternId(solidFillId);
+                ogs.SetCutForegroundPatternColor(color);
+                ogs.SetCutForegroundPatternVisible(true);
+            }
+            ogs.SetSurfaceTransparency(trans);
+
+            try
+            {
+                doc.ActiveView.SetElementOverrides(instance.Id, ogs);
+            }
+            catch { }
+
+            try
+            {
+                var subIds = instance.GetSubComponentIds();
+                if (subIds != null && subIds.Count > 0)
+                {
+                    foreach (var sId in subIds)
+                    {
+                        doc.ActiveView.SetElementOverrides(sId, ogs);
+                    }
+                }
+            }
+            catch { }
         }
 
         private static bool TryAssignMaterialParameter(

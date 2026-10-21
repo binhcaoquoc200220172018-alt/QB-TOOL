@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Autodesk.Revit.DB;
 using InfraBIM.CulvertTool.Models;
 
@@ -43,26 +44,20 @@ namespace InfraBIM.CulvertTool.Services
         }
 
         /// <summary>
-        /// Gán danh sách tham số BIM tùy biến động từ Tab 03
+        /// Diễn giải mẫu chuỗi Smart Tag cho Xem trước (Preview) hoặc gán thực tế
         /// </summary>
-        public static void ApplyCustomBimParameters(
-            Element elem,
-            IEnumerable<CustomBimParameterItem>? customParams,
-            CulvertRowData row,
-            string elementScope)
+        public static string ResolveValueTemplate(
+            string? template,
+            CulvertRowData? row,
+            int? dotIndex = 1,
+            string? viTri = "TL",
+            string? materialName = "Bê tông C25")
         {
-            if (elem == null || customParams == null) return;
+            if (string.IsNullOrEmpty(template)) return string.Empty;
+            string val = template;
 
-            foreach (var cp in customParams)
+            if (row != null)
             {
-                if (!cp.IsActive || string.IsNullOrWhiteSpace(cp.ParamName)) continue;
-
-                // Kiểm tra phạm vi áp dụng
-                if (cp.TargetScope != "Tất cả cấu kiện" && !cp.TargetScope.Contains(elementScope))
-                    continue;
-
-                // Thay thế template tags
-                string val = cp.ValueTemplate ?? "";
                 val = val.Replace("{STT}", row.STT.ToString())
                          .Replace("{LyTrinh}", row.LyTrinh ?? "")
                          .Replace("{KhauDo}", row.KhauDo ?? "")
@@ -71,14 +66,105 @@ namespace InfraBIM.CulvertTool.Services
                          .Replace("{ChieuDai}", row.ChieuDai.ToString("F2"))
                          .Replace("{DoDoc}", row.DoDoc.ToString("F2") + "%")
                          .Replace("{GocXoay}", row.GocXoay.ToString("F2") + "°")
+                         .Replace("{CaoDoDau}", row.Z1.ToString("F3"))
+                         .Replace("{CaoDoCuoi}", row.Z2.ToString("F3"))
+                         .Replace("{Z1}", row.Z1.ToString("F3"))
+                         .Replace("{Z2}", row.Z2.ToString("F3"))
                          .Replace("{X1}", row.X1.ToString("F3"))
                          .Replace("{Y1}", row.Y1.ToString("F3"))
-                         .Replace("{Z1}", row.Z1.ToString("F3"))
                          .Replace("{X2}", row.X2.ToString("F3"))
-                         .Replace("{Y2}", row.Y2.ToString("F3"))
-                         .Replace("{Z2}", row.Z2.ToString("F3"));
+                         .Replace("{Y2}", row.Y2.ToString("F3"));
+            }
 
-                SetParamString(elem, cp.ParamName, val);
+            // Xử lý {STT_DOT}
+            if (dotIndex.HasValue && dotIndex.Value > 0)
+            {
+                val = val.Replace("{STT_DOT:00}", dotIndex.Value.ToString("D2"))
+                         .Replace("{STT_DOT_2D}", dotIndex.Value.ToString("D2"))
+                         .Replace("{STT_DOT}", dotIndex.Value.ToString());
+            }
+            else
+            {
+                val = val.Replace("{STT_DOT:00}", "")
+                         .Replace("{STT_DOT_2D}", "")
+                         .Replace("{STT_DOT}", "");
+            }
+
+            // Xử lý {VI_TRI}
+            if (!string.IsNullOrEmpty(viTri))
+            {
+                val = val.Replace("{VI_TRI}", viTri)
+                         .Replace("{Huong}", viTri);
+            }
+            else
+            {
+                val = val.Replace("{VI_TRI}", "")
+                         .Replace("{Huong}", "");
+            }
+
+            // Xử lý {VatLieu}
+            if (!string.IsNullOrEmpty(materialName))
+            {
+                val = val.Replace("{VatLieu}", materialName)
+                         .Replace("{Material}", materialName);
+            }
+            else
+            {
+                val = val.Replace("{VatLieu}", "")
+                         .Replace("{Material}", "");
+            }
+
+            // Làm sạch ký tự thừa nếu thẻ rỗng
+            val = val.Replace("..", ".");
+            if (val.EndsWith(".")) val = val.Substring(0, val.Length - 1);
+            return val.Trim();
+        }
+
+        /// <summary>
+        /// Gán danh sách tham số BIM tùy biến động từ Tab 04 (backward-compatible)
+        /// </summary>
+        public static void ApplyCustomBimParameters(
+            Element elem,
+            IEnumerable<CustomBimParameterItem>? customParams,
+            CulvertRowData row,
+            string elementScope)
+        {
+            ApplyCustomBimParameters(elem, customParams, row, elementScope, null, null, null, null, true);
+        }
+
+        /// <summary>
+        /// Gán danh sách tham số BIM tùy biến động từ Tab 04 với hỗ trợ STT_DOT, vị trí TL/HL, vật liệu và tự tạo Shared Parameter
+        /// </summary>
+        public static void ApplyCustomBimParameters(
+            Element elem,
+            IEnumerable<CustomBimParameterItem>? customParams,
+            CulvertRowData row,
+            string elementScope,
+            int? dotIndex,
+            string? viTri,
+            string? materialName,
+            Document? doc,
+            bool autoCreateSharedParams = true)
+        {
+            if (elem == null || customParams == null) return;
+
+            foreach (var cp in customParams)
+            {
+                if (!cp.IsActive || string.IsNullOrWhiteSpace(cp.ParamName)) continue;
+
+                // Kiểm tra phạm vi áp dụng (hỗ trợ "Tất cả...", hoặc khớp tên cụm/cấu kiện)
+                bool isAllScope = string.IsNullOrWhiteSpace(cp.TargetScope) ||
+                                  cp.TargetScope.StartsWith("Tất cả", StringComparison.OrdinalIgnoreCase);
+
+                if (!isAllScope &&
+                    !cp.TargetScope.Contains(elementScope, StringComparison.OrdinalIgnoreCase) &&
+                    !elementScope.Contains(cp.TargetScope, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string val = ResolveValueTemplate(cp.ValueTemplate, row, dotIndex, viTri, materialName);
+                if (string.IsNullOrEmpty(val)) continue;
+
+                SetParamStringWithGroup(elem, cp.ParamName, cp.RevitGroup, val, doc, autoCreateSharedParams);
             }
         }
 
@@ -96,16 +182,88 @@ namespace InfraBIM.CulvertTool.Services
 
             foreach (var m in mappings)
             {
+                // 0. Phân luồng Profile / Loại cống tuyệt đối tránh đá biến
+                if (!string.IsNullOrEmpty(m.ProfileName))
+                {
+                    string pUpper = m.ProfileName.ToUpperInvariant();
+                    bool mIsCastInPlace = pUpper.Contains("ĐỔ TẠI CHỖ") || pUpper.Contains("DO TAI CHO") || pUpper.Contains("CAST_IN_PLACE") || pUpper.Contains("CIP");
+                    bool mIsTechnical = pUpper.Contains("KỸ THUẬT") || pUpper.Contains("KY THUAT") || pUpper.Contains("TECHNICAL") || pUpper.Contains("CKT");
+                    bool mIsPrecast = pUpper.Contains("ĐÚC SẴN") || pUpper.Contains("DUC SAN") || pUpper.Contains("PRECAST");
+
+                    if (data.IsTechnical)
+                    {
+                        if (mIsPrecast || mIsCastInPlace) continue;
+                    }
+                    else if (data.IsCastInPlace)
+                    {
+                        if (mIsPrecast || mIsTechnical) continue;
+                        if (!string.IsNullOrEmpty(data.AssignedProfileName) && !string.Equals(m.ProfileName, data.AssignedProfileName, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+                    else // Precast
+                    {
+                        if (mIsCastInPlace || mIsTechnical) continue;
+                        if (pUpper.Contains("TRÒN") && (data.LoaiCong ?? "").ToUpperInvariant().Contains("HOP")) continue;
+                        if (pUpper.Contains("HỘP") && (data.LoaiCong ?? "").ToUpperInvariant().Contains("TRON")) continue;
+                    }
+                }
+                else
+                {
+                    // m.ProfileName rỗng: Phân định chủng loại Đúc sẵn / Đổ tại chỗ / Kỹ thuật
+                    if (data.IsCastInPlace && (m.CategoryName.Contains("đúc sẵn") || m.GroupName.Contains("đúc sẵn") || m.CategoryName.Contains("kỹ thuật")))
+                        continue;
+                    if (!data.IsCastInPlace && !data.IsTechnical && (m.CategoryName.Contains("đổ tại chỗ") || m.GroupName.Contains("đổ tại chỗ") || m.CategoryName.Contains("kỹ thuật")))
+                        continue;
+                    if (!data.IsTechnical && (m.CategoryName.Contains("kỹ thuật") || m.GroupName.Contains("kỹ thuật")))
+                        continue;
+                    if (data.IsTechnical && (m.CategoryName.Contains("đúc sẵn") || m.CategoryName.Contains("đổ tại chỗ") || m.CategoryName.Contains("Cửa xả") || m.CategoryName.Contains("Sân gia cố")))
+                        continue;
+                }
+
                 // Kiểm tra khớp cấu kiện:
-                // Nếu m.CategoryName đã được gán cụ thể (ví dụ "Hố kỹ thuật 1.5x1.5m", "Hộp nối cống dọc"...),
-                // BẮT BUỘC phải khớp với categoryName của cấu kiện đang xét, KHÔNG ĐƯỢC để matchFam làm lẫn lộn giữa các cụm cấu kiện dùng chung Family!
+                // Nếu m.CategoryName đã được gán cụ thể (ví dụ "Hố kỹ thuật 1.5x1.5m", "Hộp nối cống dọc", "Đá dăm đệm thân cống"...),
                 bool matchCat;
                 if (!string.IsNullOrEmpty(m.CategoryName))
                 {
-                    if (m.CategoryName.IndexOf("liên", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        categoryName.IndexOf("liên", StringComparison.OrdinalIgnoreCase) >= 0)
+                    bool isBeddingM = m.CategoryName.IndexOf("đá dăm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      m.CategoryName.IndexOf("da dam", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      m.CategoryName.IndexOf("bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      m.CategoryName.IndexOf("be tong lot", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      m.CategoryName.IndexOf("btl", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                    bool isBeddingTarget = categoryName.IndexOf("đá dăm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                           categoryName.IndexOf("da dam", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                           categoryName.IndexOf("bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                           categoryName.IndexOf("be tong lot", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                           categoryName.IndexOf("btl", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                    if (isBeddingM && isBeddingTarget)
                     {
-                        // Khớp chính xác hoàn toàn đối với các loại liên (liên ngoài trái, liên trong, liên ngoài phải)
+                        // Phải cùng cụm cấu kiện: Cửa xả vs Sân gia cố vs Thân cống
+                        bool mIsOutlet = m.CategoryName.Contains("Cửa xả") || m.GroupName.Contains("Cửa xả");
+                        bool tIsOutlet = categoryName.Contains("Cửa xả");
+                        bool mIsApron = m.CategoryName.Contains("Sân gia cố") || m.GroupName.Contains("Sân gia cố");
+                        bool tIsApron = categoryName.Contains("Sân gia cố");
+                        bool mIsBarrel = !mIsOutlet && !mIsApron;
+                        bool tIsBarrel = !tIsOutlet && !tIsApron;
+
+                        if (mIsOutlet == tIsOutlet && mIsApron == tIsApron && mIsBarrel == tIsBarrel)
+                        {
+                            bool isDaDam = (m.CategoryName.IndexOf("đá dăm", StringComparison.OrdinalIgnoreCase) >= 0 || m.CategoryName.IndexOf("da dam", StringComparison.OrdinalIgnoreCase) >= 0) &&
+                                           (categoryName.IndexOf("đá dăm", StringComparison.OrdinalIgnoreCase) >= 0 || categoryName.IndexOf("da dam", StringComparison.OrdinalIgnoreCase) >= 0);
+                            bool isBtl = (m.CategoryName.IndexOf("lót", StringComparison.OrdinalIgnoreCase) >= 0 || m.CategoryName.IndexOf("btl", StringComparison.OrdinalIgnoreCase) >= 0) &&
+                                         (categoryName.IndexOf("lót", StringComparison.OrdinalIgnoreCase) >= 0 || categoryName.IndexOf("btl", StringComparison.OrdinalIgnoreCase) >= 0);
+                            matchCat = isDaDam || isBtl;
+                        }
+                        else
+                        {
+                            matchCat = false;
+                        }
+                    }
+                    else if ((m.CategoryName.IndexOf("cống hộp", StringComparison.OrdinalIgnoreCase) >= 0 || m.CategoryName.IndexOf("thân cống", StringComparison.OrdinalIgnoreCase) >= 0) &&
+                             (m.CategoryName.IndexOf("liên", StringComparison.OrdinalIgnoreCase) >= 0 || categoryName.IndexOf("liên", StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        // Khớp chính xác hoàn toàn đối với các loại liên thân cống (liên ngoài trái, liên trong, liên ngoài phải)
                         matchCat = string.Equals(m.CategoryName, categoryName, StringComparison.OrdinalIgnoreCase);
                     }
                     else
@@ -122,7 +280,7 @@ namespace InfraBIM.CulvertTool.Services
                 bool matchFam = !string.IsNullOrEmpty(m.FamilyName) && 
                                 string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase);
 
-                bool isMatch = !string.IsNullOrEmpty(m.CategoryName) ? matchCat : matchFam;
+                bool isMatch = matchCat || (matchFam && string.IsNullOrEmpty(m.CategoryName));
                 if (!isMatch) continue;
 
                 // Nếu là tham số Yes/No: nếu người dùng bỏ tích (IsSelected == false) thì coi như chọn "Không" (0)
@@ -178,12 +336,45 @@ namespace InfraBIM.CulvertTool.Services
                     {
                         continue;
                     }
+
+                    // TỰ ĐỘNG DUPLICATE SYMBOL ĐỂ THAM SỐ TYPE HOÀN TOÀN ĐỘC LẬP GIỮA CÁC CỐNG/CỤM CẤU KIỆN
+                    try
+                    {
+                        string cleanCat = string.IsNullOrEmpty(categoryName) ? "" : "_" + System.Text.RegularExpressions.Regex.Replace(categoryName, @"[^\w\d]", "");
+                        string suffix = $"_{data.STT}{cleanCat}";
+                        string curName = inst.Symbol.Name;
+                        if (!curName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            string desiredTypeName = $"{curName}{suffix}";
+                            var existingSym = inst.Symbol.Family.GetFamilySymbolIds()
+                                .Select(id => inst.Document.GetElement(id) as FamilySymbol)
+                                .FirstOrDefault(s => s != null && string.Equals(s.Name, desiredTypeName, StringComparison.OrdinalIgnoreCase));
+
+                            if (existingSym != null)
+                            {
+                                if (!existingSym.IsActive) existingSym.Activate();
+                                inst.Symbol = existingSym;
+                                p = existingSym.LookupParameter(m.InternalName);
+                            }
+                            else
+                            {
+                                var newSym = inst.Symbol.Duplicate(desiredTypeName) as FamilySymbol;
+                                if (newSym != null)
+                                {
+                                    if (!newSym.IsActive) newSym.Activate();
+                                    inst.Symbol = newSym;
+                                    p = newSym.LookupParameter(m.InternalName);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
                 }
 
                 bool hasExplicitMapping = !string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến";
 
                 // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, sau đó lấy giá trị tùy chỉnh riêng của cống
-                string valStr = data.GetParamOverride(m.CategoryName, m.InternalName, m.CustomValue);
+                string valStr = data.GetParamOverride(m.ProfileName, m.CategoryName, m.InternalName, m.CustomValue);
                 if (m.IsYesNoParameter)
                 {
                     if (!m.IsSelected)
@@ -294,25 +485,277 @@ namespace InfraBIM.CulvertTool.Services
 
         public static void SetParamString(Element elem, string pName, string val)
         {
-            if (string.IsNullOrEmpty(val)) return;
+            SetParamStringWithGroup(elem, pName, "Constraints", val, null, false);
+        }
+
+        private static readonly object _spLock = new object();
+
+        /// <summary>
+        /// Gán tham số string cho Element, hỗ trợ tự động khởi tạo Shared Parameter vào nhóm Revit (mặc định Constraints)
+        /// </summary>
+        public static void SetParamStringWithGroup(
+            Element elem,
+            string pName,
+            string revitGroup,
+            string val,
+            Document? doc = null,
+            bool autoCreateSharedParams = true)
+        {
+            if (elem == null || string.IsNullOrEmpty(val) || string.IsNullOrWhiteSpace(pName)) return;
+
             Parameter p = elem.LookupParameter(pName);
             if (p != null && !p.IsReadOnly && p.StorageType == StorageType.String)
             {
-                p.Set(val);
+                try { p.Set(val); return; } catch { }
             }
-            else
+
+            // Nếu chưa có parameter và có doc + tùy chọn tự tạo Shared Parameter
+            if (p == null && doc != null && autoCreateSharedParams && elem.Category != null)
             {
-                if (pName == "Tên cấu kiện")
+                try
                 {
-                    Parameter pMark = elem.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
-                    if (pMark != null && !pMark.IsReadOnly) pMark.Set(val);
+                    if (EnsureSharedParameterCreated(doc, pName, revitGroup, elem.Category))
+                    {
+                        p = elem.LookupParameter(pName);
+                        if (p != null && !p.IsReadOnly && p.StorageType == StorageType.String)
+                        {
+                            try { p.Set(val); return; } catch { }
+                        }
+                    }
                 }
-                else if (pName == "Mô tả")
+                catch { }
+            }
+
+            // Fallback sang các built-in parameter nếu parameter chưa tồn tại
+            if (pName == "Tên cấu kiện" || pName.IndexOf("Mark", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                Parameter pMark = elem.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+                if (pMark != null && !pMark.IsReadOnly)
                 {
-                    Parameter pComments = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
-                    if (pComments != null && !pComments.IsReadOnly) pComments.Set(val);
+                    try { pMark.Set(val); } catch { }
                 }
             }
+            else if (pName == "Mô tả" || pName.IndexOf("Comment", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                Parameter pComments = elem.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                if (pComments != null && !pComments.IsReadOnly)
+                {
+                    try { pComments.Set(val); } catch { }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Đảm bảo Shared Parameter được khởi tạo và bind vào category với GroupTypeId (mặc định Constraints)
+        /// </summary>
+        public static bool EnsureSharedParameterCreated(Document doc, string paramName, string revitGroup, Category cat)
+        {
+            if (doc == null || string.IsNullOrWhiteSpace(paramName) || cat == null) return false;
+            lock (_spLock)
+            {
+                try
+                {
+                    BindingMap map = doc.ParameterBindings;
+                    DefinitionBindingMapIterator it = map.ForwardIterator();
+                    while (it.MoveNext())
+                    {
+                        if (it.Key != null && string.Equals(it.Key.Name, paramName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (it.Current is InstanceBinding instB && instB.Categories.Contains(cat))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+
+                    var app = doc.Application;
+                    string originalSpFile = app.SharedParametersFilename;
+                    string tempSpFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DV_TOOL_HTKT_SharedParams.txt");
+
+                    if (!System.IO.File.Exists(tempSpFile))
+                    {
+                        string header = "# Temporary Shared Parameter File for DV_TOOL_HTKT\r\n" +
+                                        "*META\tVERSION\tMINVERSION\r\n" +
+                                        "META\t2\t1\r\n" +
+                                        "*GROUP\tID\tNAME\r\n" +
+                                        "GROUP\t1\tBIM_CONSTRAINTS\r\n" +
+                                        "*PARAM\tGUID\tNAME\tDATATYPE\tDATACAT\tGROUP\tVISIBLE\tDESCRIPTION\tUSERMODIFIABLE\r\n";
+                        System.IO.File.WriteAllText(tempSpFile, header, System.Text.Encoding.UTF8);
+                    }
+
+                    app.SharedParametersFilename = tempSpFile;
+                    DefinitionFile defFile = app.OpenSharedParameterFile();
+                    if (defFile == null) return false;
+
+                    DefinitionGroup group = defFile.Groups.get_Item("BIM_CONSTRAINTS") ?? defFile.Groups.Create("BIM_CONSTRAINTS");
+                    Definition def = group.Definitions.get_Item(paramName);
+                    if (def == null)
+                    {
+                        ExternalDefinitionCreationOptions opt = new ExternalDefinitionCreationOptions(paramName, SpecTypeId.String.Text);
+                        def = group.Definitions.Create(opt);
+                    }
+
+                    CategorySet catSet = app.Create.NewCategorySet();
+                    catSet.Insert(cat);
+                    try { catSet.Insert(doc.Settings.Categories.get_Item(BuiltInCategory.OST_GenericModel)); } catch { }
+                    try { catSet.Insert(doc.Settings.Categories.get_Item(BuiltInCategory.OST_StructuralFraming)); } catch { }
+                    try { catSet.Insert(doc.Settings.Categories.get_Item(BuiltInCategory.OST_StructuralFoundation)); } catch { }
+
+                    InstanceBinding binding = app.Create.NewInstanceBinding(catSet);
+
+                    ForgeTypeId groupTypeId = GroupTypeId.Constraints;
+                    if (string.Equals(revitGroup, "Identity Data", StringComparison.OrdinalIgnoreCase))
+                        groupTypeId = GroupTypeId.IdentityData;
+                    else if (string.Equals(revitGroup, "Data", StringComparison.OrdinalIgnoreCase))
+                        groupTypeId = GroupTypeId.Data;
+                    else if (string.Equals(revitGroup, "Text", StringComparison.OrdinalIgnoreCase))
+                        groupTypeId = GroupTypeId.Text;
+                    else if (string.Equals(revitGroup, "Phasing", StringComparison.OrdinalIgnoreCase))
+                        groupTypeId = GroupTypeId.Phasing;
+
+                    doc.ParameterBindings.Insert(def, binding, groupTypeId);
+
+                    if (!string.IsNullOrEmpty(originalSpFile) && System.IO.File.Exists(originalSpFile))
+                    {
+                        try { app.SharedParametersFilename = originalSpFile; } catch { }
+                    }
+
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Cập nhật riêng thông tin BIM vào các cấu kiện đã có trong mô hình Revit mà không cần dựng lại 3D
+        /// </summary>
+        public static (int UpdatedCount, List<string> Logs) UpdateBimParametersForExistingModel(
+            Document doc,
+            IList<CulvertRowData> culvertList,
+            IEnumerable<CustomBimParameterItem> customParams,
+            BimInfoConfig bimConfig,
+            IEnumerable<CulvertMaterialItem>? materialSettings)
+        {
+            var logs = new List<string>();
+            int count = 0;
+            if (doc == null || culvertList == null || !culvertList.Any())
+            {
+                logs.Add("❌ Không có dữ liệu cống hoặc file Revit không khả dụng.");
+                return (0, logs);
+            }
+
+            using (Transaction tx = new Transaction(doc, "DV_TOOL: Cập nhật thông tin BIM"))
+            {
+                tx.Start();
+                try
+                {
+                    var collector = new FilteredElementCollector(doc)
+                        .WherePasses(new ElementMulticategoryFilter(new List<BuiltInCategory>
+                        {
+                            BuiltInCategory.OST_GenericModel,
+                            BuiltInCategory.OST_StructuralFraming,
+                            BuiltInCategory.OST_StructuralFoundation
+                        }))
+                        .WhereElementIsNotElementType()
+                        .ToElements();
+
+                    foreach (var elem in collector)
+                    {
+                        if (elem is not FamilyInstance fi) continue;
+                        string famName = fi.Symbol?.FamilyName ?? "";
+
+                        CulvertRowData? matchedRow = null;
+                        Parameter pLt = elem.LookupParameter("Lý trình") ?? elem.LookupParameter("BIM_LyTrinh");
+                        if (pLt != null && !string.IsNullOrEmpty(pLt.AsString()))
+                        {
+                            string ltVal = pLt.AsString().Trim();
+                            matchedRow = culvertList.FirstOrDefault(r => string.Equals((r.LyTrinh ?? "").Trim(), ltVal, StringComparison.OrdinalIgnoreCase));
+                        }
+
+                        if (matchedRow == null)
+                        {
+                            LocationPoint? lp = fi.Location as LocationPoint;
+                            if (lp != null)
+                            {
+                                XYZ pt = lp.Point;
+                                matchedRow = culvertList.FirstOrDefault(r =>
+                                {
+                                    double d1 = Math.Sqrt(Math.Pow(pt.X - UnitUtils.ConvertToInternalUnits(r.X1, UnitTypeId.Meters), 2) +
+                                                          Math.Pow(pt.Y - UnitUtils.ConvertToInternalUnits(r.Y1, UnitTypeId.Meters), 2));
+                                    double d2 = Math.Sqrt(Math.Pow(pt.X - UnitUtils.ConvertToInternalUnits(r.X2, UnitTypeId.Meters), 2) +
+                                                          Math.Pow(pt.Y - UnitUtils.ConvertToInternalUnits(r.Y2, UnitTypeId.Meters), 2));
+                                    return (d1 <= 30.0 || d2 <= 30.0);
+                                });
+                            }
+                        }
+
+                        if (matchedRow == null && culvertList.Count == 1)
+                        {
+                            matchedRow = culvertList[0];
+                        }
+
+                        if (matchedRow == null) continue;
+
+                        string scope = "Tất cả cấu kiện";
+                        int? dotIdx = null;
+                        string? viTri = null;
+
+                        if (famName.Contains("Đốt") || famName.Contains("Dot") || famName.Contains("Thân") || famName.Contains("Than"))
+                        {
+                            scope = matchedRow.IsCastInPlace ? "Cống hộp liên trong" : "Đốt cống đúc sẵn";
+                            string currentMark = fi.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString() ?? "";
+                            var matchDigits = System.Text.RegularExpressions.Regex.Match(currentMark, @"\d+");
+                            if (matchDigits.Success && int.TryParse(matchDigits.Value, out int idxVal))
+                                dotIdx = idxVal;
+                        }
+                        else if (famName.Contains("Cửa xả") || famName.Contains("Tường đầu") || famName.Contains("Tường cánh"))
+                        {
+                            scope = "Cửa xả";
+                            LocationPoint? lp = fi.Location as LocationPoint;
+                            if (lp != null)
+                            {
+                                double dTL = Math.Sqrt(Math.Pow(lp.Point.X - UnitUtils.ConvertToInternalUnits(matchedRow.X1, UnitTypeId.Meters), 2) +
+                                                       Math.Pow(lp.Point.Y - UnitUtils.ConvertToInternalUnits(matchedRow.Y1, UnitTypeId.Meters), 2));
+                                double dHL = Math.Sqrt(Math.Pow(lp.Point.X - UnitUtils.ConvertToInternalUnits(matchedRow.X2, UnitTypeId.Meters), 2) +
+                                                       Math.Pow(lp.Point.Y - UnitUtils.ConvertToInternalUnits(matchedRow.Y2, UnitTypeId.Meters), 2));
+                                viTri = (dTL <= dHL) ? "TL" : "HL";
+                            }
+                        }
+                        else if (famName.Contains("Sân") || famName.Contains("San"))
+                        {
+                            scope = "Sân gia cố";
+                            viTri = "TL";
+                        }
+                        else if (famName.Contains("Hố") || famName.Contains("Hộp") || famName.Contains("Ho ga"))
+                        {
+                            scope = "Hố ga (Hộp nối)";
+                        }
+
+                        string? matName = null;
+                        if (materialSettings != null)
+                        {
+                            var matItem = materialSettings.FirstOrDefault(m => m.CategoryType.Contains(scope) || scope.Contains(m.CategoryType));
+                            matName = matItem?.MaterialName;
+                        }
+
+                        ApplyCustomBimParameters(elem, customParams, matchedRow, scope, dotIdx, viTri, matName, doc, bimConfig.AutoCreateSharedParameters);
+                        count++;
+                    }
+
+                    tx.Commit();
+                    logs.Add($"✅ Đã cập nhật thành công thông tin BIM cho {count} cấu kiện trong Revit.");
+                }
+                catch (Exception ex)
+                {
+                    tx.RollBack();
+                    logs.Add($"❌ Lỗi cập nhật BIM: {ex.Message}");
+                }
+            }
+
+            return (count, logs);
         }
 
         public static void SetParamDouble(Element elem, string pName, double valM)

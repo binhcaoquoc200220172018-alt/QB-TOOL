@@ -165,7 +165,8 @@ namespace InfraBIM.CulvertTool.Services
                             outCreatedBarrels,
                             outCreatedBeddings,
                             outCreatedManholes,
-                            rowCipDetails);
+                            rowCipDetails,
+                            outCreatedAprons);
 
                         try { doc.Regenerate(); } catch { }
 

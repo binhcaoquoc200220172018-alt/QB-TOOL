@@ -104,6 +104,12 @@ namespace InfraBIM.CulvertTool.Models
         public double OffsetZ_Cat { get; set; } = -0.20;
         public double CX_TD_DD_W { get; set; } = 1.45; // Độ thụt mép ngoài tường đầu cửa xả của BTL và đá dăm đệm (m)
 
+        // Kích thước tùy biến lớp đệm BTL và Đá dăm đệm (Tab 02)
+        public double B_DDD { get; set; } = 0.0;       // Bề rộng đá dăm đệm (m) (ví dụ 7.20m = 7200mm)
+        public double H_DDD { get; set; } = 0.15;      // Chiều dày đá dăm đệm (m) (ví dụ 0.10m = 100mm)
+        public double B_BTL { get; set; } = 0.0;       // Bề rộng bê tông lót (m)
+        public double H_BTL { get; set; } = 0.10;      // Chiều dày bê tông lót (m)
+
         public bool IsCastInPlace { get; set; } = false;
         public double JointGapM { get; set; } = 0.01;
         public bool IsRoundCulvert { get; set; } = false;

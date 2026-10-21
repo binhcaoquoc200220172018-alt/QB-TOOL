@@ -12,12 +12,13 @@ namespace InfraBIM.CulvertTool.Services
         /// <summary>
         /// Quét toàn bộ tham số của một FamilySymbol bao gồm:
         /// 1. Giữ nguyên 100% thứ tự khai báo trong Family Types của Revit (không đảo thứ tự).
-        /// 2. Lọc bỏ tuyệt đối các tham số ĐÃ CÓ GÁN FORMULA (như Angle X, A1-1, A10, A2, CX_L2, Angle TC...).
+        /// 2. Lọc bỏ tuyệt đối các tham số ĐÃ CÓ GÁN FORMULA (như Angle X, A1-1, A10, A2, CX_L2, Angle TC, CH_B TONG...).
         /// 3. Phân nhóm rõ ràng: Dimensions (Kích thước) và Other (Khác).
-        /// 4. Trong nhóm Other: chỉ hiển thị kiểu dữ liệu Length và Yes/No.
+        /// 4. Trong nhóm Other: hiển thị kiểu dữ liệu Length và Yes/No (ẩn hiện cấu kiện).
         /// 5. Bỏ qua hoàn toàn A_GÓC XOAY và không tự ý thêm biến lạ.
+        /// 6. Hỗ trợ đầy đủ cả Type Parameters và Instance Parameters (như CO VAI KE).
         /// </summary>
-        public static List<ParameterMappingItem> ScanParametersForFamily(Document doc, FamilySymbol sym, string categoryName)
+        public static List<ParameterMappingItem> ScanParametersForFamily(Document doc, FamilySymbol sym, string categoryName, string profileName = "")
         {
             var result = new List<ParameterMappingItem>();
             if (sym == null) return result;
@@ -25,31 +26,38 @@ namespace InfraBIM.CulvertTool.Services
             var processedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // =========================================================================
-            // 1. ƯU TIÊN 1: ĐỌC TRỰC TIẾP TỪ FAMILY DEFINITION
-            // Đảm bảo thứ tự 100% như Family Types và kiểm tra triệt để fp.Formula
+            // 1. ƯU TIÊN 1: ĐỌC TỪ FAMILY DEFINITION
             // =========================================================================
             bool scannedFromFamily = false;
             Document? famDoc = null;
-            bool wasAlreadyOpen = false;
+            bool famDocWasAlreadyOpen = false;
 
             try
             {
                 if (doc != null && sym.Family != null)
                 {
-                    // Kiểm tra xem Family Document đã mở trong Revit chưa (tránh mở trùng / đóng nhầm)
+                    // 1.1 Kiểm tra nếu Family Document ĐÃ mở sẵn trong Revit
                     foreach (Document d in doc.Application.Documents)
                     {
                         if (d.IsFamilyDocument && string.Equals(d.Title, sym.Family.Name, StringComparison.OrdinalIgnoreCase))
                         {
                             famDoc = d;
-                            wasAlreadyOpen = true;
+                            famDocWasAlreadyOpen = true;
                             break;
                         }
                     }
 
+                    // 1.2 Nếu chưa mở sẵn, thử mở an toàn bằng doc.EditFamily
                     if (famDoc == null && sym.Family.IsEditable)
                     {
-                        famDoc = doc.EditFamily(sym.Family);
+                        try
+                        {
+                            famDoc = doc.EditFamily(sym.Family);
+                        }
+                        catch
+                        {
+                            famDoc = null;
+                        }
                     }
 
                     if (famDoc != null)
@@ -62,15 +70,19 @@ namespace InfraBIM.CulvertTool.Services
             catch { }
             finally
             {
-                if (famDoc != null && !wasAlreadyOpen)
+                // Nếu ta tự mở famDoc thì đóng lại (không lưu) để giải phóng tài nguyên và tránh xung đột giao diện Revit
+                if (famDoc != null && !famDocWasAlreadyOpen)
                 {
-                    try { famDoc.Close(false); } catch { }
+                    try
+                    {
+                        famDoc.Close(false);
+                    }
+                    catch { }
                 }
             }
 
             // =========================================================================
-            // 2. FALLBACK NẾU KHÔNG MỞ ĐƯỢC FAMILY DEFINITION
-            // Đọc từ Symbol & Instance mẫu trong dự án (chỉ lấy !p.IsReadOnly)
+            // 2. FALLBACK TỪ DỰ ÁN NẾU CHƯA QUÉT ĐƯỢC TỪ FAMILY
             // =========================================================================
             if (!scannedFromFamily)
             {
@@ -122,10 +134,20 @@ namespace InfraBIM.CulvertTool.Services
                 catch { }
             }
 
-            // Gán số thứ tự STT (1, 2, 3...) theo đúng thứ tự ban đầu của Family, KHÔNG sắp xếp đảo lộn!
+            // =========================================================================
+            // 3. ĐẢM BẢO CÁC THAM SỐ TIÊU CHUẨN CỦA TỪNG CẤU KIỆN LUÔN HIỆN DIỆN
+            // (Đặc biệt là các tham số Instance như CO VAI KE khi chưa đặt Family vào dự án)
+            // =========================================================================
+            EnsureStandardParametersExist(sym, categoryName, result, processedNames);
+
+            // Gán số thứ tự STT (1, 2, 3...) theo đúng thứ tự, KHÔNG sắp xếp đảo lộn!
             for (int i = 0; i < result.Count; i++)
             {
                 result[i].STT = i + 1;
+                if (!string.IsNullOrEmpty(profileName))
+                {
+                    result[i].ProfileName = profileName;
+                }
             }
 
             return result;
@@ -208,21 +230,29 @@ namespace InfraBIM.CulvertTool.Services
 
                 string gLower = groupName.ToLowerInvariant();
                 bool isLength = dataTypeStr.Contains("Length") || fp.StorageType == StorageType.Double;
+                bool isAngle = dataTypeStr.Contains("Angle");
+                bool isNumber = dataTypeStr.Contains("Number");
                 bool isYesNo = dataTypeStr.Contains("Yes/No") || isBoolYesNo;
 
                 bool isDim = false;
                 bool isOther = false;
                 bool isVis = false;
 
-                if (gLower.Contains("dimen") || gLower.Contains("kích thước") || gLower.Contains("geom"))
+                if (isYesNo)
+                {
+                    groupName = "Other (Khác)";
+                    isOther = true;
+                    isVis = true;
+                }
+                else if (gLower.Contains("dimen") || gLower.Contains("kích thước") || gLower.Contains("geom"))
                 {
                     groupName = "Dimensions (Kích thước)";
                     isDim = true;
                 }
                 else if (gLower.Contains("other") || gLower.Contains("khác") || gLower.Contains("general"))
                 {
-                    // YÊU CẦU: Trong mục Other CHỈ HIỂN THỊ KIỂU DỮ LIỆU LENGTH VÀ YES/NO THÔI!
-                    if (isLength || isYesNo)
+                    // Trong mục Other: chỉ hiển thị Length và Yes/No
+                    if (isLength || isYesNo || isAngle || isNumber)
                     {
                         groupName = "Other (Khác)";
                         isOther = true;
@@ -230,16 +260,10 @@ namespace InfraBIM.CulvertTool.Services
                     }
                     else
                     {
-                        continue; // Loại bỏ các kiểu dữ liệu khác trong Other (String, Double, Integer...)
+                        continue;
                     }
                 }
-                else if (isYesNo)
-                {
-                    groupName = "Other (Khác)";
-                    isOther = true;
-                    isVis = true;
-                }
-                else if (name.StartsWith("CH_") && (nLower.Contains("_h") || nLower.Contains("_b") || nLower.Contains("_w") || nLower.Contains("_l") || nLower.Contains("_t")))
+                else if (isLength || isAngle || isNumber)
                 {
                     groupName = "Dimensions (Kích thước)";
                     isDim = true;
@@ -473,35 +497,36 @@ namespace InfraBIM.CulvertTool.Services
 
             string gLower = groupName.ToLowerInvariant();
             bool isLength = dataTypeStr.Contains("Length") || p.StorageType == StorageType.Double;
+            bool isAngle = dataTypeStr.Contains("Angle");
+            bool isNumber = dataTypeStr.Contains("Number");
             bool isYesNo = dataTypeStr.Contains("Yes/No") || isBoolYesNo;
 
-            if (gLower.Contains("dimen") || gLower.Contains("kích thước") || gLower.Contains("geom"))
+            if (isYesNo)
+            {
+                groupName = "Other (Khác)";
+                isOther = true;
+                isVis = true;
+            }
+            else if (gLower.Contains("dimen") || gLower.Contains("kích thước") || gLower.Contains("geom"))
             {
                 groupName = "Dimensions (Kích thước)";
                 isDim = true;
             }
             else if (gLower.Contains("other") || gLower.Contains("khác") || gLower.Contains("general"))
             {
-                // YÊU CẦU: Trong mục Other CHỈ HIỂN THỊ KIỂU DỮ LIỆU LENGTH VÀ YES/NO THÔI!
-                if (isLength || isYesNo)
+                if (isLength || isAngle || isNumber)
                 {
                     groupName = "Other (Khác)";
                     isOther = true;
-                    if (isYesNo) isVis = true;
                 }
                 else
                 {
                     return null;
                 }
             }
-            else if (isBoolYesNo)
+            else if (isLength || isAngle || isNumber)
             {
-                groupName = "Other (Khác)";
-                isOther = true;
-                isVis = true;
-            }
-            else if (name.StartsWith("CH_") && (nLower.Contains("_h") || nLower.Contains("_b") || nLower.Contains("_w") || nLower.Contains("_l") || nLower.Contains("_t")))
-            {
+                // Mọi kích thước hình học không phải system junk đều phân vào nhóm Dimensions
                 groupName = "Dimensions (Kích thước)";
                 isDim = true;
             }
@@ -577,6 +602,131 @@ namespace InfraBIM.CulvertTool.Services
                 MappedField = DeduceDefaultMappedField(name),
                 IsInstance = isInstance
             };
+        }
+
+        private static void EnsureStandardParametersExist(
+            FamilySymbol sym,
+            string categoryName,
+            List<ParameterMappingItem> list,
+            HashSet<string> processed)
+        {
+            string famUpper = (sym.FamilyName ?? "").ToUpperInvariant();
+
+            if (famUpper.Contains("HOP NOI"))
+            {
+                AddFallbackParam(list, processed, sym, categoryName, "HOP NOI CONG_B", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "2100.0");
+                AddFallbackParam(list, processed, sym, categoryName, "HOP NOI CONG_W", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "2700.0");
+                AddFallbackParam(list, processed, sym, categoryName, "HOP NOI CONG_T", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "250.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CONG HOP_B", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "1860.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CONG HOP_H", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "1860.0");
+                AddFallbackParam(list, processed, sym, categoryName, "HOP NOI CONG_H THAN", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "2100.0");
+                AddFallbackParam(list, processed, sym, categoryName, "HOP NOI CONG_H DAY", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "250.0");
+                AddFallbackParam(list, processed, sym, categoryName, "HOP NOI CONG_H NAP", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "150.0");
+                AddFallbackParam(list, processed, sym, categoryName, "TAM DAN_B", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "540.0");
+                AddFallbackParam(list, processed, sym, categoryName, "DA DAM DEM_H", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "150.0");
+            }
+            else if (famUpper.Contains("CX_SAN CONG") || famUpper.Contains("CUA XA"))
+            {
+                AddFallbackParam(list, processed, sym, categoryName, "CH_GX", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Angle (Góc)", defVal: "90.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TC_GX1", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Angle (Góc)", defVal: "20.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TC_GX2", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Angle (Góc)", defVal: "20.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_B Cong", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "1000.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_L san cong", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "1350.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_SC_B", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "400.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_SC_BTL_H", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "100.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_SC_H", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "200.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_SC_H2", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "1000.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TC_B day 11", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "631.9");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TC_B day 12", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "631.9");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TC_B day 2", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "432.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TC_B dinh", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "282.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TC_H 1", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "1090.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TC_H 2", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "250.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TD_H", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "1090.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TD_T", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "1400.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TD_T day", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "200.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TD_T dinh", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "400.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TD_W day", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "830.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_DO_H1", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "1000.0");
+
+                AddFallbackParam(list, processed, sym, categoryName, "CX_GLC", "Other (Khác)", isDim: false, isInst: true, dataType: "Yes/No (Có/Không)", defVal: "Không", isVis: true);
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TUONG DAU", "Other (Khác)", isDim: false, isInst: false, dataType: "Yes/No (Có/Không)", defVal: "Có", isVis: true);
+                AddFallbackParam(list, processed, sym, categoryName, "CX_TUONG CANH", "Other (Khác)", isDim: false, isInst: false, dataType: "Yes/No (Có/Không)", defVal: "Có", isVis: true);
+                AddFallbackParam(list, processed, sym, categoryName, "CX_SAN CONG", "Other (Khác)", isDim: false, isInst: false, dataType: "Yes/No (Có/Không)", defVal: "Có", isVis: true);
+                AddFallbackParam(list, processed, sym, categoryName, "CX_BE TONG LOT", "Other (Khác)", isDim: false, isInst: false, dataType: "Yes/No (Có/Không)", defVal: "Có", isVis: true);
+                AddFallbackParam(list, processed, sym, categoryName, "CX_DA DAM DEM", "Other (Khác)", isDim: false, isInst: false, dataType: "Yes/No (Có/Không)", defVal: "Có", isVis: true);
+            }
+            else if (famUpper.Contains("SAN GIA CO") || famUpper.Contains("SGC"))
+            {
+                AddFallbackParam(list, processed, sym, categoryName, "CH_SGC_L1", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "8465.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CH_SGC_B", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "7220.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CH_SGC_T", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "300.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CX_SGC_SH", "Other (Khác)", isDim: false, isInst: true, dataType: "Yes/No (Có/Không)", defVal: "Có", isVis: true);
+                AddFallbackParam(list, processed, sym, categoryName, "CX_SGC_BTL_SH", "Other (Khác)", isDim: false, isInst: true, dataType: "Yes/No (Có/Không)", defVal: "Không", isVis: true);
+                AddFallbackParam(list, processed, sym, categoryName, "CX_SGC_DD_SH", "Other (Khác)", isDim: false, isInst: true, dataType: "Yes/No (Có/Không)", defVal: "Không", isVis: true);
+            }
+            else if (famUpper.Contains("DA DAM") || famUpper.Contains("DEM CONG"))
+            {
+                AddFallbackParam(list, processed, sym, categoryName, "B_DDD", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "2260.0");
+                AddFallbackParam(list, processed, sym, categoryName, "H_DDD", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "150.0");
+                AddFallbackParam(list, processed, sym, categoryName, "H", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "0.0");
+                AddFallbackParam(list, processed, sym, categoryName, "L1", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "0.0");
+                AddFallbackParam(list, processed, sym, categoryName, "L2", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "0.0");
+            }
+            else if (famUpper.Contains("BE TONG LOT") || famUpper.Contains("BTL") || famUpper.Contains("BT LOT"))
+            {
+                AddFallbackParam(list, processed, sym, categoryName, "B_BTL", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "2100.0");
+                AddFallbackParam(list, processed, sym, categoryName, "H_BTL", "Dimensions (Kích thước)", isDim: true, isInst: true, dataType: "Length (Chiều dài)", defVal: "100.0");
+            }
+            else if (famUpper.Contains("THAN CONG"))
+            {
+                AddFallbackParam(list, processed, sym, categoryName, "CH_B", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "1500.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CH_H", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "1500.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CH_T", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "180.0");
+                AddFallbackParam(list, processed, sym, categoryName, "CO VAI KE", "Other (Khác)", isDim: false, isInst: true, dataType: "Yes/No (Có/Không)", defVal: "Không", isVis: true);
+                AddFallbackParam(list, processed, sym, categoryName, "VAI KE_B", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "200.0");
+                AddFallbackParam(list, processed, sym, categoryName, "VAI KE_KC MEP TREN DEN VAI", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "240.0");
+                AddFallbackParam(list, processed, sym, categoryName, "VOID_A", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "200.0");
+                AddFallbackParam(list, processed, sym, categoryName, "VOID_THAN CONG_VAC GOC B", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "50.0");
+                AddFallbackParam(list, processed, sym, categoryName, "VOID_THAN CONG_VAC GOC H", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "50.0");
+                AddFallbackParam(list, processed, sym, categoryName, "DAU AM DUONG_KC MEP TREN DEN DAU AM DUONG", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "75.0");
+                AddFallbackParam(list, processed, sym, categoryName, "L_DAU AM DUONG", "Dimensions (Kích thước)", isDim: true, isInst: false, dataType: "Length (Chiều dài)", defVal: "85.0");
+            }
+        }
+
+        private static void AddFallbackParam(
+            List<ParameterMappingItem> list,
+            HashSet<string> processed,
+            FamilySymbol sym,
+            string categoryName,
+            string paramName,
+            string groupName,
+            bool isDim,
+            bool isInst,
+            string dataType,
+            string defVal,
+            bool isVis = false)
+        {
+            if (processed.Contains(paramName)) return;
+            processed.Add(paramName);
+
+            list.Add(new ParameterMappingItem
+            {
+                IsSelected = true,
+                CategoryName = categoryName,
+                FamilyName = sym.FamilyName,
+                InternalName = paramName,
+                DisplayName = paramName,
+                GroupName = groupName,
+                IsDimension = isDim,
+                IsOther = !isDim,
+                IsVisibility = isVis,
+                DataType = dataType,
+                DefaultValue = defVal,
+                CustomValue = defVal,
+                MappedField = DeduceDefaultMappedField(paramName),
+                IsInstance = isInst
+            });
         }
 
         private static string DeduceDefaultMappedField(string paramName)

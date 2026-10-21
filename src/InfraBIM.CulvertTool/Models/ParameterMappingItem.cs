@@ -50,6 +50,13 @@ namespace InfraBIM.CulvertTool.Models
             set { _categoryName = value; OnPropertyChanged(); }
         }
 
+        private string _profileName = string.Empty;
+        public string ProfileName
+        {
+            get => _profileName;
+            set { _profileName = value; OnPropertyChanged(); }
+        }
+
         private string _familyName = string.Empty;
         public string FamilyName
         {
@@ -117,7 +124,29 @@ namespace InfraBIM.CulvertTool.Models
         public string CustomValue
         {
             get => _customValue;
-            set { _customValue = value; OnPropertyChanged(); }
+            set
+            {
+                string val = value;
+                if (IsYesNoParameter)
+                {
+                    if (string.IsNullOrWhiteSpace(val))
+                    {
+                        val = "Không";
+                    }
+                    else
+                    {
+                        string t = val.Trim().ToLowerInvariant();
+                        if (t == "1" || t == "true" || t == "có" || t == "co" || t == "yes" || t == "bật")
+                            val = "Có";
+                        else if (t == "0" || t == "false" || t == "không" || t == "khong" || t == "no" || t == "tắt")
+                            val = "Không";
+                        else
+                            val = "Không";
+                    }
+                }
+                _customValue = val;
+                OnPropertyChanged();
+            }
         }
 
         private string _mappedField = "Tùy biến";
@@ -136,11 +165,15 @@ namespace InfraBIM.CulvertTool.Models
 
         public string InstanceTypeBadge => IsInstance ? "⚡ Instance (Biến thể)" : "🏷️ Type (Loại)";
 
-        public bool IsBooleanType => IsVisibility || (DataType != null && DataType.Contains("Yes/No"));
+        public bool IsBooleanType => IsYesNoParameter;
 
-        public bool IsYesNoParameter => IsBooleanType || IsVisibility ||
-            (!string.IsNullOrEmpty(DataType) && DataType.IndexOf("Yes/No", System.StringComparison.OrdinalIgnoreCase) >= 0) ||
-            string.Equals(GroupName, "Visibility", System.StringComparison.OrdinalIgnoreCase);
+        public bool IsYesNoParameter =>
+            IsVisibility ||
+            string.Equals(GroupName, "Visibility", System.StringComparison.OrdinalIgnoreCase) ||
+            (!string.IsNullOrEmpty(DataType) && (
+                DataType.IndexOf("Yes/No", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                DataType.IndexOf("YesNo", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                DataType.IndexOf("Bool", System.StringComparison.OrdinalIgnoreCase) >= 0));
 
         public static List<string> BooleanOptions { get; } = new() { "Có", "Không" };
 

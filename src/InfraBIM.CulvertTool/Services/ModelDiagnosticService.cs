@@ -14,12 +14,13 @@ namespace InfraBIM.CulvertTool.Services
         {
             try
             {
+                if (uiApp?.ActiveUIDocument?.Document == null) return;
                 var doc = uiApp.ActiveUIDocument.Document;
                 RunDeepDiagnostic(uiApp.Application, doc);
             }
             catch (Exception ex)
             {
-                File.WriteAllText(@"C:\Users\ADMIN\Desktop\DEBUG_REVIT_ERROR.txt", ex.ToString());
+                try { File.WriteAllText(@"C:\Users\ADMIN\Desktop\DEBUG_REVIT_ERROR.txt", ex.ToString()); } catch { }
             }
         }
 

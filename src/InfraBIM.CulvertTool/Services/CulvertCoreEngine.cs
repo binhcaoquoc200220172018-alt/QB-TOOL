@@ -116,7 +116,9 @@ namespace InfraBIM.CulvertTool.Services
             double bBoxM,
             double defaultKhoangCachTim,
             bool useSurveyPoint = true,
-            IEnumerable<CulvertMaterialItem>? materialSettings = null)
+            IEnumerable<CulvertMaterialItem>? materialSettings = null,
+            int duplicateOption = 0,
+            IEnumerable<CulvertTypeProfile>? castInPlaceProfiles = null)
         {
             var logs = new List<string>();
             int successCount = 0;
@@ -170,6 +172,51 @@ namespace InfraBIM.CulvertTool.Services
                 {
                     if (!row.IsSelected) continue;
 
+                    // Kiểm tra xem cống này đã được dựng trong mô hình Revit trước đó hay chưa
+                    var existingInstances = FindExistingCulvertInstances(doc, row, culvertList, useSurveyPoint);
+                    if (existingInstances != null && existingInstances.Count > 0)
+                    {
+                        if (duplicateOption == 1) // "Bỏ qua dòng trùng"
+                        {
+                            logs.Add($"⏭️ Cống STT {row.STT} ({row.LyTrinh}): Đã tồn tại trong mô hình Revit -> Bỏ qua.");
+                            continue;
+                        }
+
+                        // duplicateOption == 0: "Cập nhật theo Lý trình" -> Tự động gán/cập nhật thông tin BIM & Vật liệu vào mô hình đã có
+                        using (var subT = new Transaction(doc, $"Cập nhật BIM & Vật liệu Cống STT {row.STT} ({row.LyTrinh})"))
+                        {
+                            try
+                            {
+                                var failOpts = subT.GetFailureHandlingOptions();
+                                failOpts.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
+                                failOpts.SetClearAfterRollback(true);
+                                subT.SetFailureHandlingOptions(failOpts);
+
+                                subT.Start();
+                                int updatedCount = UpdateExistingCulvertElements(
+                                    doc,
+                                    existingInstances,
+                                    row,
+                                    bimConfig,
+                                    customBimParams,
+                                    familyParameterMappings,
+                                    materialSettings);
+                                subT.Commit();
+
+                                successCount++;
+                                logs.Add($"🔄 Cống STT {row.STT} ({row.LyTrinh}): Đã phát hiện mô hình có sẵn trong Revit. Đã tự động cập nhật thông tin BIM & vật liệu cho {updatedCount} cấu kiện.");
+                                continue;
+                            }
+                            catch (Exception ex)
+                            {
+                                subT.RollBack();
+                                errorCount++;
+                                logs.Add($"❌ Lỗi khi cập nhật cống STT {row.STT} ({row.LyTrinh}): {ex.Message}");
+                                continue;
+                            }
+                        }
+                    }
+
                     using (var subT = new Transaction(doc, $"Rải cống STT {row.STT} ({row.LyTrinh})"))
                     {
                         try
@@ -181,8 +228,26 @@ namespace InfraBIM.CulvertTool.Services
 
                             subT.Start();
 
+                            // Khớp Profile Loại cống đổ tại chỗ nếu có
+                            CulvertTypeProfile? matchedProfile = null;
+                            if (castInPlaceProfiles != null)
+                            {
+                                if (!string.IsNullOrEmpty(row.AssignedProfileName))
+                                {
+                                    matchedProfile = castInPlaceProfiles.FirstOrDefault(p => string.Equals(p.TypeName, row.AssignedProfileName, StringComparison.OrdinalIgnoreCase));
+                                }
+                                if (matchedProfile == null)
+                                {
+                                    string rowFull = $"{row.LoaiCong} {row.KhauDo} {row.CauKien} {row.GhiChu}".ToUpperInvariant();
+                                    matchedProfile = castInPlaceProfiles.FirstOrDefault(p => 
+                                        (!string.IsNullOrEmpty(p.TypeName) && rowFull.Contains(p.TypeName.ToUpperInvariant())) ||
+                                        (!string.IsNullOrEmpty(row.KhauDo) && !string.IsNullOrEmpty(p.TypeName) && p.TypeName.Contains(row.KhauDo, StringComparison.OrdinalIgnoreCase)));
+                                }
+                            }
+
                             // Phân định dòng cống này thuộc loại Đúc sẵn hay Đổ tại chỗ
-                            bool isRowCastInPlace = (row.SoCua > 1) ||
+                            bool isRowCastInPlace = (matchedProfile != null) ||
+                                (row.SoCua > 1) ||
                                 (row.CauKien?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
                                 (row.CauKien?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
                                 (row.LoaiCong?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
@@ -190,10 +255,25 @@ namespace InfraBIM.CulvertTool.Services
                                 (row.GhiChu?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
                                 (row.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
 
-                            var targetBarrelList = isRowCastInPlace ? castInPlaceBarrelComponents : precastBarrelComponents;
-                            double curLStd = isRowCastInPlace ? lStdCastInPlaceM : lStdPrecastM;
-                            double curJointGap = isRowCastInPlace ? jointGapCastInPlaceM : jointGapPrecastM;
-                            CulvertArrayMode curArrayMode = isRowCastInPlace ? arrayModeCastInPlace : arrayModePrecast;
+                            if (matchedProfile == null && isRowCastInPlace && castInPlaceProfiles != null)
+                            {
+                                matchedProfile = castInPlaceProfiles.FirstOrDefault();
+                            }
+
+                            var targetBarrelList = isRowCastInPlace 
+                                ? (matchedProfile?.Components ?? castInPlaceBarrelComponents) 
+                                : precastBarrelComponents;
+                            double curLStd = isRowCastInPlace 
+                                ? (matchedProfile?.L_Std ?? lStdCastInPlaceM) 
+                                : lStdPrecastM;
+                            double curJointGap = isRowCastInPlace 
+                                ? (matchedProfile?.Khe_Ho ?? jointGapCastInPlaceM) 
+                                : jointGapPrecastM;
+                            CulvertArrayMode curArrayMode = isRowCastInPlace 
+                                ? (matchedProfile != null 
+                                    ? (matchedProfile.SelectedArrayModeIndex == 0 ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay) 
+                                    : arrayModeCastInPlace) 
+                                : arrayModePrecast;
 
                             // Tự động nhận diện / bảo toàn Family tương ứng cho từng dòng cống
                             var curBarrel = ResolveComponentsForCulvert(doc, targetBarrelList, row);
@@ -344,7 +424,8 @@ namespace InfraBIM.CulvertTool.Services
                                                 rowBarrels,
                                                 rowBeddings,
                                                 rowManholes,
-                                                rowCipDetails);
+                                                rowCipDetails,
+                                                rowAprons);
 
                                             cutT.Commit();
                                         }
@@ -1305,7 +1386,7 @@ namespace InfraBIM.CulvertTool.Services
                 foreach (var kvp in data.ParameterOverrides)
                 {
                     if (kvp.Key.IndexOf("CX_L1", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        string.Equals(kvp.Key, "L1", StringComparison.OrdinalIgnoreCase))
+                        (kvp.Key.Contains("Cửa xả", StringComparison.OrdinalIgnoreCase) && kvp.Key.EndsWith("::L1", StringComparison.OrdinalIgnoreCase)))
                     {
                         if (double.TryParse(kvp.Value.Replace("mm", "").Replace("m", "").Trim(), out double dValL1))
                         {
@@ -1377,6 +1458,7 @@ namespace InfraBIM.CulvertTool.Services
                 (data.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
                 (data.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
 
+            var sampleOutlet = upstreamOutlets.FirstOrDefault() ?? downstreamOutlets.FirstOrDefault();
             var cipDetails = outCipDetails ?? new CastInPlaceDetails();
             if (isRowCastInPlace)
             {
@@ -1398,13 +1480,15 @@ namespace InfraBIM.CulvertTool.Services
                     materialSettings,
                     barrelInstances,
                     beddingInstances,
-                    cipDetails);
+                    cipDetails,
+                    outletComponents,
+                    sampleOutlet);
             }
             else
             {
                 BuildBranchV2(doc, data, bimConfig, customBimParams, familyParameterMappings, barrelComponents, manholeComponents,
                     p1_Culvert, p2_Culvert, u, rotAngle, totalLengthFeet, lStdFeet, jointGapFeet, bBoxFeet, arrayMode, "", materialSettings,
-                    barrelInstances, beddingInstances, manholeInstances);
+                    barrelInstances, beddingInstances, manholeInstances, outletComponents, sampleOutlet);
             }
 
             // 5. YÊU CẦU 1 & 2 & 4: Cut Geometry toàn diện giữa Cửa xả (Tường đầu), Thân cống hộp, BTL và Đá dăm đệm (Hình 1, 2, 3, 4)
@@ -1419,7 +1503,35 @@ namespace InfraBIM.CulvertTool.Services
                     barrelInstances,
                     beddingInstances,
                     manholeInstances,
-                    cipDetails);
+                    cipDetails,
+                    apronInstances);
+            }
+
+            // Gán Mark (CN-STT), Comments và BIM_LyTrinh cho toàn bộ cấu kiện Cống Ngang vừa tạo
+            var allCreatedCN = new List<FamilyInstance>();
+            if (outCreatedOutlets != null) allCreatedCN.AddRange(outCreatedOutlets);
+            if (upstreamOutlets != null) allCreatedCN.AddRange(upstreamOutlets);
+            if (downstreamOutlets != null) allCreatedCN.AddRange(downstreamOutlets);
+            allCreatedCN.AddRange(barrelInstances);
+            allCreatedCN.AddRange(beddingInstances);
+            allCreatedCN.AddRange(apronInstances);
+            allCreatedCN.AddRange(manholeInstances);
+
+            string cnMark = $"CN-{data.STT}";
+            string cnComm = $"Cống {data.STT} - {data.LoaiCong} ({data.LyTrinh})";
+            foreach (var fi in allCreatedCN)
+            {
+                if (fi == null || !fi.IsValidObject) continue;
+                try
+                {
+                    var pM = fi.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+                    if (pM != null && !pM.IsReadOnly) pM.Set(cnMark);
+                    var pC = fi.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                    if (pC != null && !pC.IsReadOnly) pC.Set(cnComm);
+                    var pL = fi.LookupParameter("BIM_LyTrinh") ?? fi.LookupParameter("Lý trình");
+                    if (pL != null && !pL.IsReadOnly) pL.Set(data.LyTrinh ?? "");
+                }
+                catch { }
             }
         }
 
@@ -1671,7 +1783,8 @@ namespace InfraBIM.CulvertTool.Services
                         SafeRotate(doc, instHKT1.Id, ptHKT1, rotAngle);
                         try { BimParameterService.SetElementBimProperties(instHKT1, bimConfig, "Hố kỹ thuật 1", "Hố kỹ thuật", null, null, ptHKT1.X, ptHKT1.Y, ptHKT1.Z); } catch { }
                         try { BimParameterService.ApplyFamilyMappedParameters(instHKT1, familyParameterMappings, data, compHKT?.CategoryType ?? "Hố kỹ thuật"); } catch { }
-                        try { BimParameterService.ApplyCustomBimParameters(instHKT1, customBimParams, data, "Hố kỹ thuật"); } catch { }
+                        string? hktMat = materialSettings?.FirstOrDefault(m => m.CategoryType == compHKT?.CategoryType)?.MaterialName;
+                        try { BimParameterService.ApplyCustomBimParameters(instHKT1, customBimParams, data, compHKT?.CategoryType ?? "Hố kỹ thuật", 1, "P1", hktMat, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                         try { TryApplyMaterial(doc, instHKT1, materialSettings, compHKT?.CategoryType ?? "Hố kỹ thuật"); } catch { }
                         outCreatedManholes?.Add(instHKT1);
                     }
@@ -1687,7 +1800,8 @@ namespace InfraBIM.CulvertTool.Services
                         SafeRotate(doc, instHKT2.Id, ptHKT2, rotAngle + Math.PI);
                         try { BimParameterService.SetElementBimProperties(instHKT2, bimConfig, "Hố kỹ thuật 2", "Hố kỹ thuật", null, null, ptHKT2.X, ptHKT2.Y, ptHKT2.Z); } catch { }
                         try { BimParameterService.ApplyFamilyMappedParameters(instHKT2, familyParameterMappings, data, compHKT?.CategoryType ?? "Hố kỹ thuật"); } catch { }
-                        try { BimParameterService.ApplyCustomBimParameters(instHKT2, customBimParams, data, "Hố kỹ thuật"); } catch { }
+                        string? hktMat2 = materialSettings?.FirstOrDefault(m => m.CategoryType == compHKT?.CategoryType)?.MaterialName;
+                        try { BimParameterService.ApplyCustomBimParameters(instHKT2, customBimParams, data, compHKT?.CategoryType ?? "Hố kỹ thuật", 2, "P2", hktMat2, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                         try { TryApplyMaterial(doc, instHKT2, materialSettings, compHKT?.CategoryType ?? "Hố kỹ thuật"); } catch { }
                         outCreatedManholes?.Add(instHKT2);
                     }
@@ -1771,7 +1885,8 @@ namespace InfraBIM.CulvertTool.Services
                         SafeRotate(doc, instHN.Id, ptHN, rotAngle);
                     try { BimParameterService.SetElementBimProperties(instHN, bimConfig, "Hộp nối cống", "Hộp nối cống", null, null, ptHN.X, ptHN.Y, ptHN.Z); } catch { }
                     try { BimParameterService.ApplyFamilyMappedParameters(instHN, familyParameterMappings, data, compHN?.CategoryType ?? "Hộp nối cống"); } catch { }
-                    try { BimParameterService.ApplyCustomBimParameters(instHN, customBimParams, data, "Hộp nối cống"); } catch { }
+                    string? hnMat = materialSettings?.FirstOrDefault(m => m.CategoryType == compHN?.CategoryType)?.MaterialName;
+                    try { BimParameterService.ApplyCustomBimParameters(instHN, customBimParams, data, compHN?.CategoryType ?? "Hộp nối cống", 1, "HN", hnMat, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                     try { TryApplyMaterial(doc, instHN, materialSettings, compHN?.CategoryType ?? "Hộp nối cống"); } catch { }
                     outCreatedManholes?.Add(instHN);
 
@@ -1848,7 +1963,8 @@ namespace InfraBIM.CulvertTool.Services
                         string tenCK = $"Đốt cống CKT Đ1-{barrelIdx1 + 1}";
                         try { BimParameterService.SetElementBimProperties(bInst, bimConfig, tenCK, "Thân cống", null, null, bStart.X, bStart.Y, bStart.Z); } catch { }
                         try { BimParameterService.ApplyFamilyMappedParameters(bInst, familyParameterMappings, data, compBarrel?.CategoryType ?? "Thân cống"); } catch { }
-                        try { BimParameterService.ApplyCustomBimParameters(bInst, customBimParams, data, "Thân cống"); } catch { }
+                        string? cktMat1 = materialSettings?.FirstOrDefault(m => m.CategoryType == compBarrel?.CategoryType)?.MaterialName;
+                        try { BimParameterService.ApplyCustomBimParameters(bInst, customBimParams, data, "Thân cống", barrelIdx1 + 1, "Đ1", cktMat1, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                         try { TryApplyMaterial(doc, bInst, materialSettings, compBarrel?.CategoryType ?? "Thân cống"); } catch { }
 
                         barrels1.Add(bInst);
@@ -1896,7 +2012,8 @@ namespace InfraBIM.CulvertTool.Services
                         string tenCK = $"Đốt cống CKT Đ2-{barrelIdx2 + 1}";
                         try { BimParameterService.SetElementBimProperties(bInst, bimConfig, tenCK, "Thân cống", null, null, bEnd.X, bEnd.Y, bEnd.Z); } catch { }
                         try { BimParameterService.ApplyFamilyMappedParameters(bInst, familyParameterMappings, data, compBarrel?.CategoryType ?? "Thân cống"); } catch { }
-                        try { BimParameterService.ApplyCustomBimParameters(bInst, customBimParams, data, "Thân cống"); } catch { }
+                        string? cktMat2 = materialSettings?.FirstOrDefault(m => m.CategoryType == compBarrel?.CategoryType)?.MaterialName;
+                        try { BimParameterService.ApplyCustomBimParameters(bInst, customBimParams, data, "Thân cống", barrelIdx2 + 1, "Đ2", cktMat2, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                         try { TryApplyMaterial(doc, bInst, materialSettings, compBarrel?.CategoryType ?? "Thân cống"); } catch { }
 
                         barrels2.Add(bInst);
@@ -2020,6 +2137,29 @@ namespace InfraBIM.CulvertTool.Services
                     if (instBTL2 != null) TryCutGeometrySafe(doc, instHN, instBTL2);
                     if (instDDD2 != null) TryCutGeometrySafe(doc, instHN, instDDD2);
                 }
+            }
+
+            // Gán Mark (CKT-STT), Comments và BIM_LyTrinh cho toàn bộ cấu kiện CKT vừa tạo
+            var allCreatedCKT = new List<FamilyInstance>();
+            if (outCreatedBarrels != null) allCreatedCKT.AddRange(outCreatedBarrels);
+            if (outCreatedBeddings != null) allCreatedCKT.AddRange(outCreatedBeddings);
+            if (outCreatedManholes != null) allCreatedCKT.AddRange(outCreatedManholes);
+
+            string cktMark = $"CKT-{data.STT}";
+            string cktComm = $"Cống kỹ thuật {data.STT} ({data.LyTrinh})";
+            foreach (var fi in allCreatedCKT)
+            {
+                if (fi == null || !fi.IsValidObject) continue;
+                try
+                {
+                    var pM = fi.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+                    if (pM != null && !pM.IsReadOnly) pM.Set(cktMark);
+                    var pC = fi.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                    if (pC != null && !pC.IsReadOnly) pC.Set(cktComm);
+                    var pL = fi.LookupParameter("BIM_LyTrinh") ?? fi.LookupParameter("Lý trình");
+                    if (pL != null && !pL.IsReadOnly) pL.Set(data.LyTrinh ?? "");
+                }
+                catch { }
             }
         }
 
@@ -2326,7 +2466,8 @@ namespace InfraBIM.CulvertTool.Services
                 string tenCK = $"{comp.CategoryType}_{suffix}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "CỬA XẢ THƯỢNG LƯU" : "CỬA XẢ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z); } catch { }
                 try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, comp.CategoryType ?? "Cửa xả"); } catch { }
-                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Cửa xả"); } catch { }
+                string? outletMat = materialSettings?.FirstOrDefault(m => m.CategoryType == comp.CategoryType)?.MaterialName;
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, comp.CategoryType ?? "Cửa xả", null, suffix, outletMat, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                 try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
             }
         }
@@ -2432,7 +2573,8 @@ namespace InfraBIM.CulvertTool.Services
                 string tenCK = $"{comp.CategoryType}_{suffix}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "SÂN GIA CỐ THƯỢNG LƯU" : "SÂN GIA CỐ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z); } catch { }
                 try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, comp.CategoryType ?? "Sân gia cố"); } catch { }
-                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Sân gia cố"); } catch { }
+                string? apronMat = materialSettings?.FirstOrDefault(m => m.CategoryType == comp.CategoryType)?.MaterialName;
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, comp.CategoryType ?? "Sân gia cố", null, suffix, apronMat, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                 try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
             }
         }
@@ -2865,6 +3007,93 @@ namespace InfraBIM.CulvertTool.Services
             return full.Contains("TUONG DAU") || full.Contains("TƯỜNG ĐẦU");
         }
 
+        private static bool IsHeadwallOrApronInstance(Element? elem)
+        {
+            if (elem == null || !elem.IsValidObject) return false;
+            string fam = "";
+            string type = "";
+            if (elem is FamilyInstance fi && fi.Symbol != null)
+            {
+                fam = (fi.Symbol.FamilyName ?? "").ToUpperInvariant();
+                type = (fi.Symbol.Name ?? "").ToUpperInvariant();
+            }
+            string full = $"{fam} {type}";
+            return full.Contains("TUONG DAU") || full.Contains("TƯỜNG ĐẦU") ||
+                   full.Contains("SAN CONG") || full.Contains("SÂN CỐNG") ||
+                   full.Contains("CUA XA") || full.Contains("CỬA XẢ") ||
+                   full.Contains("TUONG CANH") || full.Contains("TƯỜNG CÁNH");
+        }
+
+        private static List<Element> GetElementWithSubcomponents(Document doc, Element? elem)
+        {
+            var res = new List<Element>();
+            if (elem == null || !elem.IsValidObject) return res;
+            res.Add(elem);
+            if (elem is FamilyInstance fi)
+            {
+                try
+                {
+                    var subIds = fi.GetSubComponentIds();
+                    if (subIds != null && subIds.Count > 0)
+                    {
+                        foreach (var id in subIds)
+                        {
+                            var subElem = doc.GetElement(id);
+                            if (subElem != null && subElem.IsValidObject)
+                            {
+                                res.Add(subElem);
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+            return res;
+        }
+
+        internal static void CutOrJoinElementsWithSubcomponents(Document doc, Element? elemA, Element? elemB)
+        {
+            if (doc == null || elemA == null || elemB == null || !elemA.IsValidObject || !elemB.IsValidObject) return;
+            if (elemA.Id == elemB.Id) return;
+
+            var targetsA = GetElementWithSubcomponents(doc, elemA);
+            var targetsB = GetElementWithSubcomponents(doc, elemB);
+
+            foreach (var a in targetsA)
+            {
+                foreach (var b in targetsB)
+                {
+                    if (a.Id == b.Id) continue;
+                    if (!BoundingBoxesIntersect(a, b, 0.5)) continue;
+
+                    bool cutDone = false;
+                    try
+                    {
+                        cutDone = TryCutHeadwallWithCulvertVoid(doc, a, b);
+                    }
+                    catch { }
+
+                    if (!cutDone)
+                    {
+                        try
+                        {
+                            cutDone = TryCutSolidSolid(doc, a, b);
+                        }
+                        catch { }
+                    }
+
+                    if (!cutDone)
+                    {
+                        try
+                        {
+                            cutDone = TryCutSolidSolid(doc, b, a);
+                        }
+                        catch { }
+                    }
+                }
+            }
+        }
+
         public class CastInPlaceDetails
         {
             public FamilyInstance? BarrelLeft { get; set; }
@@ -2887,31 +3116,45 @@ namespace InfraBIM.CulvertTool.Services
             List<FamilyInstance> barrels,
             List<FamilyInstance> beddings,
             List<FamilyInstance> manholes,
-            CastInPlaceDetails? cipDetails = null)
+            CastInPlaceDetails? cipDetails = null,
+            List<FamilyInstance>? aprons = null)
         {
             try { doc.Regenerate(); } catch { }
 
-            var tuongDauTL = upOutlets.FirstOrDefault(IsTuongDauInstance);
             var dddTL = upOutlets.FirstOrDefault(IsDddInstance);
             var btlTL = upOutlets.FirstOrDefault(IsBtlInstance);
 
-            var tuongDauHL = dnOutlets.FirstOrDefault(IsTuongDauInstance);
             var dddHL = dnOutlets.FirstOrDefault(IsDddInstance);
             var btlHL = dnOutlets.FirstOrDefault(IsBtlInstance);
 
             var firstBar = cipDetails?.BarrelLeft ?? barrels.FirstOrDefault();
             var lastBar = cipDetails?.BarrelRight ?? barrels.LastOrDefault();
 
-            // 1. YÊU CẦU 2 & 4: Cắt TƯỜNG ĐẦU CỬA XẢ với CỐNG HỘP tiếp xúc (ở cả 2 đầu thượng lưu và hạ lưu)
-            // Cắt đúng bằng khối Void đã tạo trong Family Cống hộp ("Cut with Voids When Loaded")
-            if (tuongDauTL != null && firstBar != null)
+            // 1. Cắt TƯỜNG ĐẦU / SÂN CỐNG CỬA XẢ với CỐNG HỘP tiếp xúc (ở cả 2 đầu thượng lưu và hạ lưu)
+            var upHeadwallsAndAprons = upOutlets.Concat(aprons ?? Enumerable.Empty<FamilyInstance>())
+                .Where(e => e != null && e.IsValidObject && (IsHeadwallOrApronInstance(e) || (firstBar != null && BoundingBoxesIntersect(e, firstBar, 1.0))))
+                .Distinct()
+                .ToList();
+
+            if (firstBar != null)
             {
-                TryCutHeadwallWithCulvertVoid(doc, tuongDauTL, firstBar);
+                foreach (var hw in upHeadwallsAndAprons)
+                {
+                    CutOrJoinElementsWithSubcomponents(doc, hw, firstBar);
+                }
             }
 
-            if (tuongDauHL != null && lastBar != null)
+            var dnHeadwallsAndAprons = dnOutlets.Concat(aprons ?? Enumerable.Empty<FamilyInstance>())
+                .Where(e => e != null && e.IsValidObject && (IsHeadwallOrApronInstance(e) || (lastBar != null && BoundingBoxesIntersect(e, lastBar, 1.0))))
+                .Distinct()
+                .ToList();
+
+            if (lastBar != null)
             {
-                TryCutHeadwallWithCulvertVoid(doc, tuongDauHL, lastBar);
+                foreach (var hw in dnHeadwallsAndAprons)
+                {
+                    CutOrJoinElementsWithSubcomponents(doc, hw, lastBar);
+                }
             }
 
             if (isRowCastInPlace)
@@ -3077,8 +3320,13 @@ namespace InfraBIM.CulvertTool.Services
         /// <summary>
         /// Xác định khoảng thụt vào mép sau của cấu kiện đá dăm đệm tường đầu sân cống (CX_TD_DD_W)
         /// Điểm 1 trên Excel thụt lùi đoạn CX_TD_DD_W (P1 - u * CX_TD_DD_W),
-        /// Điểm 2 trên Excel thụt tới đoạn CX_TD_DD_W (P2 + u * CX_TD_DD_W).
+        /// <summary>
+        /// YÊU CẦU 1 & 2: Xác định độ thụt mép ngoài tường đầu cửa xả của lớp BTL và đá dăm đệm:
+        /// Điểm 1 trên Excel thụt tới đoạn CX_TD_DD_W (P1 + u * CX_TD_DD_W).
+        /// Điểm 2 trên Excel thụt tới đoạn CX_TD_DD_W (P2 - u * CX_TD_DD_W).
         /// Áp dụng cho cả BTL và Đá dăm đệm của Cống hộp đúc sẵn và Cống hộp đổ tại chỗ.
+        /// TUYỆT ĐỐI chỉ lấy theo biến CX_TD_DD_W (chiều dọc cống, thường là 1000mm = 1.0m),
+        /// KHÔNG lấy theo CX_TD_DD_B (bề rộng ngang cống = 3500mm = 3.5m).
         /// </summary>
         public static double ResolveCxTdDdW(
             Document doc,
@@ -3089,13 +3337,12 @@ namespace InfraBIM.CulvertTool.Services
         {
             double cxTdDdW_M = 0.0;
 
-            // 1. Kiểm tra trong data.ParameterOverrides với key chứa "CX_TD_DD_W" hoặc "CX_TD_DD"
+            // 1. Kiểm tra trong data.ParameterOverrides với key chứa "CX_TD_DD_W" (KHÔNG lấy CX_TD_DD_B)
             if (data.ParameterOverrides != null)
             {
                 foreach (var kvp in data.ParameterOverrides)
                 {
-                    if (kvp.Key.IndexOf("CX_TD_DD_W", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        kvp.Key.IndexOf("CX_TD_DD_B", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (kvp.Key.IndexOf("CX_TD_DD_W", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         if (double.TryParse(kvp.Value.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double dVal))
                         {
@@ -3106,13 +3353,12 @@ namespace InfraBIM.CulvertTool.Services
                 }
             }
 
-            // 2. Kiểm tra trong familyParameterMappings
+            // 2. Kiểm tra trong familyParameterMappings với InternalName "CX_TD_DD_W"
             var mapping = familyParameterMappings?.FirstOrDefault(m => 
-                string.Equals(m.InternalName, "CX_TD_DD_W", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(m.InternalName, "CX_TD_DD_B", StringComparison.OrdinalIgnoreCase));
+                string.Equals(m.InternalName, "CX_TD_DD_W", StringComparison.OrdinalIgnoreCase));
             if (mapping != null && !string.IsNullOrWhiteSpace(mapping.CustomValue))
             {
-                string valStr = data.GetParamOverride(mapping.CategoryName, mapping.InternalName, mapping.CustomValue);
+                string valStr = data.GetParamOverride(mapping.ProfileName, mapping.CategoryName, mapping.InternalName, mapping.CustomValue);
                 if (double.TryParse(valStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double dVal))
                 {
                     cxTdDdW_M = (Math.Abs(dVal) >= 10.0) ? dVal / 1000.0 : dVal;
@@ -3120,7 +3366,17 @@ namespace InfraBIM.CulvertTool.Services
                 }
             }
 
-            // 3. Kiểm tra từ outletComponents symbol trong Revit
+            // 3. Kiểm tra từ sampleOutletInst hoặc FilteredElementCollector trong Revit
+            if (sampleOutletInst != null)
+            {
+                var p = sampleOutletInst.LookupParameter("CX_TD_DD_W") ?? sampleOutletInst.Symbol?.LookupParameter("CX_TD_DD_W");
+                if (p != null && p.StorageType == StorageType.Double && p.AsDouble() > 0.05)
+                {
+                    return UnitUtils.ConvertFromInternalUnits(p.AsDouble(), UnitTypeId.Meters);
+                }
+            }
+
+            // 4. Kiểm tra từ outletComponents symbol trong Revit
             if (outletComponents != null)
             {
                 foreach (var oc in outletComponents)
@@ -3130,7 +3386,7 @@ namespace InfraBIM.CulvertTool.Services
                         var oSym = oc.SelectedSymbol.GetFreshSymbol(doc);
                         if (oSym != null)
                         {
-                            var p = oSym.LookupParameter("CX_TD_DD_W") ?? oSym.LookupParameter("CX_TD_DD_B");
+                            var p = oSym.LookupParameter("CX_TD_DD_W");
                             if (p != null && p.StorageType == StorageType.Double && p.AsDouble() > 0.05)
                             {
                                 return UnitUtils.ConvertFromInternalUnits(p.AsDouble(), UnitTypeId.Meters);
@@ -3140,52 +3396,166 @@ namespace InfraBIM.CulvertTool.Services
                 }
             }
 
-            // 4. Kiểm tra từ sampleOutletInst hoặc FilteredElementCollector
-            if (sampleOutletInst != null)
+            // 5. Kiểm tra từ FilteredElementCollector tìm FamilyInstance Tường đầu / Cửa xả
+            var sampleOInst = new FilteredElementCollector(doc)
+                .OfClass(typeof(FamilyInstance))
+                .Cast<FamilyInstance>()
+                .FirstOrDefault(fi => fi.Symbol != null && (fi.Symbol.FamilyName.Contains("TUONG DAU") || fi.Symbol.FamilyName.Contains("SAN CONG") || fi.Symbol.FamilyName.Contains("CUA XA")));
+            if (sampleOInst != null)
             {
-                var p = sampleOutletInst.LookupParameter("CX_TD_DD_W") ?? sampleOutletInst.Symbol?.LookupParameter("CX_TD_DD_W")
-                     ?? sampleOutletInst.LookupParameter("CX_TD_DD_B") ?? sampleOutletInst.Symbol?.LookupParameter("CX_TD_DD_B");
+                var p = sampleOInst.LookupParameter("CX_TD_DD_W") ?? sampleOInst.Symbol?.LookupParameter("CX_TD_DD_W");
                 if (p != null && p.StorageType == StorageType.Double && p.AsDouble() > 0.05)
                 {
                     return UnitUtils.ConvertFromInternalUnits(p.AsDouble(), UnitTypeId.Meters);
                 }
             }
-            else
+
+            // 6. Mặc định chuẩn CAD: CX_TD_DD_W = 1000mm = 1.0m
+            return 1.0;
+        }
+
+        private static void EnsureDedicatedSymbol(FamilyInstance inst, int stt, string? catName = null)
+        {
+            if (inst?.Symbol == null) return;
+            try
             {
-                var sampleOInst = new FilteredElementCollector(doc)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .FirstOrDefault(fi => fi.Symbol != null && (fi.Symbol.FamilyName.Contains("SAN CONG") || fi.Symbol.FamilyName.Contains("CUA XA")));
-                if (sampleOInst != null)
+                string cleanCat = string.IsNullOrEmpty(catName) ? "" : "_" + System.Text.RegularExpressions.Regex.Replace(catName, @"[^\w\d]", "");
+                string suffix = $"_{stt}{cleanCat}";
+                string curName = inst.Symbol.Name;
+                if (!curName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
                 {
-                    var p = sampleOInst.LookupParameter("CX_TD_DD_W") ?? sampleOInst.Symbol?.LookupParameter("CX_TD_DD_W")
-                         ?? sampleOInst.LookupParameter("CX_TD_DD_B") ?? sampleOInst.Symbol?.LookupParameter("CX_TD_DD_B");
-                    if (p != null && p.StorageType == StorageType.Double && p.AsDouble() > 0.05)
+                    string symName = $"{curName}{suffix}";
+                    var existingSym = inst.Symbol.Family.GetFamilySymbolIds()
+                        .Select(id => inst.Document.GetElement(id) as FamilySymbol)
+                        .FirstOrDefault(s => s != null && string.Equals(s.Name, symName, StringComparison.OrdinalIgnoreCase));
+                    if (existingSym != null)
                     {
-                        return UnitUtils.ConvertFromInternalUnits(p.AsDouble(), UnitTypeId.Meters);
+                        if (!existingSym.IsActive) existingSym.Activate();
+                        inst.Symbol = existingSym;
+                    }
+                    else
+                    {
+                        var newSym = inst.Symbol.Duplicate(symName) as FamilySymbol;
+                        if (newSym != null)
+                        {
+                            if (!newSym.IsActive) newSym.Activate();
+                            inst.Symbol = newSym;
+                        }
                     }
                 }
             }
+            catch { }
+        }
 
-            // 5. Fallback thông minh: nếu có CX_L1 thì CX_L1 + 0.15m (1.30m + 0.15m = 1.45m), hoặc 1.45m
-            double cxL1M = 1.30;
-            var mappingL1 = familyParameterMappings?.FirstOrDefault(m => 
-                string.Equals(m.InternalName, "CX_L1", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(m.InternalName, "L1", StringComparison.OrdinalIgnoreCase));
-            if (mappingL1 != null && !string.IsNullOrWhiteSpace(mappingL1.CustomValue))
+        private static void ApplyBeddingDirectDimensions(FamilyInstance inst, CulvertRowData rowData, string categoryType, string? profileName = null)
+        {
+            if (inst == null || rowData == null) return;
+            bool isDdd = categoryType.IndexOf("đá dăm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         categoryType.IndexOf("da dam", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         categoryType.IndexOf("dem", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool isBtl = categoryType.IndexOf("bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         categoryType.IndexOf("be tong lot", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         categoryType.IndexOf("btl", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         categoryType.IndexOf("lot", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            string prof = !string.IsNullOrEmpty(profileName)
+                ? profileName
+                : (!string.IsNullOrEmpty(rowData.AssignedProfileName)
+                    ? rowData.AssignedProfileName
+                    : (rowData.IsCastInPlace ? "Cống đổ tại chỗ" : (rowData.IsTechnical ? "Cống kỹ thuật" : "Cống đúc sẵn")));
+
+            if (isDdd)
             {
-                string valStrL1 = data.GetParamOverride(mappingL1.CategoryName, mappingL1.InternalName, mappingL1.CustomValue);
-                if (double.TryParse(valStrL1.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double dValL1))
+                string bDddStr = rowData.GetParamOverride(prof, "Đá dăm đệm thân cống", "B_DDD", string.Empty);
+                if (string.IsNullOrWhiteSpace(bDddStr)) bDddStr = rowData.GetParamOverride(prof, categoryType, "B_DDD", string.Empty);
+                if (string.IsNullOrWhiteSpace(bDddStr)) bDddStr = rowData.GetParamOverride(prof, null, "B_DDD", string.Empty);
+                if (!string.IsNullOrWhiteSpace(bDddStr) && double.TryParse(bDddStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double bVal) && bVal > 0)
                 {
-                    cxL1M = (Math.Abs(dValL1) >= 10.0) ? dValL1 / 1000.0 : dValL1;
+                    double internalVal = (Math.Abs(bVal) >= 10.0)
+                        ? UnitUtils.ConvertToInternalUnits(bVal, UnitTypeId.Millimeters)
+                        : UnitUtils.ConvertToInternalUnits(bVal, UnitTypeId.Meters);
+
+                    var pB = inst.LookupParameter("B_DDD") ?? inst.LookupParameter("B") ?? inst.LookupParameter("B_DEM") ?? inst.LookupParameter("Width");
+                    if (pB != null && !pB.IsReadOnly && pB.StorageType == StorageType.Double) pB.Set(internalVal);
+                    else if (inst.Symbol != null)
+                    {
+                        EnsureDedicatedSymbol(inst, rowData.STT, categoryType);
+                        var pSymB = inst.Symbol.LookupParameter("B_DDD") ?? inst.Symbol.LookupParameter("B") ?? inst.Symbol.LookupParameter("B_DEM") ?? inst.Symbol.LookupParameter("Width");
+                        if (pSymB != null && !pSymB.IsReadOnly && pSymB.StorageType == StorageType.Double) pSymB.Set(internalVal);
+                    }
+                }
+
+                string hDddStr = rowData.GetParamOverride(prof, "Đá dăm đệm thân cống", "H_DDD", string.Empty);
+                if (string.IsNullOrWhiteSpace(hDddStr)) hDddStr = rowData.GetParamOverride(prof, categoryType, "H_DDD", string.Empty);
+                if (string.IsNullOrWhiteSpace(hDddStr)) hDddStr = rowData.GetParamOverride(prof, null, "H_DDD", string.Empty);
+                if (!string.IsNullOrWhiteSpace(hDddStr) && double.TryParse(hDddStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double hVal) && hVal > 0)
+                {
+                    double internalVal = (Math.Abs(hVal) >= 10.0)
+                        ? UnitUtils.ConvertToInternalUnits(hVal, UnitTypeId.Millimeters)
+                        : UnitUtils.ConvertToInternalUnits(hVal, UnitTypeId.Meters);
+
+                    var pH = inst.LookupParameter("H_DDD") ?? inst.LookupParameter("H") ?? inst.LookupParameter("H_DEM") ?? inst.LookupParameter("Height");
+                    if (pH != null && !pH.IsReadOnly && pH.StorageType == StorageType.Double) pH.Set(internalVal);
+                    else if (inst.Symbol != null)
+                    {
+                        EnsureDedicatedSymbol(inst, rowData.STT, categoryType);
+                        var pSymH = inst.Symbol.LookupParameter("H_DDD") ?? inst.Symbol.LookupParameter("H") ?? inst.Symbol.LookupParameter("H_DEM") ?? inst.Symbol.LookupParameter("Height");
+                        if (pSymH != null && !pSymH.IsReadOnly && pSymH.StorageType == StorageType.Double) pSymH.Set(internalVal);
+                    }
                 }
             }
-            if (cxL1M > 0.05)
+            else if (isBtl)
             {
-                return cxL1M + 0.15; // 1.30m + 0.15m = 1.45m
-            }
+                string bBtlStr = rowData.GetParamOverride(prof, "Bê tông lót thân cống", "B_BTL", string.Empty);
+                if (string.IsNullOrWhiteSpace(bBtlStr)) bBtlStr = rowData.GetParamOverride(prof, categoryType, "B_BTL", string.Empty);
+                if (string.IsNullOrWhiteSpace(bBtlStr)) bBtlStr = rowData.GetParamOverride(prof, null, "B_BTL", string.Empty);
+                if (string.IsNullOrWhiteSpace(bBtlStr))
+                {
+                    string bDddStr = rowData.GetParamOverride(prof, "Đá dăm đệm thân cống", "B_DDD", string.Empty);
+                    if (string.IsNullOrWhiteSpace(bDddStr)) bDddStr = rowData.GetParamOverride(prof, categoryType, "B_DDD", string.Empty);
+                    if (string.IsNullOrWhiteSpace(bDddStr)) bDddStr = rowData.GetParamOverride(prof, null, "B_DDD", string.Empty);
+                    if (!string.IsNullOrWhiteSpace(bDddStr) && double.TryParse(bDddStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double bDddVal) && bDddVal > 0)
+                    {
+                        double bBtlVal = (Math.Abs(bDddVal) >= 10.0) ? (bDddVal - 200.0) : (bDddVal - 0.20);
+                        bBtlStr = bBtlVal.ToString(CultureInfo.InvariantCulture);
+                    }
+                }
 
-            return 1.45;
+                if (!string.IsNullOrWhiteSpace(bBtlStr) && double.TryParse(bBtlStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double bVal) && bVal > 0)
+                {
+                    double internalVal = (Math.Abs(bVal) >= 10.0)
+                        ? UnitUtils.ConvertToInternalUnits(bVal, UnitTypeId.Millimeters)
+                        : UnitUtils.ConvertToInternalUnits(bVal, UnitTypeId.Meters);
+
+                    var pB = inst.LookupParameter("B_BTL") ?? inst.LookupParameter("B") ?? inst.LookupParameter("B_LOT") ?? inst.LookupParameter("Width");
+                    if (pB != null && !pB.IsReadOnly && pB.StorageType == StorageType.Double) pB.Set(internalVal);
+                    else if (inst.Symbol != null)
+                    {
+                        EnsureDedicatedSymbol(inst, rowData.STT, categoryType);
+                        var pSymB = inst.Symbol.LookupParameter("B_BTL") ?? inst.Symbol.LookupParameter("B") ?? inst.Symbol.LookupParameter("B_LOT") ?? inst.Symbol.LookupParameter("Width");
+                        if (pSymB != null && !pSymB.IsReadOnly && pSymB.StorageType == StorageType.Double) pSymB.Set(internalVal);
+                    }
+                }
+
+                string hBtlStr = rowData.GetParamOverride(prof, "Bê tông lót thân cống", "H_BTL", string.Empty);
+                if (string.IsNullOrWhiteSpace(hBtlStr)) hBtlStr = rowData.GetParamOverride(prof, categoryType, "H_BTL", string.Empty);
+                if (string.IsNullOrWhiteSpace(hBtlStr)) hBtlStr = rowData.GetParamOverride(prof, null, "H_BTL", string.Empty);
+                if (!string.IsNullOrWhiteSpace(hBtlStr) && double.TryParse(hBtlStr.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double hVal) && hVal > 0)
+                {
+                    double internalVal = (Math.Abs(hVal) >= 10.0)
+                        ? UnitUtils.ConvertToInternalUnits(hVal, UnitTypeId.Millimeters)
+                        : UnitUtils.ConvertToInternalUnits(hVal, UnitTypeId.Meters);
+
+                    var pH = inst.LookupParameter("H_BTL") ?? inst.LookupParameter("H") ?? inst.LookupParameter("H_LOT") ?? inst.LookupParameter("Height");
+                    if (pH != null && !pH.IsReadOnly && pH.StorageType == StorageType.Double) pH.Set(internalVal);
+                    else if (inst.Symbol != null)
+                    {
+                        EnsureDedicatedSymbol(inst, rowData.STT, categoryType);
+                        var pSymH = inst.Symbol.LookupParameter("H_BTL") ?? inst.Symbol.LookupParameter("H") ?? inst.Symbol.LookupParameter("H_LOT") ?? inst.Symbol.LookupParameter("Height");
+                        if (pSymH != null && !pSymH.IsReadOnly && pSymH.StorageType == StorageType.Double) pSymH.Set(internalVal);
+                    }
+                }
+            }
         }
 
         private static FamilyInstance? PlaceBeddingInstance(
@@ -3247,6 +3617,7 @@ namespace InfraBIM.CulvertTool.Services
 
             try { BimParameterService.SetElementBimProperties(inst, bimConfig, componentName, comp.CategoryType ?? "", null, null, null, null, null); } catch { }
             try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType ?? ""); } catch { }
+            try { ApplyBeddingDirectDimensions(inst, rowData, comp.CategoryType ?? componentName, comp.ProfileName); } catch { }
             try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống"); } catch { }
             try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
 
@@ -3349,7 +3720,9 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<CulvertMaterialItem>? materialSettings = null,
             List<FamilyInstance>? createdBarrels = null,
             List<FamilyInstance>? createdBeddings = null,
-            CastInPlaceDetails? outDetails = null)
+            CastInPlaceDetails? outDetails = null,
+            IList<CulvertComponentItem>? outletComponents = null,
+            FamilyInstance? sampleOutletInst = null)
         {
             if (barrelComponents == null || barrelComponents.Count == 0 || totalLengthFeet <= 0.01) return;
 
@@ -3395,7 +3768,7 @@ namespace InfraBIM.CulvertTool.Services
                 string.Equals(m.InternalName, "CH_B", StringComparison.OrdinalIgnoreCase));
             if (mappingB != null && !string.IsNullOrWhiteSpace(mappingB.CustomValue))
             {
-                string valStrB = data.GetParamOverride(mappingB.CategoryName, mappingB.InternalName, mappingB.CustomValue);
+                string valStrB = data.GetParamOverride(mappingB.ProfileName, mappingB.CategoryName, mappingB.InternalName, mappingB.CustomValue);
                 if (double.TryParse(valStrB.Replace("mm", "").Replace("m", "").Trim(), out double dValB))
                 {
                     bParamM = (Math.Abs(dValB) >= 10.0) ? dValB / 1000.0 : dValB;
@@ -3404,8 +3777,9 @@ namespace InfraBIM.CulvertTool.Services
             if (bParamM <= 0.05) bParamM = 0.40;
             double bParamFeet = UnitUtils.ConvertToInternalUnits(bParamM, UnitTypeId.Meters);
 
+            // YÊU CẦU 2 (Hình 4 & 5):
             // Xác định vị trí bắt đầu BTL và đá dăm đệm tại Cửa xả 1 (cách vô: p1 + u * CX_TD_DD_W) và Cửa xả 2 (cách vô: p2 - u * CX_TD_DD_W)
-            double cxTdDdW_M = ResolveCxTdDdW(doc, data, familyParameterMappings, null);
+            double cxTdDdW_M = ResolveCxTdDdW(doc, data, familyParameterMappings, outletComponents, sampleOutletInst);
             double cxTdDdW_Feet = UnitUtils.ConvertToInternalUnits(cxTdDdW_M, UnitTypeId.Meters);
 
             XYZ pFootingBackTL = p1 + u * cxTdDdW_Feet;
@@ -3624,7 +3998,9 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<CulvertMaterialItem>? materialSettings = null,
             List<FamilyInstance>? createdBarrels = null,
             List<FamilyInstance>? createdBeddings = null,
-            List<FamilyInstance>? createdManholes = null)
+            List<FamilyInstance>? createdManholes = null,
+            IList<CulvertComponentItem>? outletComponents = null,
+            FamilyInstance? sampleOutletInst = null)
         {
             var segmentedBarrelComps = barrelComponents.Where(c => !IsBeddingComponent(c)).ToList();
             var continuousBeddingComps = barrelComponents.Where(c => IsBeddingComponent(c)).ToList();
@@ -3682,10 +4058,11 @@ namespace InfraBIM.CulvertTool.Services
             double zDauCulvert = data.Z1 - lNgamSanM;
             double zCuoiCulvert = data.Z2 - lNgamSanM;
 
+            // YÊU CẦU 1 (Hình 1 & 2):
             // Lớp BTL và đá dăm đệm bắt đầu từ mép tường đầu cách vô trong thân cống:
             // Cửa xả 1: từ Điểm 1 cách vô trong 1 đoạn đúng bằng CX_TD_DD_W (p1 + u * CX_TD_DD_W)
             // Cửa xả 2: từ Điểm 2 cách vô trong 1 đoạn đúng bằng CX_TD_DD_W (p2 - u * CX_TD_DD_W)
-            double cxTdDdW_M = ResolveCxTdDdW(doc, data, familyParameterMappings, null);
+            double cxTdDdW_M = ResolveCxTdDdW(doc, data, familyParameterMappings, outletComponents, sampleOutletInst);
             double cxTdDdW_Feet = UnitUtils.ConvertToInternalUnits(cxTdDdW_M, UnitTypeId.Meters);
             XYZ pBedStart = p1 + u * cxTdDdW_Feet;
             XYZ pBedEnd = p2 - u * cxTdDdW_Feet;
@@ -3700,8 +4077,7 @@ namespace InfraBIM.CulvertTool.Services
                         bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, zCuoiCulvert, 1, branchSuffix, materialSettings,
                         createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                    double totalBedLen = Math.Max(0.0, (pBedEnd - pBedStart).GetLength());
-                    PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pBedStart, totalBedLen, u, rotAngle,
+                    PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pBedStart, pBedEnd, rotAngle,
                         bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
                 }
             }
@@ -3741,9 +4117,10 @@ namespace InfraBIM.CulvertTool.Services
                     bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: false, isVaiKeGlobal: false, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                // BTL & đá dăm Đoạn 1: từ mép ngoài tường đầu TL đến mép ngoài hộp nối
-                double len1_bedding = Math.Max(0.0, (pHN1_out_up - pBedStart).GetLength());
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pBedStart, len1_bedding, u, rotAngle,
+                // YÊU CẦU 1 (Hình 1): BTL & đá dăm Đoạn 1:
+                // Điểm 1 đặt đúng tại tọa độ Điểm 1 trong Excel cách vô CX_TD_DD_W (pBedStart).
+                // Điểm 2 đặt tại mép ngoài cùng của hộp nối cống (pHN1_out_up).
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pBedStart, pHN1_out_up, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
 
                 // Đoạn 2: Từ mép thành trong Hộp 1 đến P2 (đốt bù trừ co dãn bắt đầu từ mép thành trong: isReverseBuffer = true)
@@ -3751,9 +4128,10 @@ namespace InfraBIM.CulvertTool.Services
                     bimConfig, customBimParams, familyParameterMappings, data, null, zCuoiCulvert, dotCount1 + 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: true, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                // BTL & đá dăm Đoạn 2: từ mép ngoài hộp nối đến mép ngoài tường đầu HL
-                double len2_bedding = Math.Max(0.0, (pBedEnd - pHN1_out_dn).GetLength());
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN1_out_dn, len2_bedding, u, rotAngle,
+                // YÊU CẦU 1 (Hình 2): BTL & đá dăm Đoạn 2:
+                // Điểm 1 đặt tại mép ngoài cùng của hộp nối cống (pHN1_out_dn).
+                // Điểm 2 đặt tại tọa độ Điểm 2 trong Excel cách vô CX_TD_DD_W (pBedEnd).
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN1_out_dn, pBedEnd, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdBeddings);
             }
             else // data.SoHopNoi >= 2
@@ -3807,36 +4185,33 @@ namespace InfraBIM.CulvertTool.Services
                 XYZ pHN2_out_dn = pHN2 + u * rOut2Feet;
 
                 // Đoạn 1: Từ P1 đến mép thành trong hộp nối 1 (đốt bù trừ co dãn khóa cứng tại pHN1_in_up)
-                // YÊU CẦU 2 (Hình 3): Vùng đầu (Cửa xả 1 -> Hộp nối 1) KHÔNG có vai kê (isVaiKeGlobal: false)
+                // Vùng đầu (Cửa xả 1 -> Hộp nối 1) KHÔNG có vai kê
                 int dotCount1 = LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, p1, pHN1_in_up, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, zDauCulvert, null, 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: false, isVaiKeGlobal: false, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                // BTL & đá dăm Đoạn 1: từ mép ngoài tường đầu TL đến mép ngoài hộp nối 1
-                double len1_bedding = Math.Max(0.0, (pHN1_out_up - pBedStart).GetLength());
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pBedStart, len1_bedding, u, rotAngle,
+                // YÊU CẦU 1: BTL & đá dăm Đoạn 1: từ pBedStart đến pHN1_out_up
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pBedStart, pHN1_out_up, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 1, materialSettings, createdBeddings);
 
                 // Đoạn 2: Từ mép thành trong hộp nối 1 đến mép thành trong hộp nối 2 (đốt bù trừ co dãn khóa cứng tại pHN2_in_up)
-                // Vùng giữa (giữa 2 hộp nối): CÓ vai kê (người dùng đánh dấu "đúng")
+                // Vùng giữa (giữa 2 hộp nối): CÓ vai kê
                 int dotCount2 = LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, pHN1_in_dn, pHN2_in_up, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, null, null, dotCount1 + 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: false, isVaiKeGlobal: isVaiKeGlobal, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                // BTL & đá dăm Đoạn 2: giữa 2 hộp nối
-                double len2_bedding = Math.Max(0.0, (pHN2_out_up - pHN1_out_dn).GetLength());
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN1_out_dn, len2_bedding, u, rotAngle,
+                // BTL & đá dăm Đoạn 2: giữa 2 hộp nối (pHN1_out_dn đến pHN2_out_up)
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN1_out_dn, pHN2_out_up, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 2, materialSettings, createdBeddings);
 
                 // Đoạn 3: Từ mép thành trong hộp nối 2 đến P2 (đốt bù trừ co dãn bắt đầu từ mép thành trong Hộp 2: isReverseBuffer = true)
-                // YÊU CẦU 2 (Hình 3): Vùng cuối (Hộp nối 2 -> Cửa xả 2) KHÔNG có vai kê (isVaiKeGlobal: false)
+                // Vùng cuối (Hộp nối 2 -> Cửa xả 2) KHÔNG có vai kê
                 LayAdaptiveSegmentsBetweenPoints(doc, segmentedBarrelComps, pHN2_in_dn, p2, lStdFeet, jointGapFeet, u, rotAngle, arrayMode,
                     bimConfig, customBimParams, familyParameterMappings, data, null, zCuoiCulvert, dotCount2 + 1, branchSuffix, materialSettings,
                     createdBarrels, isReverseBuffer: true, isVaiKeGlobal: false, noVaiKeAtStart: true, noVaiKeAtEnd: true);
 
-                // BTL & đá dăm Đoạn 3: từ mép ngoài hộp nối 2 đến mép ngoài tường đầu HL
-                double len3_bedding = Math.Max(0.0, (pBedEnd - pHN2_out_dn).GetLength());
-                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN2_out_dn, len3_bedding, u, rotAngle,
+                // YÊU CẦU 1: BTL & đá dăm Đoạn 3: từ pHN2_out_dn đến pBedEnd
+                PlaceContinuousBeddingForSegment(doc, continuousBeddingComps, pHN2_out_dn, pBedEnd, rotAngle,
                     bimConfig, customBimParams, familyParameterMappings, data, 3, materialSettings, createdBeddings);
             }
         }
@@ -3857,8 +4232,7 @@ namespace InfraBIM.CulvertTool.Services
             Document doc,
             IList<CulvertComponentItem> beddingComponents,
             XYZ pSegStart,
-            double lenSegFeet,
-            XYZ u,
+            XYZ pSegEnd,
             double rotAngle,
             BimInfoConfig bimConfig,
             IEnumerable<CustomBimParameterItem>? customBimParams,
@@ -3868,9 +4242,11 @@ namespace InfraBIM.CulvertTool.Services
             IEnumerable<CulvertMaterialItem>? materialSettings,
             List<FamilyInstance>? createdBeddings = null)
         {
-            if (beddingComponents == null || beddingComponents.Count == 0 || lenSegFeet <= 0.01) return;
+            if (beddingComponents == null || beddingComponents.Count == 0) return;
 
-            XYZ pSegEnd = pSegStart + u * lenSegFeet;
+            double lenSegFeet = (pSegEnd - pSegStart).GetLength();
+            if (lenSegFeet <= 0.01) return;
+
             string[] possibleLenParams = new[] { "L", "Length", "ChieuDai", "L_dot_chuan", "L_dot_bu", "Chiều dài", "L_DOT", "CH_L" };
 
             foreach (var comp in beddingComponents)
@@ -3919,7 +4295,8 @@ namespace InfraBIM.CulvertTool.Services
                 string tenCauKien = $"{comp.CategoryType}_DOAN_{segIndex}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCauKien, comp.CategoryType ?? "", null, null, null, null, null); } catch { }
                 try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType ?? ""); } catch { }
-                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống"); } catch { }
+                string? cipMat = materialSettings?.FirstOrDefault(m => m.CategoryType == comp.CategoryType)?.MaterialName;
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, comp.CategoryType ?? "Thân cống", segIndex, null, cipMat, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                 try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
             }
         }
@@ -3965,7 +4342,8 @@ namespace InfraBIM.CulvertTool.Services
                 string tenCK = $"{comp.CategoryType}_{manholeIndex}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, $"HỐ GA {manholeIndex}", null, null, ptComp.X, ptComp.Y, ptComp.Z); } catch { }
                 try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, "Hố ga"); } catch { }
-                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, "Hố ga"); } catch { }
+                string? mhMat = materialSettings?.FirstOrDefault(m => m.CategoryType == comp.CategoryType)?.MaterialName;
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, comp.CategoryType ?? "Hố ga", manholeIndex, "HG", mhMat, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                 try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
             }
         }
@@ -4259,7 +4637,14 @@ namespace InfraBIM.CulvertTool.Services
                 string nameSub = $"{tenCauKien}_{comp.CategoryType}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, nameSub, comp.CategoryType, zDau, zCuoi, null, null, null); } catch { }
                 try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, rowData, comp.CategoryType); } catch { }
-                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, "Thân cống"); } catch { }
+                
+                int? parsedDot = null;
+                var matchDot = System.Text.RegularExpressions.Regex.Match(tenCauKien, @"\d+");
+                if (matchDot.Success && int.TryParse(matchDot.Value, out int dotVal))
+                    parsedDot = dotVal;
+
+                string? barrelMat = materialSettings?.FirstOrDefault(m => m.CategoryType == comp.CategoryType)?.MaterialName;
+                try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, rowData, comp.CategoryType ?? "Thân cống", parsedDot, null, barrelMat, doc, bimConfig.AutoCreateSharedParameters); } catch { }
                 try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType); } catch { }
             }
         }
@@ -4268,20 +4653,423 @@ namespace InfraBIM.CulvertTool.Services
             Document doc,
             FamilyInstance inst,
             IEnumerable<CulvertMaterialItem>? materialSettings,
-            string componentCategory)
+            string componentCategory,
+            string? culvertType = null)
         {
             if (materialSettings == null || inst == null) return;
 
-            var item = materialSettings.FirstOrDefault(m => 
-                m.IsActive && 
-                (string.Equals(m.CategoryType, componentCategory, StringComparison.OrdinalIgnoreCase) ||
-                 m.CategoryType.Contains(componentCategory, StringComparison.OrdinalIgnoreCase) ||
-                 componentCategory.Contains(m.CategoryType, StringComparison.OrdinalIgnoreCase)));
+            string cat = componentCategory.Trim();
+            bool isOutlet = cat.Contains("Cửa xả") || cat.Contains("Tường đầu") || cat.Contains("Tường cánh") || cat.Contains("Sân cống");
+            bool isApron = cat.Contains("Sân gia cố") || cat.Contains("Tấm sân");
+            bool isTech = cat.Contains("Hố kỹ thuật") || cat.Contains("kỹ thuật") || (culvertType != null && culvertType.Contains("KỸ THUẬT"));
+            bool isManhole = cat.Contains("Hố ga") || cat.Contains("Hộp nối");
+
+            string targetGroup = "";
+            if (isOutlet) targetGroup = "CỬA XẢ";
+            else if (isApron) targetGroup = "SÂN GIA CỐ";
+            else if (isTech) targetGroup = "CỐNG KỸ THUẬT";
+            else if (isManhole) targetGroup = "HỐ GA (HỘP NỐI)";
+            else if (!string.IsNullOrEmpty(culvertType)) targetGroup = culvertType;
+            else targetGroup = "CỐNG ĐÚC SẴN";
+
+            // 1. Khớp chính xác cả Group/CulvertType và CategoryType
+            CulvertMaterialItem? item = materialSettings.FirstOrDefault(m =>
+                m.IsActive &&
+                (string.Equals(m.CulvertType, targetGroup, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(m.GroupType, targetGroup, StringComparison.OrdinalIgnoreCase) ||
+                 (targetGroup.Contains("ĐỔ TẠI CHỖ") && m.CulvertType != null && m.CulvertType.Contains("đổ tại chỗ", StringComparison.OrdinalIgnoreCase)) ||
+                 (targetGroup.Contains("ĐÚC SẴN") && m.CulvertType != null && m.CulvertType.Contains("đúc sẵn", StringComparison.OrdinalIgnoreCase))) &&
+                (string.Equals(m.CategoryType, cat, StringComparison.OrdinalIgnoreCase) ||
+                 m.CategoryType.IndexOf(cat, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 cat.IndexOf(m.CategoryType, StringComparison.OrdinalIgnoreCase) >= 0));
+
+            // 2. Khớp CategoryType trong cùng targetGroup nếu có lớp đệm (Đá dăm / BTL)
+            if (item == null && !string.IsNullOrEmpty(targetGroup))
+            {
+                item = materialSettings.FirstOrDefault(m =>
+                    m.IsActive &&
+                    (string.Equals(m.CulvertType, targetGroup, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(m.GroupType, targetGroup, StringComparison.OrdinalIgnoreCase)) &&
+                    ((cat.Contains("đá dăm") && m.CategoryType.Contains("đá dăm")) ||
+                     (cat.Contains("lót") && m.CategoryType.Contains("lót")) ||
+                     (cat.Contains("thân") && m.CategoryType.Contains("thân"))));
+            }
+
+            // 3. Fallback theo CategoryType
+            if (item == null)
+            {
+                item = materialSettings.FirstOrDefault(m =>
+                    m.IsActive &&
+                    (string.Equals(m.CategoryType, cat, StringComparison.OrdinalIgnoreCase) ||
+                     m.CategoryType.IndexOf(cat, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     cat.IndexOf(m.CategoryType, StringComparison.OrdinalIgnoreCase) >= 0));
+            }
 
             if (item != null)
             {
                 BimMaterialService.ApplyMaterialToInstance(doc, inst, item);
             }
+        }
+
+        /// <summary>
+        /// Tự động phân định nhóm cấu kiện chuẩn từ thông tin Family, Type và Parameter của instance
+        /// </summary>
+        public static string ResolveInstanceCategory(FamilyInstance inst)
+        {
+            if (inst == null) return "Thân cống";
+
+            string pTenCK = inst.LookupParameter("Tên cấu kiện")?.AsString() ?? "";
+            string pMoTa = inst.LookupParameter("Mô tả")?.AsString() ?? "";
+            string famName = inst.Symbol?.FamilyName ?? "";
+            string typeName = inst.Name ?? "";
+            string allNames = $"{pTenCK} {pMoTa} {famName} {typeName}".ToUpperInvariant();
+
+            if (allNames.Contains("TƯỜNG ĐẦU") || allNames.Contains("TUONG DAU"))
+                return "Tường đầu";
+            if (allNames.Contains("TƯỜNG CÁNH") || allNames.Contains("TUONG CANH"))
+                return "Tường cánh";
+            if (allNames.Contains("SÂN GIA CỐ") || allNames.Contains("SAN GIA CO") || allNames.Contains("SGC"))
+                return "Sân gia cố";
+            if (allNames.Contains("SÂN CỐNG") || allNames.Contains("SAN CONG"))
+                return "Sân cống";
+            if (allNames.Contains("HỐ KỸ THUẬT") || allNames.Contains("HO KY THUAT") || allNames.Contains("HKT"))
+                return "Hố kỹ thuật";
+            if (allNames.Contains("HỘP NỐI") || allNames.Contains("HOP NOI"))
+                return "Hộp nối cống";
+            if (allNames.Contains("HỐ GA") || allNames.Contains("HO GA"))
+                return "Hố ga";
+            if (allNames.Contains("BÊ TÔNG LÓT") || allNames.Contains("BE TONG LOT") || allNames.Contains("BTL"))
+                return "Bê tông lót";
+            if (allNames.Contains("ĐÁ DĂM") || allNames.Contains("DA DAM") || allNames.Contains("DDD"))
+                return "Đá dăm đệm";
+            if (allNames.Contains("LIÊN NGOÀI TRÁI") || allNames.Contains("LIEN NGOAI TRAI"))
+                return "Liên ngoài trái";
+            if (allNames.Contains("LIÊN TRONG") || allNames.Contains("LIEN TRONG"))
+                return "Liên trong";
+            if (allNames.Contains("LIÊN NGOÀI PHẢI") || allNames.Contains("LIEN NGOAI PHAI"))
+                return "Liên ngoài phải";
+
+            return "Thân cống";
+        }
+
+        /// <summary>
+        /// Tìm tất cả các FamilyInstance trong Revit Document thuộc về một cống cụ thể (theo STT, Lý trình hoặc vị trí tọa độ).
+        /// </summary>
+        public static List<FamilyInstance> FindExistingCulvertInstances(
+            Document doc,
+            CulvertRowData row,
+            IList<CulvertRowData>? allRows = null,
+            bool useSurveyPoint = true)
+        {
+            var matched = new List<FamilyInstance>();
+            if (doc == null || row == null) return matched;
+
+            string sttStr = row.STT.ToString();
+            string lyTrinhStr = row.LyTrinh?.Trim() ?? "";
+            bool isTechnical = row.IsTechnical || (row.LoaiCong != null && (row.LoaiCong.Contains("kỹ thuật") || row.LoaiCong.Contains("CKT")));
+
+            XYZ p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, row.X1, row.Y1, row.Z1, useSurveyPoint);
+            XYZ p2 = CoordinateService.ConvertVN2000ToRevitInternal(doc, row.X2, row.Y2, row.Z2, useSurveyPoint);
+            XYZ culvertVec = p2 - p1;
+            double culvertLen = culvertVec.GetLength();
+            XYZ culvertDir = culvertLen > 1e-4 ? culvertVec.Normalize() : XYZ.BasisX;
+
+            var allInstances = new FilteredElementCollector(doc)
+                .OfClass(typeof(FamilyInstance))
+                .WhereElementIsNotElementType()
+                .Cast<FamilyInstance>()
+                .Where(fi => fi.IsValidObject)
+                .ToList();
+
+            foreach (var fi in allInstances)
+            {
+                var pMark = fi.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+                string mark = pMark?.AsString()?.Trim() ?? "";
+                var pComments = fi.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                string comm = pComments?.AsString()?.Trim() ?? "";
+                string famName = fi.Symbol?.FamilyName ?? "";
+
+                // Phân định tuyệt đối giữa Cống Kỹ Thuật (Sheet 2) và Cống Ngang (Sheet 1)
+                bool isFiTechnical = mark.StartsWith("CKT", StringComparison.OrdinalIgnoreCase) ||
+                                     comm.Contains("kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
+                                     comm.Contains("CKT", StringComparison.OrdinalIgnoreCase) ||
+                                     famName.Contains("TNN_CKT", StringComparison.OrdinalIgnoreCase) ||
+                                     famName.Contains("HO KY THUAT", StringComparison.OrdinalIgnoreCase);
+
+                if (isTechnical != isFiTechnical)
+                {
+                    continue;
+                }
+
+                // 1. Kiểm tra tham số BIM_LyTrinh hoặc Lý trình
+                var pBimLyTrinh = fi.LookupParameter("BIM_LyTrinh") ?? fi.LookupParameter("Lý trình");
+                if (pBimLyTrinh != null && !string.IsNullOrWhiteSpace(pBimLyTrinh.AsString()) && !string.IsNullOrWhiteSpace(lyTrinhStr))
+                {
+                    if (string.Equals(pBimLyTrinh.AsString().Trim(), lyTrinhStr, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matched.Add(fi);
+                        continue;
+                    }
+                }
+
+                // 2. Kiểm tra tham số Comments (Ghi chú Revit mặc định)
+                if (!string.IsNullOrEmpty(comm))
+                {
+                    if (!string.IsNullOrEmpty(lyTrinhStr) && comm.IndexOf(lyTrinhStr, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        matched.Add(fi);
+                        continue;
+                    }
+                    if (System.Text.RegularExpressions.Regex.IsMatch(comm, $@"\b(Cống|Cong)\s+{sttStr}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase) ||
+                        System.Text.RegularExpressions.Regex.IsMatch(comm, $@"\bCKT\s*{sttStr}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        matched.Add(fi);
+                        continue;
+                    }
+                }
+
+                // 3. Kiểm tra tham số Mark (Ký hiệu cấu kiện)
+                if (!string.IsNullOrEmpty(mark))
+                {
+                    string expectedPrefix = isTechnical ? "CKT" : "CN";
+                    if (string.Equals(mark, $"{expectedPrefix}-{sttStr}", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(mark, sttStr, StringComparison.OrdinalIgnoreCase) ||
+                        mark.StartsWith($"{expectedPrefix}-{sttStr}-", StringComparison.OrdinalIgnoreCase) ||
+                        mark.StartsWith($"{expectedPrefix}-{sttStr}_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        matched.Add(fi);
+                        continue;
+                    }
+                }
+
+                // 4. Nhận diện theo vùng hành lang tọa độ 3D
+                bool isCulvertFamily = famName.IndexOf("CONG", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      famName.IndexOf("CỐNG", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      famName.IndexOf("CX_", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      famName.IndexOf("TNN_", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      famName.IndexOf("SAN GIA CO", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      famName.IndexOf("SGC", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      famName.IndexOf("HOP NOI", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      famName.IndexOf("HO KY THUAT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      famName.IndexOf("HO GA", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                      famName.IndexOf("MASS_", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                if (isCulvertFamily && culvertLen > 1e-4)
+                {
+                    XYZ? pt = (fi.Location as LocationPoint)?.Point;
+                    if (pt == null)
+                    {
+                        var bbox = fi.get_BoundingBox(null);
+                        if (bbox != null) pt = (bbox.Min + bbox.Max) * 0.5;
+                    }
+
+                    if (pt != null)
+                    {
+                        XYZ diff = pt - p1;
+                        double t = diff.DotProduct(culvertDir);
+                        double bufFeet = 16.4; // 5 mét đệm đầu/cuối
+                        if (t >= -bufFeet && t <= culvertLen + bufFeet)
+                        {
+                            XYZ projPt = p1 + culvertDir * t;
+                            double perpDistFeet = pt.DistanceTo(projPt);
+                            if (perpDistFeet <= 32.8) // Hành lang 10 mét
+                            {
+                                bool isClosestToThisRow = true;
+                                if (allRows != null && allRows.Count > 1)
+                                {
+                                    foreach (var otherRow in allRows)
+                                    {
+                                        if (otherRow.STT == row.STT) continue;
+                                        XYZ op1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, otherRow.X1, otherRow.Y1, otherRow.Z1, useSurveyPoint);
+                                        XYZ op2 = CoordinateService.ConvertVN2000ToRevitInternal(doc, otherRow.X2, otherRow.Y2, otherRow.Z2, useSurveyPoint);
+                                        XYZ oVec = op2 - op1;
+                                        double oLen = oVec.GetLength();
+                                        if (oLen < 1e-4) continue;
+                                        XYZ oDir = oVec.Normalize();
+                                        double ot = (pt - op1).DotProduct(oDir);
+                                        XYZ oProj = op1 + oDir * Math.Clamp(ot, 0.0, oLen);
+                                        double oDist = pt.DistanceTo(oProj);
+                                        if (oDist < perpDistFeet)
+                                        {
+                                            isClosestToThisRow = false;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (isClosestToThisRow)
+                                {
+                                    matched.Add(fi);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return matched.GroupBy(e => e.Id.Value).Select(g => g.First()).ToList();
+        }
+
+        /// <summary>
+        /// Cập nhật thông tin BIM, tham số hình học/mapping và vật liệu cho các cấu kiện đã có sẵn trong mô hình Revit
+        /// </summary>
+        public static int UpdateExistingCulvertElements(
+            Document doc,
+            IList<FamilyInstance> instances,
+            CulvertRowData row,
+            BimInfoConfig bimConfig,
+            IEnumerable<CustomBimParameterItem>? customBimParams,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            IEnumerable<CulvertMaterialItem>? materialSettings)
+        {
+            if (instances == null || instances.Count == 0) return 0;
+            int count = 0;
+            string culvertType = row.DetermineCulvertType();
+
+            foreach (var inst in instances)
+            {
+                if (inst == null || !inst.IsValidObject) continue;
+
+                string cat = ResolveInstanceCategory(inst);
+
+                // 1. Cập nhật thông tin BIM chung (Tên công trình, Tên nhóm, Tên cấu kiện, Mô tả, Cao độ, Tọa độ)
+                string? existingTenCK = inst.LookupParameter("Tên cấu kiện")?.AsString();
+                string tenCK = !string.IsNullOrWhiteSpace(existingTenCK) ? existingTenCK : cat;
+                try
+                {
+                    BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, null, null, null, null, null, null);
+                }
+                catch { }
+
+                // 2. Gán các tham số BIM tùy biến từ Tab 04
+                try
+                {
+                    string? mat = materialSettings?.FirstOrDefault(m => m.CategoryType == cat)?.MaterialName;
+                    BimParameterService.ApplyCustomBimParameters(inst, customBimParams, row, cat, null, null, mat, doc, bimConfig.AutoCreateSharedParameters);
+                }
+                catch { }
+
+                // 3. Gán các tham số hình học / Dimensions đã tùy chỉnh từ Tab 02
+                try
+                {
+                    BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, row, cat);
+                }
+                catch { }
+
+                // 4. Gán vật liệu và đồ họa hiển thị từ Tab 03
+                try
+                {
+                    TryApplyMaterial(doc, inst, materialSettings, cat, culvertType);
+                }
+                catch { }
+
+                // 5. Đảm bảo các tham số nhận diện cơ bản luôn đồng bộ
+                try
+                {
+                    bool isTech = row.IsTechnical || (row.LoaiCong != null && (row.LoaiCong.Contains("kỹ thuật") || row.LoaiCong.Contains("CKT")));
+                    string markVal = isTech ? $"CKT-{row.STT}" : $"CN-{row.STT}";
+                    string commVal = isTech ? $"Cống kỹ thuật {row.STT} ({row.LyTrinh})" : $"Cống {row.STT} - {row.LoaiCong} ({row.LyTrinh})";
+
+                    var pMark = inst.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+                    if (pMark != null && !pMark.IsReadOnly)
+                    {
+                        pMark.Set(markVal);
+                    }
+                    var pComments = inst.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                    if (pComments != null && !pComments.IsReadOnly)
+                    {
+                        pComments.Set(commVal);
+                    }
+                    var pBimLyTrinh = inst.LookupParameter("BIM_LyTrinh") ?? inst.LookupParameter("Lý trình");
+                    if (pBimLyTrinh != null && !pBimLyTrinh.IsReadOnly)
+                    {
+                        pBimLyTrinh.Set(row.LyTrinh ?? "");
+                    }
+                }
+                catch { }
+
+                count++;
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// Quét và tự động gán lại toàn bộ thông tin BIM và Vật liệu vào các cống đã dựng trong Revit
+        /// </summary>
+        public static (int SuccessCount, int ErrorCount, int TotalElementsUpdated, List<string> Logs) UpdateCulvertBimAndMaterials(
+            Document doc,
+            IList<CulvertRowData> culvertList,
+            BimInfoConfig bimConfig,
+            IEnumerable<CustomBimParameterItem>? customBimParams,
+            IEnumerable<ParameterMappingItem>? familyParameterMappings,
+            IEnumerable<CulvertMaterialItem>? materialSettings,
+            bool useSurveyPoint = true)
+        {
+            var logs = new List<string>();
+            int successCount = 0;
+            int errorCount = 0;
+            int totalUpdated = 0;
+
+            if (culvertList == null || culvertList.Count == 0)
+            {
+                logs.Add("Không có cống nào được chọn để cập nhật.");
+                return (0, 0, 0, logs);
+            }
+
+            using (var tg = new TransactionGroup(doc, "INFRA BIM - Cập nhật Thông tin & Vật liệu Cống"))
+            {
+                tg.Start();
+
+                foreach (var row in culvertList)
+                {
+                    if (!row.IsSelected) continue;
+
+                    var existing = FindExistingCulvertInstances(doc, row, culvertList, useSurveyPoint);
+                    if (existing == null || existing.Count == 0)
+                    {
+                        logs.Add($"⚠️ Cống STT {row.STT} ({row.LyTrinh}): Chưa tìm thấy mô hình trong Revit. Vui lòng bấm 'THỰC HIỆN TẠO MÔ HÌNH' để dựng mới.");
+                        errorCount++;
+                        continue;
+                    }
+
+                    using (var subT = new Transaction(doc, $"Cập nhật BIM & Vật liệu Cống STT {row.STT}"))
+                    {
+                        try
+                        {
+                            var failOpts = subT.GetFailureHandlingOptions();
+                            failOpts.SetFailuresPreprocessor(new SuppressAllWarningsFailuresPreprocessor());
+                            failOpts.SetClearAfterRollback(true);
+                            subT.SetFailureHandlingOptions(failOpts);
+
+                            subT.Start();
+                            int updated = UpdateExistingCulvertElements(
+                                doc,
+                                existing,
+                                row,
+                                bimConfig,
+                                customBimParams,
+                                familyParameterMappings,
+                                materialSettings);
+                            subT.Commit();
+
+                            successCount++;
+                            totalUpdated += updated;
+                            logs.Add($"✅ Cống STT {row.STT} ({row.LyTrinh}): Đã cập nhật thành công thông tin BIM & vật liệu cho {updated} cấu kiện.");
+                        }
+                        catch (Exception ex)
+                        {
+                            subT.RollBack();
+                            errorCount++;
+                            logs.Add($"❌ Lỗi khi cập nhật cống STT {row.STT} ({row.LyTrinh}): {ex.Message}");
+                        }
+                    }
+                }
+
+                tg.Assimilate();
+            }
+
+            return (successCount, errorCount, totalUpdated, logs);
         }
     }
 

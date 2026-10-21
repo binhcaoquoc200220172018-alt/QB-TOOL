@@ -22,6 +22,13 @@ namespace InfraBIM.CulvertTool.Models
             set { _groupType = value; OnPropertyChanged(); }
         }
 
+        private string _culvertType = "TẤT CẢ";
+        public string CulvertType
+        {
+            get => _culvertType;
+            set { _culvertType = value; OnPropertyChanged(); }
+        }
+
         private string _categoryType = string.Empty;
         public string CategoryType
         {

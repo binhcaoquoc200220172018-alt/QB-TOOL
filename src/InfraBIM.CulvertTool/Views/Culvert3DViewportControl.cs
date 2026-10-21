@@ -883,10 +883,10 @@ namespace InfraBIM.CulvertTool.Views
                 }
             }
 
-            double btlThick = 0.10;
-            double stoneThick = 0.15;
-            double btlW = wOut + 0.20;
-            double stoneW = wOut + 0.40;
+            double btlThick = geom.H_BTL > 0.01 ? geom.H_BTL : 0.10;
+            double stoneThick = geom.H_DDD > 0.01 ? geom.H_DDD : 0.15;
+            double stoneW = geom.B_DDD > 0.1 ? geom.B_DDD : (wOut + 0.40);
+            double btlW = geom.B_BTL > 0.1 ? geom.B_BTL : (geom.B_DDD > 0.1 ? Math.Max(0.5, geom.B_DDD - 0.20) : (wOut + 0.20));
 
             foreach (var span in spans)
             {
@@ -895,10 +895,10 @@ namespace InfraBIM.CulvertTool.Views
                 double y0 = -dropFunc(x0) - ngamSan - tSlab;
                 double y1 = -dropFunc(x1) - ngamSan - tSlab;
 
-                // 1. Lớp Bê tông lót (Lean concrete layer) dày 100mm
+                // 1. Lớp Bê tông lót (Lean concrete layer)
                 AddSolidBoxMesh(group, x0, y0 - btlThick, -btlW / 2.0, x1, y1, btlW / 2.0, MatBTL);
 
-                // 2. Lớp Đá dăm đệm (Crushed stone layer) dày 150mm nằm dưới BTL
+                // 2. Lớp Đá dăm đệm (Crushed stone layer) nằm dưới BTL
                 AddSolidBoxMesh(group, x0, y0 - btlThick - stoneThick, -stoneW / 2.0, x1, y1 - btlThick, stoneW / 2.0, MatCrushedStone);
             }
         }
