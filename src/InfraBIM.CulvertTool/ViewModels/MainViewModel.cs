@@ -1591,21 +1591,25 @@ public class MainViewModel : ViewModelBase
 		RefreshInspectorParameterMappings();
 	});
 
+	
 	private void UpdateModeFromSheetName(string sheetName)
 	{
 		string text = sheetName.Trim().ToLowerInvariant();
-		if (IsTechnicalCulvertMode = text.Contains("kythuat") || text.Contains("kỹ thuật") || text.Contains("ky_thuat") || text.Contains("ckt"))
+		if (text.Contains("kythuat") || text.Contains("kỹ thuật") || text.Contains("ky_thuat") || text.Contains("ckt"))
 		{
+			IsTechnicalCulvertMode = true;
 			ApplyAssemblyTemplate("CỐNG KỸ THUẬT");
 			SelectedCulvertTypeForTab03 = "CỐNG KỸ THUẬT";
 			SelectedCulvertTypeForTab04 = "CỐNG KỸ THUẬT";
 		}
-		else if (SelectedCulvertTemplateType == "CỐNG KỸ THUẬT")
+		else
 		{
+			IsTechnicalCulvertMode = false;
 			ApplyAssemblyTemplate("CỐNG HỘP ĐÚC SẴN");
 			SelectedCulvertTypeForTab03 = "CỐNG ĐÚC SẴN";
 			SelectedCulvertTypeForTab04 = "CỐNG ĐÚC SẴN";
 		}
+		SyncMaterialsFromAssemblyComponents();
 		ApplyMaterialGroupFilter();
 		UpdateAvailableTargetScopesForTab04();
 		UpdateFilteredCulvertRowsForTab04();
@@ -1686,66 +1690,162 @@ public class MainViewModel : ViewModelBase
 	{
 		AvailableTargetScopesForTab04.Clear();
 		string type = SelectedCulvertTypeForTab04 ?? "TẤT CẢ";
-		if (type == "CỐNG ĐỔ TẠI CHỖ" || CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.TypeName == type))
+
+		if (IsTechnicalCulvertMode)
 		{
-			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện");
-			AvailableTargetScopesForTab04.Add("Cống hộp liên trong");
-			AvailableTargetScopesForTab04.Add("Cống hộp liên ngoài trái");
-			AvailableTargetScopesForTab04.Add("Cống hộp liên ngoài phải");
-			AvailableTargetScopesForTab04.Add("Bê tông lót");
-			AvailableTargetScopesForTab04.Add("Đá dăm đệm");
-		}
-		else if (type == "CỐNG ĐÚC SẴN")
-		{
-			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện");
-			AvailableTargetScopesForTab04.Add("Đốt cống đúc sẵn");
-			AvailableTargetScopesForTab04.Add("Bê tông lót");
-			AvailableTargetScopesForTab04.Add("Đá dăm đệm");
-		}
-		else if (type == "CỬA XẢ")
-		{
-			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cửa xả");
-			AvailableTargetScopesForTab04.Add("Tường đầu");
-			AvailableTargetScopesForTab04.Add("Tường cánh");
-			AvailableTargetScopesForTab04.Add("Sân cống");
-			AvailableTargetScopesForTab04.Add("Bê tông lót");
-			AvailableTargetScopesForTab04.Add("Đá dăm đệm");
-		}
-		else if (type == "SÂN GIA CỐ")
-		{
-			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện sân gia cố");
-			AvailableTargetScopesForTab04.Add("Sân gia cố");
-			AvailableTargetScopesForTab04.Add("Bê tông lót");
-		}
-		else if (type == "HỐ GA (HỘP NỐI)")
-		{
-			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện hố ga");
-			AvailableTargetScopesForTab04.Add("Thân hố ga");
-			AvailableTargetScopesForTab04.Add("Cổ giếng");
-			AvailableTargetScopesForTab04.Add("Khuôn hầm");
-			AvailableTargetScopesForTab04.Add("Nắp đan");
-			AvailableTargetScopesForTab04.Add("Bê tông lót");
-		}
-		else if (type == "CỐNG KỸ THUẬT")
-		{
-			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống kỹ thuật");
-			AvailableTargetScopesForTab04.Add("Thân cống kỹ thuật");
-			AvailableTargetScopesForTab04.Add("Hố kỹ thuật (Hộp nối)");
-			AvailableTargetScopesForTab04.Add("Bê tông lót");
-			AvailableTargetScopesForTab04.Add("Đá dăm đệm");
+			if (type == "CỐNG KỸ THUẬT")
+			{
+				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống kỹ thuật");
+				foreach (var comp in TechnicalBarrelComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+					}
+				}
+			}
+			else if (type == "HỐ KỸ THUẬT & HỘP NỐI" || type == "HỐ GA (HỘP NỐI)")
+			{
+				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện hố kỹ thuật & hộp nối");
+				foreach (var comp in TechnicalManholeComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+					}
+				}
+			}
+			else // "TẤT CẢ"
+			{
+				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện");
+				foreach (var comp in TechnicalBarrelComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+					}
+				}
+				foreach (var comp in TechnicalManholeComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+					}
+				}
+			}
 		}
 		else
 		{
-			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện");
-			AvailableTargetScopesForTab04.Add("Đốt cống đúc sẵn");
-			AvailableTargetScopesForTab04.Add("Cống hộp liên trong");
-			AvailableTargetScopesForTab04.Add("Cống hộp liên ngoài trái");
-			AvailableTargetScopesForTab04.Add("Cống hộp liên ngoài phải");
-			AvailableTargetScopesForTab04.Add("Cửa xả");
-			AvailableTargetScopesForTab04.Add("Sân gia cố");
-			AvailableTargetScopesForTab04.Add("Hộp nối");
-			AvailableTargetScopesForTab04.Add("Bê tông lót");
-			AvailableTargetScopesForTab04.Add("Đá dăm đệm");
+			// Chế độ Cống ngang
+			if (type == "CỐNG ĐÚC SẴN")
+			{
+				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống đúc sẵn");
+				foreach (var comp in PrecastBarrelComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+					}
+				}
+			}
+			else if (type == "CỐNG ĐỔ TẠI CHỖ" || CastInPlaceProfiles.Any(p => p.TypeName == type))
+			{
+				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống đổ tại chỗ");
+				var activeProfiles = CastInPlaceProfiles.Where(p => type == "CỐNG ĐỔ TẠI CHỖ" || p.TypeName == type).ToList();
+				if (activeProfiles.Count == 0 && SelectedCastInPlaceProfileForTab04 != null)
+				{
+					activeProfiles.Add(SelectedCastInPlaceProfileForTab04);
+				}
+				if (activeProfiles.Count == 0 && CastInPlaceProfiles.Count > 0)
+				{
+					activeProfiles.AddRange(CastInPlaceProfiles);
+				}
+				foreach (var prof in activeProfiles)
+				{
+					foreach (var comp in prof.Components)
+					{
+						if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+						{
+							AvailableTargetScopesForTab04.Add(comp.CategoryType);
+						}
+					}
+				}
+				if (AvailableTargetScopesForTab04.Count == 1)
+				{
+					foreach (var comp in CastInPlaceBarrelComponents)
+					{
+						if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+						{
+							AvailableTargetScopesForTab04.Add(comp.CategoryType);
+						}
+					}
+				}
+			}
+			else if (type == "CỬA XẢ")
+			{
+				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cửa xả");
+				foreach (var comp in OutletComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+					}
+				}
+			}
+			else if (type == "SÂN GIA CỐ")
+			{
+				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện sân gia cố");
+				foreach (var comp in ApronComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+					}
+				}
+			}
+			else if (type == "HỐ GA (HỘP NỐI)")
+			{
+				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện hố ga");
+				foreach (var comp in ManholeComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+					}
+				}
+			}
+			else // "TẤT CẢ"
+			{
+				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện");
+				foreach (var comp in PrecastBarrelComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+				}
+				foreach (var prof in CastInPlaceProfiles)
+				{
+					foreach (var comp in prof.Components)
+					{
+						if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+							AvailableTargetScopesForTab04.Add(comp.CategoryType);
+					}
+				}
+				foreach (var comp in OutletComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+				}
+				foreach (var comp in ApronComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+				}
+				foreach (var comp in ManholeComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+				}
+			}
 		}
 
 		string defaultScope = AvailableTargetScopesForTab04.FirstOrDefault() ?? "Tất cả cấu kiện";
@@ -3560,151 +3660,85 @@ public class MainViewModel : ViewModelBase
 	public void ApplyMaterialGroupFilter()
 	{
 		FilteredComponentMaterials.Clear();
-		string text = _selectedMaterialGroupFilter ?? "All";
+		string groupFilter = _selectedMaterialGroupFilter ?? "All";
 		string culvertType = _selectedCulvertTypeForTab03 ?? "TẤT CẢ";
+
 		foreach (CulvertMaterialItem item in ComponentMaterials)
 		{
-			if (!(culvertType == "TẤT CẢ"))
+			// 1. Phân biệt rõ chế độ Cống Kỹ Thuật vs Cống Ngang
+			bool isItemTechnical = item.CulvertType == "CỐNG KỸ THUẬT" || 
+			                        item.CulvertType == "HỐ KỸ THUẬT & HỘP NỐI" ||
+			                        (item.GroupType != null && (item.GroupType.Contains("kỹ thuật") || item.GroupType.Contains("Hộp nối")));
+			
+			if (IsTechnicalCulvertMode && !isItemTechnical) continue;
+			if (!IsTechnicalCulvertMode && isItemTechnical) continue;
+
+			// 2. Lọc theo Cụm cấu kiện đang chọn trên thanh nút bấm (culvertType)
+			if (culvertType != "TẤT CẢ")
 			{
-				bool num;
-				if (!(culvertType == "CỐNG ĐỔ TẠI CHỖ"))
+				if (culvertType == "CỐNG KỸ THUẬT")
 				{
-					if (!CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.TypeName == culvertType))
-					{
-						if (!(culvertType == "CỐNG ĐÚC SẴN"))
-						{
-							if (!(culvertType == "CỬA XẢ"))
-							{
-								if (!(culvertType == "SÂN GIA CỐ"))
-								{
-									if (!(culvertType == "HỐ GA (HỘP NỐI)"))
-									{
-										num = ((!(culvertType == "CỐNG KỸ THUẬT")) ? (item.CulvertType == culvertType) : (item.CulvertType == "CỐNG KỸ THUẬT"));
-									}
-									else
-									{
-										if (item.CulvertType == "HỐ GA (HỘP NỐI)" || item.GroupType == "Hố ga (Hộp nối)")
-										{
-											goto IL_0267;
-										}
-										num = item.GroupType == "Hộp nối";
-									}
-								}
-								else
-								{
-									if (item.CulvertType == "SÂN GIA CỐ")
-									{
-										goto IL_0267;
-									}
-									num = item.GroupType == "Sân gia cố";
-								}
-							}
-							else
-							{
-								if (item.CulvertType == "CỬA XẢ")
-								{
-									goto IL_0267;
-								}
-								num = item.GroupType == "Cửa xả";
-							}
-						}
-						else
-						{
-							num = item.CulvertType == "CỐNG ĐÚC SẴN";
-						}
-					}
-					else
-					{
-						num = item.CulvertType == culvertType;
-					}
+					if (item.CulvertType != "CỐNG KỸ THUẬT" && (item.GroupType == null || !item.GroupType.Contains("Cống kỹ thuật"))) continue;
+				}
+				else if (culvertType == "HỐ KỸ THUẬT & HỘP NỐI")
+				{
+					if (item.CulvertType != "HỐ KỸ THUẬT & HỘP NỐI" && (item.GroupType == null || (!item.GroupType.Contains("Hố kỹ thuật") && !item.GroupType.Contains("Hộp nối")))) continue;
+				}
+				else if (culvertType == "CỐNG ĐÚC SẴN")
+				{
+					if (item.CulvertType != "CỐNG ĐÚC SẴN") continue;
+				}
+				else if (culvertType == "CỐNG ĐỔ TẠI CHỖ")
+				{
+					bool isCip = item.CulvertType == "CỐNG ĐỔ TẠI CHỖ" || 
+					             CastInPlaceProfiles.Any(p => p.TypeName == item.CulvertType);
+					if (!isCip) continue;
+				}
+				else if (CastInPlaceProfiles.Any(p => p.TypeName == culvertType))
+				{
+					if (item.CulvertType != culvertType) continue;
+				}
+				else if (culvertType == "CỬA XẢ")
+				{
+					if (item.CulvertType != "CỬA XẢ" && (item.GroupType == null || !item.GroupType.Contains("Cửa xả"))) continue;
+				}
+				else if (culvertType == "SÂN GIA CỐ")
+				{
+					if (item.CulvertType != "SÂN GIA CỐ" && (item.GroupType == null || !item.GroupType.Contains("Sân gia cố"))) continue;
+				}
+				else if (culvertType == "HỐ GA (HỘP NỐI)")
+				{
+					if (item.CulvertType != "HỐ GA (HỘP NỐI)" && (item.GroupType == null || (!item.GroupType.Contains("Hố ga") && !item.GroupType.Contains("Hộp nối")))) continue;
 				}
 				else
 				{
-					if (item.CulvertType == "CỐNG ĐỔ TẠI CHỖ")
-					{
-						goto IL_0267;
-					}
-					num = CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.TypeName == item.CulvertType);
-				}
-				if (!num)
-				{
-					continue;
+					if (item.CulvertType != culvertType) continue;
 				}
 			}
-			goto IL_0267;
-			IL_0267:
-			if (text == "All")
+
+			// 3. Lọc theo nhóm vật liệu phụ trợ (nếu có chọn)
+			if (groupFilter == "All")
 			{
 				FilteredComponentMaterials.Add(item);
-				continue;
 			}
-			if (text == "Barrel")
+			else if (groupFilter == "Barrel" && item.GroupType != null && (item.GroupType.Contains("Thân") || item.GroupType.Contains("Cống")))
 			{
-				if (!(item.GroupType == "Thân cống"))
-				{
-					string groupType = item.GroupType;
-					if (groupType == null || !groupType.Contains("Thân"))
-					{
-						goto IL_02e3;
-					}
-				}
 				FilteredComponentMaterials.Add(item);
-				continue;
 			}
-			goto IL_02e3;
-			IL_02e3:
-			if (text == "Outlet")
+			else if (groupFilter == "Outlet" && item.GroupType != null && item.GroupType.Contains("Cửa xả"))
 			{
-				if (!(item.GroupType == "Cửa xả"))
-				{
-					string groupType2 = item.GroupType;
-					if (groupType2 == null || !groupType2.Contains("Cửa"))
-					{
-						goto IL_033c;
-					}
-				}
 				FilteredComponentMaterials.Add(item);
-				continue;
 			}
-			goto IL_033c;
-			IL_033c:
-			if (text == "Apron")
+			else if (groupFilter == "Apron" && item.GroupType != null && item.GroupType.Contains("Sân"))
 			{
-				if (!(item.GroupType == "Sân gia cố"))
-				{
-					string groupType3 = item.GroupType;
-					if (groupType3 == null || !groupType3.Contains("Gia cố"))
-					{
-						string groupType4 = item.GroupType;
-						if (groupType4 == null || !groupType4.Contains("Sân"))
-						{
-							goto IL_03b1;
-						}
-					}
-				}
 				FilteredComponentMaterials.Add(item);
-				continue;
 			}
-			goto IL_03b1;
-			IL_03b1:
-			if (!(text == "Manhole"))
+			else if (groupFilter == "Manhole" && item.GroupType != null && (item.GroupType.Contains("Hố") || item.GroupType.Contains("Hộp")))
 			{
-				continue;
+				FilteredComponentMaterials.Add(item);
 			}
-			if (!(item.GroupType == "Hố ga (Hộp nối)"))
-			{
-				string groupType5 = item.GroupType;
-				if (groupType5 == null || !groupType5.Contains("Hố"))
-				{
-					string groupType6 = item.GroupType;
-					if (groupType6 == null || !groupType6.Contains("Hộp"))
-					{
-						continue;
-					}
-				}
-			}
-			FilteredComponentMaterials.Add(item);
 		}
+
 		if (SelectedMaterialItem == null || !FilteredComponentMaterials.Contains(SelectedMaterialItem))
 		{
 			SelectedMaterialItem = FilteredComponentMaterials.FirstOrDefault();

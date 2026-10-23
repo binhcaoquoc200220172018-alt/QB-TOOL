@@ -1462,7 +1462,7 @@
                                             </Button.Style>
                                         </Button>
 
-                                        <Button Content="🕳️ HỐ GA (HỘP NỐI)" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="HỐ GA (HỘP NỐI)" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
+                                        <Button Content="🕳️ HỐ GA (HỘP NỐI)" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="HỐ GA (HỘP NỐI)" Margin="0,0,4,0" Padding="8,4" FontSize="11.5" Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                     <Style.Triggers>
@@ -1483,6 +1483,22 @@
                                                 <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding SelectedCulvertTypeForTab03}" Value="CỐNG KỸ THUẬT">
+                                                            <Setter Property="Background" Value="#0284C7"/>
+                                                            <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+
+                                        <Button Content="🕳️ HỐ KỸ THUẬT &amp; HỘP NỐI" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="HỐ KỸ THUẬT &amp; HỘP NỐI" Margin="0,0,4,0" Padding="8,4" FontSize="11.5"
+                                                Visibility="{Binding IsTechnicalCulvertMode, Converter={StaticResource BoolToVis}}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedCulvertTypeForTab03}" Value="HỐ KỸ THUẬT &amp; HỘP NỐI">
                                                             <Setter Property="Background" Value="#0284C7"/>
                                                             <Setter Property="BorderBrush" Value="#38BDF8"/>
                                                             <Setter Property="Foreground" Value="#FFFFFF"/>
@@ -1702,47 +1718,6 @@
                                         Background="{StaticResource CyanDark}" Foreground="#FFF" FontWeight="Bold" Padding="10,7" Margin="0,0,0,8"
                                         BorderBrush="{StaticResource CyanLight}"/>
 
-                                <!-- Bảng màu nhanh chuyên ngành hạ tầng -->
-                                <Border Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,8">
-                                    <StackPanel>
-                                        <TextBlock Text="🎨 BẢNG MÀU NHANH HẠ TẦNG (1 CHẠM):" FontWeight="Bold" Foreground="{StaticResource CyanLight}" Margin="0,0,0,6"/>
-                                        <UniformGrid Columns="4" Rows="2" Margin="0,2">
-                                            <!-- Ô 1: Bê tông đúc sẵn -->
-                                            <Button Command="{Binding ApplyColorPresetCommand}" CommandParameter="#BDC3C7" Margin="2" Height="36" ToolTip="Xám bê tông đúc sẵn (#BDC3C7)">
-                                                <Border Background="#BDC3C7" Width="30" Height="22" CornerRadius="3" BorderBrush="#000" BorderThickness="0.5"/>
-                                            </Button>
-                                            <!-- Ô 2: Xám đá tường cánh -->
-                                            <Button Command="{Binding ApplyColorPresetCommand}" CommandParameter="#95A5A6" Margin="2" Height="36" ToolTip="Xám đá tường cánh (#95A5A6)">
-                                                <Border Background="#95A5A6" Width="30" Height="22" CornerRadius="3" BorderBrush="#000" BorderThickness="0.5"/>
-                                            </Button>
-                                            <!-- Ô 3: Xám đậm hố ga/hộp nối -->
-                                            <Button Command="{Binding ApplyColorPresetCommand}" CommandParameter="#7F8C8D" Margin="2" Height="36" ToolTip="Xám đậm hố ga / hộp nối (#7F8C8D)">
-                                                <Border Background="#7F8C8D" Width="30" Height="22" CornerRadius="3" BorderBrush="#000" BorderThickness="0.5"/>
-                                            </Button>
-                                            <!-- Ô 4: Xám tro bê tông lót -->
-                                            <Button Command="{Binding ApplyColorPresetCommand}" CommandParameter="#4A5568" Margin="2" Height="36" ToolTip="Xám tro bê tông lót (#4A5568)">
-                                                <Border Background="#4A5568" Width="30" Height="22" CornerRadius="3" BorderBrush="#FFF" BorderThickness="0.5"/>
-                                            </Button>
-                                            <!-- Ô 5: Vàng cát đầm chặt -->
-                                            <Button Command="{Binding ApplyColorPresetCommand}" CommandParameter="#ECC94B" Margin="2" Height="36" ToolTip="Vàng cát đầm chặt (#ECC94B)">
-                                                <Border Background="#ECC94B" Width="30" Height="22" CornerRadius="3" BorderBrush="#000" BorderThickness="0.5"/>
-                                            </Button>
-                                            <!-- Ô 6: Xám tím đá dăm đệm -->
-                                            <Button Command="{Binding ApplyColorPresetCommand}" CommandParameter="#566573" Margin="2" Height="36" ToolTip="Xám tím đá dăm đệm (#566573)">
-                                                <Border Background="#566573" Width="30" Height="22" CornerRadius="3" BorderBrush="#FFF" BorderThickness="0.5"/>
-                                            </Button>
-                                            <!-- Ô 7: Xanh lơ dòng chảy -->
-                                            <Button Command="{Binding ApplyColorPresetCommand}" CommandParameter="#38BDF8" Margin="2" Height="36" ToolTip="Xanh lơ dòng chảy (#38BDF8)">
-                                                <Border Background="#38BDF8" Width="30" Height="22" CornerRadius="3" BorderBrush="#000" BorderThickness="0.5"/>
-                                            </Button>
-                                            <!-- Ô 8: Đỏ gạch xây -->
-                                            <Button Command="{Binding ApplyColorPresetCommand}" CommandParameter="#E53E3E" Margin="2" Height="36" ToolTip="Đỏ gạch xây (#E53E3E)">
-                                                <Border Background="#E53E3E" Width="30" Height="22" CornerRadius="3" BorderBrush="#000" BorderThickness="0.5"/>
-                                            </Button>
-                                        </UniformGrid>
-                                    </StackPanel>
-                                </Border>
-
                                 <!-- Thẻ hướng dẫn cơ chế tự động -->
                                 <Border Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8">
                                     <StackPanel>
@@ -1858,7 +1833,7 @@
                                         </Button.Style>
                                     </Button>
 
-                                    <Button Content="🕳️ HỐ GA (HỘP NỐI)" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="HỐ GA (HỘP NỐI)" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
+                                    <Button Content="🕳️ HỐ GA (HỘP NỐI)" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="HỐ GA (HỘP NỐI)" Margin="0,0,4,0" Padding="8,4" FontSize="11.5" Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
                                         <Button.Style>
                                             <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                 <Style.Triggers>
@@ -1879,6 +1854,22 @@
                                             <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="CỐNG KỸ THUẬT">
+                                                        <Setter Property="Background" Value="#0284C7"/>
+                                                        <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+
+                                    <Button Content="🕳️ HỐ KỸ THUẬT &amp; HỘP NỐI" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="HỐ KỸ THUẬT &amp; HỘP NỐI" Margin="0,0,4,0" Padding="8,4" FontSize="11.5"
+                                            Visibility="{Binding IsTechnicalCulvertMode, Converter={StaticResource BoolToVis}}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="HỐ KỸ THUẬT &amp; HỘP NỐI">
                                                         <Setter Property="Background" Value="#0284C7"/>
                                                         <Setter Property="BorderBrush" Value="#38BDF8"/>
                                                         <Setter Property="Foreground" Value="#FFFFFF"/>
