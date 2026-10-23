@@ -223,8 +223,12 @@ public class MainViewModel : ViewModelBase
 		{
 			if (SetProperty(ref _selectedSheetName, value, "SelectedSheetName") && !string.IsNullOrEmpty(value))
 			{
+				SaveCurrentSheetOverrides();
 				UpdateModeFromSheetName(value);
 				LoadExcelData();
+				RestoreCurrentSheetOverrides();
+				UpdateInspectorCulvertRows();
+				RefreshInspectorParameterMappings();
 			}
 		}
 	}
@@ -1062,7 +1066,24 @@ public class MainViewModel : ViewModelBase
 
 	public BimInfoConfig BimConfig { get; } = new BimInfoConfig();
 
+	private readonly Dictionary<string, List<CulvertRowOverrideSaveDto>> _overridesBySheet = new(StringComparer.OrdinalIgnoreCase);
+
 	public ObservableCollection<CustomBimParameterItem> CustomBimParameters { get; } = new ObservableCollection<CustomBimParameterItem>();
+
+	public ObservableCollection<CustomBimParameterItem> DisplayedCustomBimParameters { get; } = new ObservableCollection<CustomBimParameterItem>();
+
+	private string _selectedTargetScopeForTab04 = "Tất cả cấu kiện";
+	public string SelectedTargetScopeForTab04
+	{
+		get => _selectedTargetScopeForTab04;
+		set
+		{
+			if (SetProperty(ref _selectedTargetScopeForTab04, value, nameof(SelectedTargetScopeForTab04)))
+			{
+				RefreshDisplayedCustomBimParameters();
+			}
+		}
+	}
 
 	public CustomBimParameterItem? SelectedCustomBimParameter
 	{
@@ -1576,11 +1597,18 @@ public class MainViewModel : ViewModelBase
 		if (IsTechnicalCulvertMode = text.Contains("kythuat") || text.Contains("kỹ thuật") || text.Contains("ky_thuat") || text.Contains("ckt"))
 		{
 			ApplyAssemblyTemplate("CỐNG KỸ THUẬT");
+			SelectedCulvertTypeForTab03 = "CỐNG KỸ THUẬT";
+			SelectedCulvertTypeForTab04 = "CỐNG KỸ THUẬT";
 		}
 		else if (SelectedCulvertTemplateType == "CỐNG KỸ THUẬT")
 		{
 			ApplyAssemblyTemplate("CỐNG HỘP ĐÚC SẴN");
+			SelectedCulvertTypeForTab03 = "CỐNG ĐÚC SẴN";
+			SelectedCulvertTypeForTab04 = "CỐNG ĐÚC SẴN";
 		}
+		ApplyMaterialGroupFilter();
+		UpdateAvailableTargetScopesForTab04();
+		UpdateFilteredCulvertRowsForTab04();
 	}
 
 	private void OnCastInPlaceProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1618,6 +1646,39 @@ public class MainViewModel : ViewModelBase
 		if (SelectedCulvertRowForInspector == null || !InspectorCulvertRows.Contains(SelectedCulvertRowForInspector))
 		{
 			SelectedCulvertRowForInspector = InspectorCulvertRows.FirstOrDefault();
+		}
+	}
+
+	private void SaveCurrentSheetOverrides()
+	{
+		if (string.IsNullOrEmpty(SelectedSheetName) || AllCulvertRows == null || AllCulvertRows.Count == 0) return;
+		var currentOverrides = AllCulvertRows
+			.Where(r => r.ParameterOverrides != null && r.ParameterOverrides.Count > 0)
+			.Select(r => new CulvertRowOverrideSaveDto
+			{
+				SheetName = SelectedSheetName,
+				LyTrinh = r.LyTrinh ?? string.Empty,
+				STT = r.STT,
+				Overrides = new Dictionary<string, string>(r.ParameterOverrides, StringComparer.OrdinalIgnoreCase)
+			}).ToList();
+		_overridesBySheet[SelectedSheetName] = currentOverrides;
+	}
+
+	private void RestoreCurrentSheetOverrides()
+	{
+		if (string.IsNullOrEmpty(SelectedSheetName) || !_overridesBySheet.TryGetValue(SelectedSheetName, out var savedList) || savedList == null) return;
+		foreach (var ov in savedList)
+		{
+			var row = AllCulvertRows.FirstOrDefault(r =>
+				(!string.IsNullOrEmpty(ov.LyTrinh) && string.Equals(r.LyTrinh?.Trim(), ov.LyTrinh.Trim(), StringComparison.OrdinalIgnoreCase))
+				|| r.STT == ov.STT);
+			if (row != null && ov.Overrides != null)
+			{
+				foreach (var kvp in ov.Overrides)
+				{
+					row.ParameterOverrides[kvp.Key] = kvp.Value;
+				}
+			}
 		}
 	}
 
@@ -1686,6 +1747,116 @@ public class MainViewModel : ViewModelBase
 			AvailableTargetScopesForTab04.Add("Bê tông lót");
 			AvailableTargetScopesForTab04.Add("Đá dăm đệm");
 		}
+
+		string defaultScope = AvailableTargetScopesForTab04.FirstOrDefault() ?? "Tất cả cấu kiện";
+		if (string.IsNullOrEmpty(_selectedTargetScopeForTab04) || !AvailableTargetScopesForTab04.Contains(_selectedTargetScopeForTab04))
+		{
+			SelectedTargetScopeForTab04 = defaultScope;
+		}
+		else
+		{
+			RefreshDisplayedCustomBimParameters();
+		}
+	}
+
+	public void RefreshDisplayedCustomBimParameters()
+	{
+		DisplayedCustomBimParameters.Clear();
+		string currentScope = SelectedTargetScopeForTab04 ?? "Tất cả cấu kiện";
+
+		EnsureDefaultParametersForScope(currentScope);
+
+		var matched = CustomBimParameters.Where(p =>
+			string.Equals(p.TargetScope, currentScope, StringComparison.OrdinalIgnoreCase)
+		).ToList();
+
+		foreach (var item in matched)
+		{
+			DisplayedCustomBimParameters.Add(item);
+		}
+
+		if (SelectedCustomBimParameter == null || !DisplayedCustomBimParameters.Contains(SelectedCustomBimParameter))
+		{
+			SelectedCustomBimParameter = DisplayedCustomBimParameters.FirstOrDefault();
+		}
+		UpdateCustomBimParameterPreviews();
+	}
+
+	private void EnsureDefaultParametersForScope(string scope)
+	{
+		if (string.IsNullOrWhiteSpace(scope)) return;
+		if (CustomBimParameters.Any(p => string.Equals(p.TargetScope, scope, StringComparison.OrdinalIgnoreCase))) return;
+
+		if (scope.StartsWith("Tất cả", StringComparison.OrdinalIgnoreCase))
+		{
+			AddDefaultBimParam(scope, "Loại công trình", "Constraints", "Giao thông", "Loại công trình hạ tầng / giao thông");
+			AddDefaultBimParam(scope, "Tên công trình", "Constraints", "Đường ven biển Đắk Lắk", "Tên dự án công trình");
+			AddDefaultBimParam(scope, "Hạng mục", "Constraints", "cụm Lý trình Km", "Hạng mục cống thoát nước");
+			AddDefaultBimParam(scope, "Lý trình", "Constraints", "{LyTrinh}", "Lý trình thiết kế cống");
+			AddDefaultBimParam(scope, "Phân nhóm cấu kiện", "Constraints", "{LoaiCong} {KhauDo}", "Phân nhóm chủng loại và khẩu độ");
+			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "TCDS.{STT_DOT}", "Tên mã hiệu cấu kiện");
+			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Đốt cống {STT_DOT}", "Mô tả chi tiết cấu kiện");
+			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+		}
+		else if (scope == "Tường đầu")
+		{
+			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Tường đầu cống {LyTrinh}", "Tên mã hiệu tường đầu");
+			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Tường đầu {LoaiCong} ({KhauDo})", "Mô tả tường đầu");
+			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+		}
+		else if (scope == "Tường cánh")
+		{
+			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Tường cánh cống {LyTrinh}", "Tên mã hiệu tường cánh");
+			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Tường cánh {LoaiCong} ({KhauDo})", "Mô tả tường cánh");
+			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+		}
+		else if (scope == "Sân cống")
+		{
+			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Sân cống {LyTrinh}", "Tên mã hiệu sân cống");
+			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Sân cống {LoaiCong} ({KhauDo})", "Mô tả sân cống");
+			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+		}
+		else if (scope == "Sân gia cố")
+		{
+			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Sân gia cố {LyTrinh}", "Tên mã hiệu sân gia cố");
+			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Sân gia cố {LoaiCong} ({KhauDo})", "Mô tả sân gia cố");
+			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+		}
+		else if (scope == "Bê tông lót")
+		{
+			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "BTL cống {LyTrinh}", "Bê tông lót móng cống");
+			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu bê tông lót");
+		}
+		else if (scope == "Đá dăm đệm")
+		{
+			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Đá dăm cống {LyTrinh}", "Lớp đá dăm đệm móng");
+			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đá dăm");
+		}
+		else if (scope.IndexOf("hố ga", StringComparison.OrdinalIgnoreCase) >= 0 || scope.IndexOf("Hố", StringComparison.OrdinalIgnoreCase) >= 0 || scope.IndexOf("Hộp", StringComparison.OrdinalIgnoreCase) >= 0)
+		{
+			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", scope + " cống {LyTrinh}", "Tên mã hiệu " + scope);
+			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+		}
+		else
+		{
+			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", scope + ".{STT_DOT}", "Tên mã hiệu " + scope);
+			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu cấu kiện");
+		}
+	}
+
+	private void AddDefaultBimParam(string scope, string name, string group, string valTemplate, string desc, bool isActive = true)
+	{
+		var item = new CustomBimParameterItem
+		{
+			IsActive = isActive,
+			ParamName = name,
+			RevitGroup = group,
+			TargetScope = scope,
+			ValueTemplate = valTemplate,
+			Description = desc
+		};
+		item.PropertyChanged += OnCustomBimParameterPropertyChanged;
+		CustomBimParameters.Add(item);
 	}
 
 	public void UpdateFilteredCulvertRowsForTab04()
@@ -1943,12 +2114,13 @@ public class MainViewModel : ViewModelBase
 			SyncMaterialsFromAssemblyComponents();
 			StartupLogger.Log("[VM] Step 4: SyncMaterialsFromAssemblyComponents DONE");
 
-			StartupLogger.Log("[VM] Step 5: ResetDefaultCustomBimParameters START");
-			ResetDefaultCustomBimParameters();
-			StartupLogger.Log("[VM] Step 5: ResetDefaultCustomBimParameters DONE");
+			StartupLogger.Log("[VM] Step 5: InitializeAllDefaultBimParameters START");
+			InitializeAllDefaultBimParameters();
+			StartupLogger.Log("[VM] Step 5: InitializeAllDefaultBimParameters DONE");
 
 			StartupLogger.Log("[VM] Step 6: UpdateAvailableTargetScopesForTab04 START");
 			UpdateAvailableTargetScopesForTab04();
+			RefreshDisplayedCustomBimParameters();
 			StartupLogger.Log("[VM] Step 6: UpdateAvailableTargetScopesForTab04 DONE");
 
 			StartupLogger.Log("[VM] Step 7: UpdateFilteredCulvertRowsForTab04 START");
@@ -2207,6 +2379,7 @@ public class MainViewModel : ViewModelBase
 			{
 				AllCulvertRows.Add(item);
 			}
+			RestoreCurrentSheetOverrides();
 			if (AllCulvertRows.Count > 0)
 			{
 				BatchFromSTT = AllCulvertRows.Min((CulvertRowData r) => r.STT);
@@ -4661,7 +4834,7 @@ public class MainViewModel : ViewModelBase
 
 	private void AddNewCustomBimParameter()
 	{
-		string text = SelectedCulvertTypeForTab04 ?? "Tất cả cấu kiện";
+		string text = SelectedTargetScopeForTab04 ?? "Tất cả cấu kiện";
 		if (text == "TẤT CẢ")
 		{
 			text = "Tất cả cấu kiện";
@@ -4677,6 +4850,7 @@ public class MainViewModel : ViewModelBase
 		};
 		customBimParameterItem.PropertyChanged += OnCustomBimParameterPropertyChanged;
 		CustomBimParameters.Add(customBimParameterItem);
+		DisplayedCustomBimParameters.Add(customBimParameterItem);
 		SelectedCustomBimParameter = customBimParameterItem;
 		UpdateCustomBimParameterPreviews();
 	}
@@ -4693,13 +4867,28 @@ public class MainViewModel : ViewModelBase
 	{
 		if (SelectedCustomBimParameter != null)
 		{
-			CustomBimParameters.Remove(SelectedCustomBimParameter);
-			SelectedCustomBimParameter = CustomBimParameters.FirstOrDefault();
+			var item = SelectedCustomBimParameter;
+			CustomBimParameters.Remove(item);
+			DisplayedCustomBimParameters.Remove(item);
+			SelectedCustomBimParameter = DisplayedCustomBimParameters.FirstOrDefault();
 			UpdateCustomBimParameterPreviews();
 		}
 	}
 
 	public void ResetDefaultCustomBimParameters()
+	{
+		string currentScope = SelectedTargetScopeForTab04 ?? "Tất cả cấu kiện";
+		var existing = CustomBimParameters.Where(p => string.Equals(p.TargetScope, currentScope, StringComparison.OrdinalIgnoreCase)).ToList();
+		foreach (var old in existing)
+		{
+			old.PropertyChanged -= OnCustomBimParameterPropertyChanged;
+			CustomBimParameters.Remove(old);
+		}
+		EnsureDefaultParametersForScope(currentScope);
+		RefreshDisplayedCustomBimParameters();
+	}
+
+	public void InitializeAllDefaultBimParameters()
 	{
 		CustomBimParameters.Clear();
 		foreach (CustomBimParameterItem item in new List<CustomBimParameterItem>
@@ -5013,6 +5202,9 @@ public class MainViewModel : ViewModelBase
 				}
 				try
 				{
+					SaveCurrentSheetOverrides();
+					UpdateInspectorCulvertRows();
+					RefreshInspectorParameterMappings();
 					UpdatePreviewGeometry();
 				}
 				catch
@@ -5060,12 +5252,39 @@ public class MainViewModel : ViewModelBase
 				{
 					System.Windows.MessageBox.Show($"Đã tự động cập nhật thành công thông tin BIM và Vật liệu cho {result.SuccessCount} cống ({result.TotalElementsUpdated} cấu kiện) đã dựng trong Revit!", "Cập nhật thành công", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 				}
+				try
+				{
+					SaveCurrentSheetOverrides();
+					UpdateInspectorCulvertRows();
+					RefreshInspectorParameterMappings();
+					UpdatePreviewGeometry();
+				}
+				catch { }
 			}));
 		});
 		_externalEvent.Raise();
 	}
 
 	#region Project State Persistence (LÆ°u & KhÃ´i phá»¥c cáº¥u hÃ¬nh dá»± Ã¡n)
+	private List<CulvertRowOverrideSaveDto> GetAllSheetOverridesForExport()
+	{
+		SaveCurrentSheetOverrides();
+		var list = _overridesBySheet.Values.SelectMany(x => x).ToList();
+		if (!list.Any() && AllCulvertRows != null && AllCulvertRows.Count > 0)
+		{
+			list = AllCulvertRows
+				.Where(r => r.ParameterOverrides != null && r.ParameterOverrides.Count > 0)
+				.Select(r => new CulvertRowOverrideSaveDto
+				{
+					SheetName = SelectedSheetName ?? string.Empty,
+					LyTrinh = r.LyTrinh ?? string.Empty,
+					STT = r.STT,
+					Overrides = new Dictionary<string, string>(r.ParameterOverrides, StringComparer.OrdinalIgnoreCase)
+				}).ToList();
+		}
+		return list;
+	}
+
 	public ProjectStateConfig ExportCurrentState()
 	{
 		return new ProjectStateConfig
@@ -5121,14 +5340,7 @@ public class MainViewModel : ViewModelBase
 				DataType = m.DataType,
 				IsSelected = m.IsSelected
 			}).ToList(),
-			CulvertRowOverrides = AllCulvertRows
-				.Where(r => r.ParameterOverrides != null && r.ParameterOverrides.Count > 0)
-				.Select(r => new CulvertRowOverrideSaveDto
-				{
-					LyTrinh = r.LyTrinh ?? string.Empty,
-					STT = r.STT,
-					Overrides = new Dictionary<string, string>(r.ParameterOverrides, StringComparer.OrdinalIgnoreCase)
-				}).ToList(),
+			CulvertRowOverrides = GetAllSheetOverridesForExport(),
 			Materials = ComponentMaterials.Select((CulvertMaterialItem m) => new MaterialSaveDto
 			{
 				GroupType = m.GroupType,
@@ -5342,24 +5554,22 @@ public class MainViewModel : ViewModelBase
 				}
 				LoadExcelData();
 
+				_overridesBySheet.Clear();
 				if (state.CulvertRowOverrides != null && state.CulvertRowOverrides.Count > 0)
 				{
 					foreach (var ov in state.CulvertRowOverrides)
 					{
-						var row = AllCulvertRows.FirstOrDefault(r =>
-							(!string.IsNullOrEmpty(ov.LyTrinh) && string.Equals(r.LyTrinh?.Trim(), ov.LyTrinh.Trim(), StringComparison.OrdinalIgnoreCase))
-							|| r.STT == ov.STT);
-						if (row != null && ov.Overrides != null)
-						{
-							foreach (var kvp in ov.Overrides)
-							{
-								row.ParameterOverrides[kvp.Key] = kvp.Value;
-							}
-						}
+						string sheet = string.IsNullOrEmpty(ov.SheetName) ? (state.SelectedSheetName ?? "") : ov.SheetName;
+						if (!_overridesBySheet.ContainsKey(sheet))
+							_overridesBySheet[sheet] = new List<CulvertRowOverrideSaveDto>();
+						_overridesBySheet[sheet].Add(ov);
 					}
+					RestoreCurrentSheetOverrides();
 				}
 				UpdateInspectorCulvertRows();
 				RefreshInspectorParameterMappings();
+				UpdateAvailableTargetScopesForTab04();
+				RefreshDisplayedCustomBimParameters();
 			}
 		}
 		catch (Exception ex)

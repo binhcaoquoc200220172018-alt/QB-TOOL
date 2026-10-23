@@ -1110,7 +1110,7 @@
                                         </Grid>
 
                                         <!-- Dòng 2: Nút Sao chép sang cùng cụm -->
-                                        <Button Grid.Row="2" Content="📋 SAO CHÉP GIÁ TRỊ ĐÃ NHẬP SANG CÙNG CỤM (CỬA XẢ / SÂN GIA CỐ)" Command="{Binding CopyCustomParamsToOtherComponentsCommand}" Padding="8,3" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" HorizontalAlignment="Stretch" ToolTip="Sao chép các giá trị số liệu bạn đã nhập ở cột 'Giá trị tùy biến' sang các cấu kiện khác trong cùng cụm (Cửa xả / Sân gia cố). Chỉ sao chép giá trị số liệu, không sao chép tham số và giữ nguyên các biến Yes/No."/>
+                                        <Button Grid.Row="2" Content="📋 SAO CHÉP GIÁ TRỊ ĐÃ NHẬP SANG CÙNG CỤM (CỬA XẢ / SÂN GIA CỐ)" Command="{Binding CopyCustomParamsToOtherComponentsCommand}" Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}" Padding="8,3" Background="#0284C7" BorderBrush="#38BDF8" Foreground="#FFF" FontWeight="Bold" HorizontalAlignment="Stretch" ToolTip="Sao chép các giá trị số liệu bạn đã nhập ở cột 'Giá trị tùy biến' sang các cấu kiện khác trong cùng cụm (Cửa xả / Sân gia cố). Chỉ sao chép giá trị số liệu, không sao chép tham số và giữ nguyên các biến Yes/No."/>
                                     </Grid>
                                 </Border>
 
@@ -1402,7 +1402,7 @@
                                             </Button.Style>
                                         </Button>
 
-                                        <Button Content="📦 CỐNG ĐÚC SẴN" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="CỐNG ĐÚC SẴN" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
+                                        <Button Content="📦 CỐNG ĐÚC SẴN" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="CỐNG ĐÚC SẴN" Margin="0,0,4,0" Padding="8,4" FontSize="11.5" Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                     <Style.Triggers>
@@ -1417,7 +1417,7 @@
                                             </Button.Style>
                                         </Button>
 
-                                        <Button Content="🏗️ CỐNG ĐỔ TẠI CHỖ" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="CỐNG ĐỔ TẠI CHỖ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
+                                        <Button Content="🏗️ CỐNG ĐỔ TẠI CHỖ" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="CỐNG ĐỔ TẠI CHỖ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5" Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                     <Style.Triggers>
@@ -1432,7 +1432,7 @@
                                             </Button.Style>
                                         </Button>
 
-                                        <Button Content="🌊 CỬA XẢ" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="CỬA XẢ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
+                                        <Button Content="🌊 CỬA XẢ" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="CỬA XẢ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5" Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                     <Style.Triggers>
@@ -1447,7 +1447,7 @@
                                             </Button.Style>
                                         </Button>
 
-                                        <Button Content="🛡️ SÂN GIA CỐ" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="SÂN GIA CỐ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
+                                        <Button Content="🛡️ SÂN GIA CỐ" Command="{Binding SetCulvertTypeForTab03Command}" CommandParameter="SÂN GIA CỐ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5" Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
                                                     <Style.Triggers>
@@ -1771,273 +1771,205 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- HÀNG 0: THANH CHỌN CỤM CẤU KIỆN: CỐNG ĐÚC SẴN, CỐNG ĐỔ TẠI CHỖ, CỬA XẢ, SÂN GIA CỐ, HỐ GA (HỘP NỐI), CỐNG KỸ THUẬT, TẤT CẢ -->
-                    <Border Grid.Row="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
+                    <!-- HÀNG 0: THANH CHỌN CỤM CẤU KIỆN & DROPDOWN CẤU KIỆN TRONG CỤM (NÚT SỔ RA Ở TRÊN) -->
+                    <Border Grid.Row="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="6,5" Margin="0,0,0,6">
                         <StackPanel>
+                            <!-- Dòng 1: Chọn Cụm Cấu Kiện -->
                             <DockPanel LastChildFill="False">
-                            <WrapPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="🎯 Chọn cụm cấu kiện:" VerticalAlignment="Center" Foreground="{StaticResource CyanLight}" FontWeight="Bold" Margin="0,0,8,0"/>
+                                <WrapPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🎯 Chọn cụm cấu kiện:" VerticalAlignment="Center" Foreground="{StaticResource CyanLight}" FontWeight="Bold" Margin="0,0,8,0"/>
 
-                                <Button Content="📁 TẤT CẢ" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="TẤT CẢ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
-                                    <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="TẤT CẢ">
-                                                    <Setter Property="Background" Value="#0284C7"/>
-                                                    <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                    <Setter Property="FontWeight" Value="Bold"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
+                                    <Button Content="📁 TẤT CẢ" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="TẤT CẢ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="TẤT CẢ">
+                                                        <Setter Property="Background" Value="#0284C7"/>
+                                                        <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
 
-                                <Button Content="📦 CỐNG ĐÚC SẴN" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="CỐNG ĐÚC SẴN" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
-                                    <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="CỐNG ĐÚC SẴN">
-                                                    <Setter Property="Background" Value="#0284C7"/>
-                                                    <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                    <Setter Property="FontWeight" Value="Bold"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
+                                    <Button Content="📦 CỐNG ĐÚC SẴN" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="CỐNG ĐÚC SẴN" Margin="0,0,4,0" Padding="8,4" FontSize="11.5"
+                                            Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="CỐNG ĐÚC SẴN">
+                                                        <Setter Property="Background" Value="#0284C7"/>
+                                                        <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
 
-                                <Button Content="🏗️ CỐNG ĐỔ TẠI CHỖ" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="CỐNG ĐỔ TẠI CHỖ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
-                                    <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsCastInPlaceTab04Active}" Value="True">
-                                                    <Setter Property="Background" Value="#0284C7"/>
-                                                    <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                    <Setter Property="FontWeight" Value="Bold"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
+                                    <Button Content="🏗️ CỐNG ĐỔ TẠI CHỖ" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="CỐNG ĐỔ TẠI CHỖ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5"
+                                            Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsCastInPlaceTab04Active}" Value="True">
+                                                        <Setter Property="Background" Value="#0284C7"/>
+                                                        <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
 
-                                <Button Content="🌊 CỬA XẢ" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="CỬA XẢ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
-                                    <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="CỬA XẢ">
-                                                    <Setter Property="Background" Value="#0284C7"/>
-                                                    <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                    <Setter Property="FontWeight" Value="Bold"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
+                                    <Button Content="🌊 CỬA XẢ" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="CỬA XẢ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5"
+                                            Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="CỬA XẢ">
+                                                        <Setter Property="Background" Value="#0284C7"/>
+                                                        <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
 
-                                <Button Content="🛡️ SÂN GIA CỐ" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="SÂN GIA CỐ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
-                                    <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="SÂN GIA CỐ">
-                                                    <Setter Property="Background" Value="#0284C7"/>
-                                                    <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                    <Setter Property="FontWeight" Value="Bold"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
+                                    <Button Content="🛡️ SÂN GIA CỐ" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="SÂN GIA CỐ" Margin="0,0,4,0" Padding="8,4" FontSize="11.5"
+                                            Visibility="{Binding IsNormalCulvertMode, Converter={StaticResource BoolToVis}}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="SÂN GIA CỐ">
+                                                        <Setter Property="Background" Value="#0284C7"/>
+                                                        <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
 
-                                <Button Content="🕳️ HỐ GA (HỘP NỐI)" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="HỐ GA (HỘP NỐI)" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
-                                    <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="HỐ GA (HỘP NỐI)">
-                                                    <Setter Property="Background" Value="#0284C7"/>
-                                                    <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                    <Setter Property="FontWeight" Value="Bold"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
+                                    <Button Content="🕳️ HỐ GA (HỘP NỐI)" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="HỐ GA (HỘP NỐI)" Margin="0,0,4,0" Padding="8,4" FontSize="11.5">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="HỐ GA (HỘP NỐI)">
+                                                        <Setter Property="Background" Value="#0284C7"/>
+                                                        <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
 
-                                <Button Content="⚡ CỐNG KỸ THUẬT" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="CỐNG KỸ THUẬT" Margin="0,0,4,0" Padding="8,4" FontSize="11.5"
-                                        Visibility="{Binding IsTechnicalCulvertMode, Converter={StaticResource BoolToVis}}">
-                                    <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="CỐNG KỸ THUẬT">
-                                                    <Setter Property="Background" Value="#0284C7"/>
-                                                    <Setter Property="BorderBrush" Value="#38BDF8"/>
-                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                    <Setter Property="FontWeight" Value="Bold"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
-                            </WrapPanel>
-                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="Đang chọn: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                <TextBlock Text="{Binding SelectedCulvertTypeForTab04}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11"/>
-                                <TextBlock Text=" (" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                                <TextBlock Text="{Binding FilteredCulvertRowsForTab04.Count}" Foreground="{StaticResource TextWhite}" FontWeight="Bold" FontSize="11"/>
-                                <TextBlock Text=" cống)" Foreground="{StaticResource TextMuted}" FontSize="11"/>
-                            </StackPanel>
-                        </DockPanel>
+                                    <Button Content="⚡ CỐNG KỸ THUẬT" Command="{Binding SetCulvertTypeForTab04Command}" CommandParameter="CỐNG KỸ THUẬT" Margin="0,0,4,0" Padding="8,4" FontSize="11.5"
+                                            Visibility="{Binding IsTechnicalCulvertMode, Converter={StaticResource BoolToVis}}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CulvertPresetButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedCulvertTypeForTab04}" Value="CỐNG KỸ THUẬT">
+                                                        <Setter Property="Background" Value="#0284C7"/>
+                                                        <Setter Property="BorderBrush" Value="#38BDF8"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </WrapPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Cụm đang chọn: " Foreground="{StaticResource TextMuted}" FontSize="11"/>
+                                    <TextBlock Text="{Binding SelectedCulvertTypeForTab04}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11"/>
+                                </StackPanel>
+                            </DockPanel>
 
-                        <!-- DÒNG LỌC CHI TIẾT LOẠI CỐNG ĐỔ TẠI CHỖ (TAB 04) -->
-                        <Border Visibility="{Binding IsCastInPlaceTab04Active, Converter={StaticResource BoolToVis}}" 
-                                Background="#102035" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="3" Padding="6,3" Margin="0,5,0,0">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="Loại cống đổ tại chỗ:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <ComboBox ItemsSource="{Binding CastInPlaceProfiles}" 
-                                          SelectedItem="{Binding SelectedCastInPlaceProfileForTab04}"
-                                          ToolTip="Chọn loại cống đổ tại chỗ cần quản lý tham số BIM động"
-                                          Height="25" VerticalContentAlignment="Center" MinWidth="200">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="🔷 " Foreground="#38BDF8"/>
-                                                <TextBlock Text="{Binding TypeName}" Foreground="#FFFFFF" FontWeight="Bold"/>
-                                                <TextBlock Text=" (Cống hộp đổ tại chỗ)" Foreground="{StaticResource TextMuted}" Margin="6,0,0,0" FontSize="11"/>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </Border>
-
-                    <!-- HAI BẢNG CHIA ĐÔI THEO HÀNG DỌC CÓ SPLITTER (NHƯ TAB 02) -->
-                    <Grid Grid.Row="1">
-                        <Grid.ColumnDefinitions>
-                            <!-- Bảng 1: Quản lý tham số BIM tùy biến -->
-                            <ColumnDefinition Width="1.2*" MinWidth="480"/>
-                            <!-- GridSplitter kéo thả giữa 2 bảng dọc -->
-                            <ColumnDefinition Width="6"/>
-                            <!-- Bảng 2: Bảng xem trước cống & thông tin gán -->
-                            <ColumnDefinition Width="*" MinWidth="400"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- BẢNG 1 (TRÁI): QUẢN LÝ THAM SỐ BIM TÙY BIẾN THEO TIÊU CHUẨN DỰ ÁN -->
-                        <GroupBox Header="1. QUẢN LÝ THAM SỐ BIM TÙY BIẾN THEO TIÊU CHUẨN DỰ ÁN" Grid.Column="0">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-
-                                <!-- Nút Thao tác Tab 04 -->
-                                <DockPanel Grid.Row="0" Margin="0,0,0,5">
-                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                                        <Button Content="🏷️ CẬP NHẬT THÔNG TIN BIM VÀO REVIT" 
-                                                Command="{Binding UpdateBimParametersOnlyCommand}" 
-                                                Padding="10,4" Background="#059669" BorderBrush="#34D399" Foreground="#FFFFFF" FontWeight="Bold" FontSize="11.5"
-                                                ToolTip="Cập nhật nhanh thông tin BIM vào các cấu kiện đã có trong file Revit mà không cần dựng lại 3D!"/>
+                            <!-- Dòng 2: NÚT SỔ RA CHỌN CẤU KIỆN CHI TIẾT TRONG CỤM (YÊU CẦU CỦA ANH) -->
+                            <Border Background="#0F172A" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="3" Padding="8,5" Margin="0,6,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="340"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                                        <TextBlock Text="🔽 Cấu kiện chi tiết trong cụm:" Foreground="{StaticResource MintLight}" FontWeight="Bold" VerticalAlignment="Center"/>
                                     </StackPanel>
-                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <Button Content="➕ Thêm Parameter" Command="{Binding AddCustomBimParameterCommand}" Margin="0,0,4,0" Padding="8,3" Background="{StaticResource MintDark}" Foreground="#FFF" FontSize="11.5"/>
-                                        <Button Content="➖ Xóa" Command="{Binding RemoveCustomBimParameterCommand}" Margin="0,0,4,0" Padding="8,3" FontSize="11.5"/>
-                                        <Button Content="🔄 Mặc định (8 dòng)" Command="{Binding ResetDefaultBimParametersCommand}" Margin="0,0,4,0" Padding="8,3" FontSize="11.5" BorderBrush="{StaticResource CyanDark}"/>
-                                        <Button Content="📋 Đồng bộ tất cả" Command="{Binding CopyBimParametersToScopeCommand}" Padding="8,3" FontSize="11.5" BorderBrush="{StaticResource NavyBorder}" ToolTip="Áp dụng các tham số này cho toàn bộ các cấu kiện"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableTargetScopesForTab04}"
+                                              SelectedItem="{Binding SelectedTargetScopeForTab04, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Height="27" VerticalContentAlignment="Center" Background="#1E293B" Foreground="#38BDF8" FontWeight="SemiBold"
+                                              ToolTip="Chọn cấu kiện trong cụm để gán thông số BIM phi hình học riêng biệt"/>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                        <TextBlock Text="Đang quản lý thông số cho: " Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
+                                        <TextBlock Text="{Binding SelectedTargetScopeForTab04}" Foreground="{StaticResource MintLight}" FontWeight="Bold" FontSize="11.5"/>
+                                        <TextBlock Text=" (" Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
+                                        <TextBlock Text="{Binding DisplayedCustomBimParameters.Count}" Foreground="#FFFFFF" FontWeight="Bold" FontSize="11.5"/>
+                                        <TextBlock Text=" tham số)" Foreground="{StaticResource TextMuted}" FontSize="11.5"/>
                                     </StackPanel>
-                                </DockPanel>
+                                </Grid>
+                            </Border>
 
-                                <!-- DataGrid danh sách BIM Parameters có thanh cuộn 2 chiều - Chiếm trọn chiều cao (*) -->
-                                <DataGrid Grid.Row="1" ItemsSource="{Binding CustomBimParameters}" SelectedItem="{Binding SelectedCustomBimParameter}"
-                                          AutoGenerateColumns="False"
-                                          CanUserAddRows="False"
-                                          CanUserResizeColumns="True"
-                                          HorizontalScrollBarVisibility="Auto"
-                                          VerticalScrollBarVisibility="Auto"
-                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                          ScrollViewer.CanContentScroll="True">
-                                    <DataGrid.Columns>
-                                        <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsActive}" Width="45" MinWidth="40"/>
-                                        <DataGridTextColumn Header="Tên Parameter Revit" Binding="{Binding ParamName, UpdateSourceTrigger=PropertyChanged}" Width="150" MinWidth="130"/>
-                                        
-                                        <!-- Cột Nhóm Revit (Mặc định Constraints) -->
-                                        <DataGridTemplateColumn Header="Nhóm Revit" Width="115" MinWidth="100">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding RevitGroup}" VerticalAlignment="Center" Margin="3,0" Foreground="{StaticResource CyanLight}" FontWeight="SemiBold"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                            <DataGridTemplateColumn.CellEditingTemplate>
-                                                <DataTemplate>
-                                                    <ComboBox ItemsSource="{x:Static models:CustomBimParameterItem.AvailableRevitGroups}"
-                                                              SelectedItem="{Binding RevitGroup, UpdateSourceTrigger=PropertyChanged}"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellEditingTemplate>
-                                        </DataGridTemplateColumn>
+                            <!-- DÒNG LỌC CHI TIẾT LOẠI CỐNG ĐỔ TẠI CHỖ (TAB 04 NẾU CÓ) -->
+                            <Border Visibility="{Binding IsCastInPlaceTab04Active, Converter={StaticResource BoolToVis}}" 
+                                    Background="#102035" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="3" Padding="6,3" Margin="0,5,0,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Loại cống đổ tại chỗ:" Foreground="{StaticResource CyanLight}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <ComboBox ItemsSource="{Binding CastInPlaceProfiles}" 
+                                              SelectedItem="{Binding SelectedCastInPlaceProfileForTab04}"
+                                              ToolTip="Chọn loại cống đổ tại chỗ cần quản lý tham số BIM động"
+                                              Height="25" VerticalContentAlignment="Center" MinWidth="200">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock Text="🔷 " Foreground="#38BDF8"/>
+                                                    <TextBlock Text="{Binding TypeName}" Foreground="#FFFFFF" FontWeight="Bold"/>
+                                                    <TextBlock Text=" (Cống hộp đổ tại chỗ)" Foreground="{StaticResource TextMuted}" Margin="6,0,0,0" FontSize="11"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
 
-                                        <!-- Cấu kiện áp dụng -->
-                                        <DataGridTemplateColumn Header="Cấu kiện áp dụng" Width="140" MinWidth="120">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding TargetScope}" VerticalAlignment="Center" Margin="3,0" Foreground="#E0E7FF"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                            <DataGridTemplateColumn.CellEditingTemplate>
-                                                <DataTemplate>
-                                                    <ComboBox ItemsSource="{Binding DataContext.AvailableTargetScopesForTab04, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                              SelectedItem="{Binding TargetScope, UpdateSourceTrigger=PropertyChanged}"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellEditingTemplate>
-                                        </DataGridTemplateColumn>
+                    <!-- BẢNG QUẢN LÝ THAM SỐ BIM (CHIẾM TRỌN 100% CHIỀU RỘNG, BỎ BẢNG XEM TRƯỚC VÀ CỘT CẤU KIỆN ÁP DỤNG) -->
+                    <GroupBox Header="QUẢN LÝ THÔNG SỐ VÀ THÔNG TIN BIM (PHI HÌNH HỌC)" Grid.Row="1">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                                        <!-- Menu Chèn nhanh Smart Tag -->
-                                        <DataGridTemplateColumn Header="Chèn Smart Tag" Width="135" MinWidth="110">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <ComboBox ItemsSource="{x:Static models:CustomBimParameterItem.AvailableSmartTags}"
-                                                              SelectedItem="{Binding SelectedSmartTagToInsert, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                              ToolTip="Chọn thẻ để chèn nhanh vào ô giá trị">
-                                                        <ComboBox.ItemTemplate>
-                                                            <DataTemplate>
-                                                                <TextBlock Text="{Binding}" Foreground="{StaticResource CyanLight}"/>
-                                                            </DataTemplate>
-                                                        </ComboBox.ItemTemplate>
-                                                    </ComboBox>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
+                            <!-- Nút Thao tác Tab 04 -->
+                            <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                                    <Button Content="🏷️ CẬP NHẬT THÔNG TIN BIM VÀO REVIT" 
+                                            Command="{Binding UpdateBimParametersOnlyCommand}" 
+                                            Padding="12,5" Background="#059669" BorderBrush="#34D399" Foreground="#FFFFFF" FontWeight="Bold" FontSize="12"
+                                            ToolTip="Cập nhật nhanh thông tin BIM vào các cấu kiện đã có trong file Revit mà không cần dựng lại 3D!"/>
+                                </StackPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="➕ Thêm Parameter" Command="{Binding AddCustomBimParameterCommand}" Margin="0,0,5,0" Padding="10,4" Background="{StaticResource MintDark}" Foreground="#FFF" FontSize="11.5"/>
+                                    <Button Content="➖ Xóa" Command="{Binding RemoveCustomBimParameterCommand}" Margin="0,0,5,0" Padding="10,4" FontSize="11.5"/>
+                                    <Button Content="🔄 Mặc định" Command="{Binding ResetDefaultBimParametersCommand}" Margin="0,0,5,0" Padding="10,4" FontSize="11.5" BorderBrush="{StaticResource CyanDark}"/>
+                                    <Button Content="📋 Đồng bộ tất cả" Command="{Binding CopyBimParametersToScopeCommand}" Padding="10,4" FontSize="11.5" BorderBrush="{StaticResource NavyBorder}" ToolTip="Áp dụng các tham số này cho toàn bộ các cấu kiện"/>
+                                </StackPanel>
+                            </DockPanel>
 
-                                        <!-- Giá trị / Cú pháp gán -->
-                                        <DataGridTextColumn Header="Giá trị / Cú pháp gán (Smart Tag)" Binding="{Binding ValueTemplate, UpdateSourceTrigger=PropertyChanged}" Width="190" MinWidth="150"/>
-
-                                        <!-- Xem trước kết quả mẫu (Preview) -->
-                                        <DataGridTemplateColumn Header="Xem trước mẫu" Width="180" MinWidth="140">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding PreviewValue}" Foreground="#34D399" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4,0" ToolTip="Kết quả diễn giải mẫu theo cống"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
-
-                                        <DataGridTextColumn Header="Ghi chú" Binding="{Binding Description}" Width="150" MinWidth="100"/>
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </Grid>
-                        </GroupBox>
-
-                        <!-- SPLITTER GIỮA 2 BẢNG (CHIA DỌC TRÁI - PHẢI NHƯ TAB 02) -->
-                        <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Center" VerticalAlignment="Stretch" 
-                                      Background="{StaticResource NavyBorder}" Cursor="SizeWE" ShowsPreview="True"/>
-
-                        <!-- BẢNG 2 (PHẢI): BẢNG XEM TRƯỚC THÔNG TIN BIM THEO LÝ TRÌNH CỐNG -->
-                        <GroupBox Header="2. BẢNG XEM TRƯỚC THÔNG TIN BIM THEO LÝ TRÌNH CỐNG" Grid.Column="2" Margin="2,0,0,0">
-                            <DataGrid ItemsSource="{Binding FilteredCulvertRowsForTab04}"
+                            <!-- DataGrid danh sách BIM Parameters - Chiếm trọn 100% chiều rộng -->
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding DisplayedCustomBimParameters}" SelectedItem="{Binding SelectedCustomBimParameter}"
                                       AutoGenerateColumns="False"
                                       CanUserAddRows="False"
                                       CanUserResizeColumns="True"
@@ -2047,21 +1979,58 @@
                                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                                       ScrollViewer.CanContentScroll="True">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" Width="60" MinWidth="55"/>
-                                    <DataGridTextColumn Header="Lý trình" Binding="{Binding LyTrinh}" Width="120" MinWidth="110"/>
-                                    <DataGridTextColumn Header="Loại cống" Binding="{Binding LoaiCong}" Width="120" MinWidth="110"/>
-                                    <DataGridTextColumn Header="Khẩu độ" Binding="{Binding KhauDo}" Width="110" MinWidth="100"/>
-                                    <DataGridTextColumn Header="Cao độ TL Z1 (m)" Binding="{Binding Z1, StringFormat={}{0:0.000}}" Width="130" MinWidth="115"/>
-                                    <DataGridTextColumn Header="Cao độ HL Z2 (m)" Binding="{Binding Z2, StringFormat={}{0:0.000}}" Width="130" MinWidth="115"/>
-                                    <DataGridTextColumn Header="Tọa độ X1 (m)" Binding="{Binding X1, StringFormat={}{0:0.000}}" Width="120" MinWidth="110"/>
-                                    <DataGridTextColumn Header="Tọa độ Y1 (m)" Binding="{Binding Y1, StringFormat={}{0:0.000}}" Width="120" MinWidth="110"/>
-                                    <DataGridTextColumn Header="Độ dốc (%)" Binding="{Binding DoDoc, StringFormat={}{0:0.00}}" Width="105" MinWidth="95"/>
-                                    <DataGridTextColumn Header="Góc xoay (°)" Binding="{Binding GocXoay, StringFormat={}{0:0.00}}" Width="105" MinWidth="95"/>
-                                    <DataGridTextColumn Header="Trạng thái" Binding="{Binding StatusNote}" Width="240" MinWidth="200"/>
+                                    <DataGridCheckBoxColumn Header="Dùng" Binding="{Binding IsActive}" Width="50" MinWidth="45"/>
+                                    <DataGridTextColumn Header="Tên Parameter Revit" Binding="{Binding ParamName, UpdateSourceTrigger=PropertyChanged}" Width="180" MinWidth="140" FontWeight="SemiBold"/>
+                                    
+                                    <!-- Cột Nhóm Revit (Mặc định Constraints) -->
+                                    <DataGridTemplateColumn Header="Nhóm Revit" Width="130" MinWidth="110">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding RevitGroup}" VerticalAlignment="Center" Margin="4,0" Foreground="{StaticResource CyanLight}" FontWeight="SemiBold"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                        <DataGridTemplateColumn.CellEditingTemplate>
+                                            <DataTemplate>
+                                                <ComboBox ItemsSource="{x:Static models:CustomBimParameterItem.AvailableRevitGroups}"
+                                                          SelectedItem="{Binding RevitGroup, UpdateSourceTrigger=PropertyChanged}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellEditingTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <!-- Menu Chèn nhanh Smart Tag -->
+                                    <DataGridTemplateColumn Header="Chèn Smart Tag" Width="145" MinWidth="120">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox ItemsSource="{x:Static models:CustomBimParameterItem.AvailableSmartTags}"
+                                                          SelectedItem="{Binding SelectedSmartTagToInsert, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          ToolTip="Chọn thẻ để chèn nhanh vào ô giá trị">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding}" Foreground="{StaticResource CyanLight}"/>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <!-- Giá trị / Cú pháp gán chiếm toàn bộ phần còn lại (*) -->
+                                    <DataGridTextColumn Header="Giá trị / Cú pháp gán (Smart Tag)" Binding="{Binding ValueTemplate, UpdateSourceTrigger=PropertyChanged}" Width="*" MinWidth="200"/>
+
+                                    <!-- Xem trước kết quả mẫu (Preview) -->
+                                    <DataGridTemplateColumn Header="Xem trước mẫu" Width="200" MinWidth="150">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding PreviewValue}" Foreground="#34D399" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4,0" ToolTip="Kết quả diễn giải mẫu theo cống"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <DataGridTextColumn Header="Ghi chú" Binding="{Binding Description}" Width="180" MinWidth="120"/>
                                 </DataGrid.Columns>
                             </DataGrid>
-                        </GroupBox>
-                    </Grid>
+                        </Grid>
+                    </GroupBox>
                 </Grid>
             </TabItem>
         </TabControl>

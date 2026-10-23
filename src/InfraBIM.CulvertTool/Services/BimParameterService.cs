@@ -148,15 +148,75 @@ namespace InfraBIM.CulvertTool.Services
         {
             if (elem == null || customParams == null) return;
 
-            foreach (var cp in customParams)
-            {
-                if (!cp.IsActive || string.IsNullOrWhiteSpace(cp.ParamName)) continue;
+            // Sắp xếp: scope chung ("Tất cả...") áp dụng trước, scope cấu kiện chi tiết áp dụng sau để ghi đè chuẩn xác
+            var sortedParams = customParams
+                .Where(cp => cp.IsActive && !string.IsNullOrWhiteSpace(cp.ParamName))
+                .OrderBy(cp => (string.IsNullOrWhiteSpace(cp.TargetScope) || cp.TargetScope.Equals("Tất cả cấu kiện", StringComparison.OrdinalIgnoreCase)) ? 0 
+                             : cp.TargetScope.StartsWith("Tất cả", StringComparison.OrdinalIgnoreCase) ? 1 : 2);
 
+            foreach (var cp in sortedParams)
+            {
                 // Kiểm tra phạm vi áp dụng (hỗ trợ "Tất cả...", hoặc khớp tên cụm/cấu kiện)
                 bool isAllScope = string.IsNullOrWhiteSpace(cp.TargetScope) ||
-                                  cp.TargetScope.StartsWith("Tất cả", StringComparison.OrdinalIgnoreCase);
+                                  cp.TargetScope.Equals("Tất cả cấu kiện", StringComparison.OrdinalIgnoreCase);
 
-                if (!isAllScope &&
+                bool matchesCluster = false;
+                if (!isAllScope && cp.TargetScope.StartsWith("Tất cả cấu kiện ", StringComparison.OrdinalIgnoreCase))
+                {
+                    string cluster = cp.TargetScope.Substring("Tất cả cấu kiện ".Length).Trim();
+                    if (cluster.IndexOf("cửa xả", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        (elementScope.IndexOf("cửa xả", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         elementScope.IndexOf("Tường", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         elementScope.IndexOf("Sân cống", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         elementScope.IndexOf("Bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         elementScope.IndexOf("Đá dăm", StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        matchesCluster = true;
+                    }
+                    else if (cluster.IndexOf("sân gia cố", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                             (elementScope.IndexOf("sân gia cố", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        matchesCluster = true;
+                    }
+                    else if (cluster.IndexOf("hố ga", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                             (elementScope.IndexOf("hố ga", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Cổ giếng", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Khuôn hầm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Nắp đan", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        matchesCluster = true;
+                    }
+                    else if (cluster.IndexOf("cống kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                             (elementScope.IndexOf("kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Hộp nối", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Đá dăm", StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        matchesCluster = true;
+                    }
+                    else if (cluster.IndexOf("đúc sẵn", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                             (elementScope.IndexOf("đúc sẵn", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Thân cống", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Đá dăm", StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        matchesCluster = true;
+                    }
+                    else if (cluster.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                             (elementScope.IndexOf("liên", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Thân cống", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Bê tông lót", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              elementScope.IndexOf("Đá dăm", StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        matchesCluster = true;
+                    }
+                }
+
+                if (!isAllScope && !matchesCluster &&
                     !cp.TargetScope.Contains(elementScope, StringComparison.OrdinalIgnoreCase) &&
                     !elementScope.Contains(cp.TargetScope, StringComparison.OrdinalIgnoreCase))
                     continue;

@@ -102,6 +102,7 @@ namespace InfraBIM.CulvertTool.Models
 
     public class CulvertRowOverrideSaveDto
     {
+        public string SheetName { get; set; } = string.Empty;
         public string LyTrinh { get; set; } = string.Empty;
         public int STT { get; set; }
         public Dictionary<string, string> Overrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
