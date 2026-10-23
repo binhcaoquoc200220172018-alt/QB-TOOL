@@ -134,6 +134,25 @@ namespace InfraBIM.CulvertTool.Models
         public string ActiveParamValue { get; set; } = string.Empty;
         public Dictionary<string, string> ParameterOverrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+        public const string NoOverrideSentinel = "__INFRA_NO_OVERRIDE__";
+
+        public bool HasParamOverride(string? paramName)
+        {
+            return HasParamOverride(null, null, paramName);
+        }
+
+        public bool HasParamOverride(string? categoryName, string? paramName)
+        {
+            return HasParamOverride(null, categoryName, paramName);
+        }
+
+        public bool HasParamOverride(string? profileName, string? categoryName, string? paramName)
+        {
+            if (string.IsNullOrEmpty(paramName)) return false;
+            string val = GetParamOverride(profileName, categoryName, paramName, NoOverrideSentinel);
+            return !string.Equals(val, NoOverrideSentinel, StringComparison.Ordinal);
+        }
+
         public string GetParamOverride(string? paramName, string defaultValue)
         {
             return GetParamOverride(null, null, paramName, defaultValue);

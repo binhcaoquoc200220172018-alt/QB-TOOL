@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -2207,6 +2207,11 @@ public class MainViewModel : ViewModelBase
 			{
 				AllCulvertRows.Add(item);
 			}
+			if (AllCulvertRows.Count > 0)
+			{
+				BatchFromSTT = AllCulvertRows.Min((CulvertRowData r) => r.STT);
+				BatchToSTT = AllCulvertRows.Max((CulvertRowData r) => r.STT);
+			}
 			FilterCulvertRows();
 			RunValidation();
 		}
@@ -4136,7 +4141,7 @@ public class MainViewModel : ViewModelBase
 	public void UpdateBatchTableForSelectedParam()
 	{
 		string text = SelectedParamForBatch?.InternalName ?? string.Empty;
-		string defaultValue = SelectedParamForBatch?.CustomValue ?? string.Empty;
+		string defaultValue = SelectedParamForBatch?.DefaultValue ?? string.Empty;
 		string categoryName = SelectedComponentForTab02?.CategoryType ?? string.Empty;
 		string profileName = SelectedComponentForTab02?.ProfileName ?? string.Empty;
 		foreach (CulvertRowData allCulvertRow in AllCulvertRows)
@@ -4181,7 +4186,15 @@ public class MainViewModel : ViewModelBase
 			string profileName = SelectedComponentForTab02?.ProfileName ?? string.Empty;
 			foreach (ParameterMappingItem filteredParameterMapping in FilteredParameterMappings)
 			{
-				string text = ((culvertRowData != null) ? culvertRowData.GetParamOverride(profileName, categoryName, filteredParameterMapping.InternalName, filteredParameterMapping.CustomValue) : filteredParameterMapping.CustomValue);
+				string text;
+				if (culvertRowData != null && culvertRowData.HasParamOverride(profileName, categoryName, filteredParameterMapping.InternalName))
+				{
+					text = culvertRowData.GetParamOverride(profileName, categoryName, filteredParameterMapping.InternalName, "");
+				}
+				else
+				{
+					text = filteredParameterMapping.DefaultValue;
+				}
 				if (string.IsNullOrEmpty(text))
 				{
 					text = filteredParameterMapping.DefaultValue;

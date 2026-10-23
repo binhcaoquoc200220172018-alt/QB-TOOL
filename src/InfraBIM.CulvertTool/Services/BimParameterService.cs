@@ -367,7 +367,15 @@ namespace InfraBIM.CulvertTool.Services
                 bool hasExplicitMapping = !string.IsNullOrEmpty(m.MappedField) && m.MappedField != "Tùy biến";
 
                 // Xác định giá trị gán: ưu tiên MappedField từ dữ liệu cống, sau đó lấy giá trị tùy chỉnh riêng của cống
-                string valStr = data.GetParamOverride(m.ProfileName, m.CategoryName, m.InternalName, m.CustomValue);
+                string valStr;
+                if (data.HasParamOverride(m.ProfileName, m.CategoryName, m.InternalName))
+                {
+                    valStr = data.GetParamOverride(m.ProfileName, m.CategoryName, m.InternalName, "");
+                }
+                else
+                {
+                    valStr = m.DefaultValue ?? "";
+                }
                 if (m.IsYesNoParameter)
                 {
                     if (!m.IsSelected)

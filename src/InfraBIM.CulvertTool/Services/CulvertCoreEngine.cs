@@ -1315,9 +1315,9 @@ namespace InfraBIM.CulvertTool.Services
                 string.Equals(m.InternalName, "CX_L san cong", StringComparison.OrdinalIgnoreCase) ||
                 m.InternalName.IndexOf("L san cong", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 string.Equals(m.InternalName, "L_SAN_CONG", StringComparison.OrdinalIgnoreCase));
-            if (mappingL != null && !string.IsNullOrWhiteSpace(mappingL.CustomValue))
+            if (mappingL != null && data.HasParamOverride(mappingL.ProfileName, mappingL.CategoryName, mappingL.InternalName))
             {
-                string valStrL = data.GetParamOverride(mappingL.InternalName, mappingL.CustomValue);
+                string valStrL = data.GetParamOverride(mappingL.ProfileName, mappingL.CategoryName, mappingL.InternalName, "");
                 if (double.TryParse(valStrL.Replace("mm", "").Replace("m", "").Trim(), out double dValL))
                 {
                     lSanCongM = (Math.Abs(dValL) >= 10.0) ? dValL / 1000.0 : dValL;
@@ -1402,9 +1402,9 @@ namespace InfraBIM.CulvertTool.Services
             var mappingL1 = familyParameterMappings?.FirstOrDefault(m => 
                 string.Equals(m.InternalName, "CX_L1", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(m.InternalName, "L1", StringComparison.OrdinalIgnoreCase));
-            if (mappingL1 != null && !string.IsNullOrWhiteSpace(mappingL1.CustomValue))
+            if (mappingL1 != null && data.HasParamOverride(mappingL1.ProfileName, mappingL1.CategoryName, mappingL1.InternalName))
             {
-                string valStrL1 = data.GetParamOverride(mappingL1.InternalName, mappingL1.CustomValue);
+                string valStrL1 = data.GetParamOverride(mappingL1.ProfileName, mappingL1.CategoryName, mappingL1.InternalName, "");
                 if (double.TryParse(valStrL1.Replace("mm", "").Replace("m", "").Trim(), out double dValL1))
                 {
                     cxL1M = (Math.Abs(dValL1) >= 10.0) ? dValL1 / 1000.0 : dValL1;
@@ -1462,9 +1462,14 @@ namespace InfraBIM.CulvertTool.Services
             }
 
             // 3. Đặt Sân gia cố Thượng lưu & Hạ lưu:
-            // Sân gia cố tiếp giáp liền kề ngay mép ngoài của Sân cống (tại P1 và P2), hoàn toàn không có khoảng cách hở
-            XYZ ptSC2_TL = p1;
-            XYZ ptSC2_HL = p2;
+            // Sân gia cố tiếp giáp liền kề ngay mép ngoài của Sân cống (CX_L1 + lSanCongM), hoàn toàn không có khoảng cách hở
+            double lOuterCX_M = cxL1M + lSanCongM;
+            double lOuterCX_Feet = UnitUtils.ConvertToInternalUnits(lOuterCX_M, UnitTypeId.Meters);
+
+            XYZ uOutTL = -new XYZ(u.X, u.Y, 0).Normalize();
+            XYZ uOutHL = new XYZ(u.X, u.Y, 0).Normalize();
+            XYZ ptSC2_TL = p1 + uOutTL * lOuterCX_Feet;
+            XYZ ptSC2_HL = p2 + uOutHL * lOuterCX_Feet;
 
             double lSgcTL = data.L_SGC_TL > 0.05 ? data.L_SGC_TL : 3.0;
             double lSgcHL = data.L_SGC_HL > 0.05 ? data.L_SGC_HL : 3.0;
