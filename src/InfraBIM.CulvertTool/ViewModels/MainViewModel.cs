@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -4242,6 +4242,7 @@ public class MainViewModel : ViewModelBase
 		finally
 		{
 			_isUpdatingInspector = false;
+			OnPropertyChanged("InspectorParameterMappings");
 		}
 	}
 
@@ -4334,20 +4335,70 @@ public class MainViewModel : ViewModelBase
 		}
 		SelectedParamForBatch.CustomValue = text;
 		string internalName = SelectedParamForBatch.InternalName;
-		string categoryName = SelectedComponentForTab02?.CategoryType ?? string.Empty;
-		string text2 = SelectedComponentForTab02?.ProfileName ?? string.Empty;
-		CulvertComponentItem selectedComponentForTab = SelectedComponentForTab02;
-		bool flag = selectedComponentForTab != null && (PrecastBarrelComponents.Contains(selectedComponentForTab) || (selectedComponentForTab.GroupType == "Cống đúc sẵn" && string.IsNullOrEmpty(text2)));
-		bool flag2 = selectedComponentForTab != null && (CastInPlaceBarrelComponents.Contains(selectedComponentForTab) || !string.IsNullOrEmpty(text2) || selectedComponentForTab.GroupType == "Cống đổ tại chỗ");
-		bool flag3 = selectedComponentForTab != null && (TechnicalBarrelComponents.Contains(selectedComponentForTab) || selectedComponentForTab.GroupType == "Cống kỹ thuật");
+		CulvertComponentItem? selectedComponentForTab = SelectedComponentForTab02;
+		string categoryName = selectedComponentForTab?.CategoryType ?? string.Empty;
+		string text2 = selectedComponentForTab?.ProfileName ?? string.Empty;
+
+		bool isTechnicalComp = selectedComponentForTab != null && (
+			TechnicalBarrelComponents.Contains(selectedComponentForTab) ||
+			TechnicalManholeComponents.Contains(selectedComponentForTab) ||
+			string.Equals(selectedComponentForTab.GroupType, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(selectedComponentForTab.GroupType, "Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(selectedComponentForTab.GroupType, "Hộp nối cống", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(selectedComponentForTab.ProfileName, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
+			IsTechnicalCulvertMode
+		);
+
+		bool isPrecastComp = !isTechnicalComp && selectedComponentForTab != null && (
+			PrecastBarrelComponents.Contains(selectedComponentForTab) ||
+			string.Equals(selectedComponentForTab.GroupType, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(selectedComponentForTab.ProfileName, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) ||
+			(selectedComponentForTab.CategoryType != null && selectedComponentForTab.CategoryType.Contains("đúc sẵn"))
+		);
+
+		bool isCastInPlaceComp = !isTechnicalComp && !isPrecastComp && selectedComponentForTab != null && (
+			CastInPlaceBarrelComponents.Contains(selectedComponentForTab) ||
+			string.Equals(selectedComponentForTab.GroupType, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) ||
+			(selectedComponentForTab.GroupType != null && selectedComponentForTab.GroupType.Contains("đổ tại chỗ")) ||
+			CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.Components.Contains(selectedComponentForTab) || (!string.IsNullOrEmpty(selectedComponentForTab.ProfileName) && string.Equals(p.TypeName, selectedComponentForTab.ProfileName, StringComparison.OrdinalIgnoreCase)))
+		);
+
 		int num = 0;
 		foreach (CulvertRowData allCulvertRow in AllCulvertRows)
 		{
-			if (allCulvertRow.STT >= BatchFromSTT && allCulvertRow.STT <= BatchToSTT && (!flag || (!allCulvertRow.IsCastInPlace && !allCulvertRow.IsTechnical)) && (!flag2 || (allCulvertRow.IsCastInPlace && (string.IsNullOrEmpty(text2) || string.IsNullOrEmpty(allCulvertRow.AssignedProfileName) || string.Equals(text2, allCulvertRow.AssignedProfileName, StringComparison.OrdinalIgnoreCase)))) && (!flag3 || allCulvertRow.IsTechnical))
+			if (allCulvertRow.STT < BatchFromSTT || allCulvertRow.STT > BatchToSTT)
 			{
-				allCulvertRow.SetParamOverride(text2, categoryName, internalName, text);
-				num++;
+				continue;
 			}
+			if (isTechnicalComp && !allCulvertRow.IsTechnical)
+			{
+				continue;
+			}
+			if (!isTechnicalComp && allCulvertRow.IsTechnical)
+			{
+				continue;
+			}
+			if (isPrecastComp && (allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical))
+			{
+				continue;
+			}
+			if (isCastInPlaceComp)
+			{
+				if (!allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical)
+				{
+					continue;
+				}
+				if (!string.IsNullOrEmpty(text2) && 
+				    !string.IsNullOrEmpty(allCulvertRow.AssignedProfileName) && 
+				    !string.Equals(text2, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) && 
+				    !string.Equals(text2, allCulvertRow.AssignedProfileName, StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+			}
+
+			allCulvertRow.SetParamOverride(text2, categoryName, internalName, text);
+			num++;
 		}
 		UpdateBatchTableForSelectedParam();
 		lock (_cachedRealMeshes)
@@ -4400,18 +4451,67 @@ public class MainViewModel : ViewModelBase
 			System.Windows.MessageBox.Show("Không có tham số nào có giá trị tùy chỉnh để gán cho các lý trình.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			return;
 		}
-		string text = SelectedComponentForTab02?.ProfileName ?? string.Empty;
-		CulvertComponentItem selectedComponentForTab = SelectedComponentForTab02;
-		bool flag = selectedComponentForTab != null && (PrecastBarrelComponents.Contains(selectedComponentForTab) || (selectedComponentForTab.GroupType == "Cống đúc sẵn" && string.IsNullOrEmpty(text)));
-		bool flag2 = selectedComponentForTab != null && (CastInPlaceBarrelComponents.Contains(selectedComponentForTab) || !string.IsNullOrEmpty(text) || selectedComponentForTab.GroupType == "Cống đổ tại chỗ");
-		bool flag3 = selectedComponentForTab != null && (TechnicalBarrelComponents.Contains(selectedComponentForTab) || selectedComponentForTab.GroupType == "Cống kỹ thuật");
+		CulvertComponentItem? selectedComponentForTab = SelectedComponentForTab02;
+		string text = selectedComponentForTab?.ProfileName ?? string.Empty;
+
+		bool isTechnicalComp = selectedComponentForTab != null && (
+			TechnicalBarrelComponents.Contains(selectedComponentForTab) ||
+			TechnicalManholeComponents.Contains(selectedComponentForTab) ||
+			string.Equals(selectedComponentForTab.GroupType, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(selectedComponentForTab.GroupType, "Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(selectedComponentForTab.GroupType, "Hộp nối cống", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(selectedComponentForTab.ProfileName, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
+			IsTechnicalCulvertMode
+		);
+
+		bool isPrecastComp = !isTechnicalComp && selectedComponentForTab != null && (
+			PrecastBarrelComponents.Contains(selectedComponentForTab) ||
+			string.Equals(selectedComponentForTab.GroupType, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(selectedComponentForTab.ProfileName, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) ||
+			(selectedComponentForTab.CategoryType != null && selectedComponentForTab.CategoryType.Contains("đúc sẵn"))
+		);
+
+		bool isCastInPlaceComp = !isTechnicalComp && !isPrecastComp && selectedComponentForTab != null && (
+			CastInPlaceBarrelComponents.Contains(selectedComponentForTab) ||
+			string.Equals(selectedComponentForTab.GroupType, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) ||
+			(selectedComponentForTab.GroupType != null && selectedComponentForTab.GroupType.Contains("đổ tại chỗ")) ||
+			CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.Components.Contains(selectedComponentForTab) || (!string.IsNullOrEmpty(selectedComponentForTab.ProfileName) && string.Equals(p.TypeName, selectedComponentForTab.ProfileName, StringComparison.OrdinalIgnoreCase)))
+		);
+
 		int num = 0;
 		foreach (CulvertRowData allCulvertRow in AllCulvertRows)
 		{
-			if (allCulvertRow.STT < BatchFromSTT || allCulvertRow.STT > BatchToSTT || (flag && (allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical)) || (flag2 && (!allCulvertRow.IsCastInPlace || (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(allCulvertRow.AssignedProfileName) && !string.Equals(text, allCulvertRow.AssignedProfileName, StringComparison.OrdinalIgnoreCase)))) || (flag3 && !allCulvertRow.IsTechnical))
+			if (allCulvertRow.STT < BatchFromSTT || allCulvertRow.STT > BatchToSTT)
 			{
 				continue;
 			}
+			if (isTechnicalComp && !allCulvertRow.IsTechnical)
+			{
+				continue;
+			}
+			if (!isTechnicalComp && allCulvertRow.IsTechnical)
+			{
+				continue;
+			}
+			if (isPrecastComp && (allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical))
+			{
+				continue;
+			}
+			if (isCastInPlaceComp)
+			{
+				if (!allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical)
+				{
+					continue;
+				}
+				if (!string.IsNullOrEmpty(text) && 
+				    !string.IsNullOrEmpty(allCulvertRow.AssignedProfileName) && 
+				    !string.Equals(text, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) && 
+				    !string.Equals(text, allCulvertRow.AssignedProfileName, StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+			}
+
 			foreach (var (categoryName, paramName, val) in list)
 			{
 				allCulvertRow.SetParamOverride(text, categoryName, paramName, val);
@@ -4480,12 +4580,17 @@ public class MainViewModel : ViewModelBase
 			list = ApronComponents.Where((CulvertComponentItem c) => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
 			srcGroup = "Sân gia cố";
 		}
-		else if (PrecastBarrelComponents.Contains(srcComp) || (srcGroup == "Cống đúc sẵn" && string.IsNullOrEmpty(srcComp.ProfileName)))
+		else if (PrecastBarrelComponents.Contains(srcComp) || 
+		         string.Equals(srcGroup, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) || 
+		         string.Equals(srcComp.ProfileName, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase))
 		{
 			list = PrecastBarrelComponents.Where((CulvertComponentItem c) => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
 			srcGroup = "Cống đúc sẵn";
 		}
-		else if (CastInPlaceBarrelComponents.Contains(srcComp) || !string.IsNullOrEmpty(srcComp.ProfileName) || srcGroup.Contains("đổ tại chỗ"))
+		else if (CastInPlaceBarrelComponents.Contains(srcComp) || 
+		         string.Equals(srcGroup, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) || 
+		         (srcGroup != null && srcGroup.Contains("đổ tại chỗ")) ||
+		         CastInPlaceProfiles.Any(p => p.Components.Contains(srcComp) || (!string.IsNullOrEmpty(srcComp.ProfileName) && string.Equals(p.TypeName, srcComp.ProfileName, StringComparison.OrdinalIgnoreCase))))
 		{
 			CulvertTypeProfile culvertTypeProfile = CastInPlaceProfiles.FirstOrDefault((CulvertTypeProfile p) => p.Components.Contains(srcComp) || (!string.IsNullOrEmpty(srcComp.ProfileName) && p.TypeName == srcComp.ProfileName));
 			if (culvertTypeProfile != null)
