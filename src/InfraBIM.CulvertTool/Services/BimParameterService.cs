@@ -183,41 +183,34 @@ namespace InfraBIM.CulvertTool.Services
             foreach (var m in mappings)
             {
                 // 0. Phân luồng Profile / Loại cống tuyệt đối tránh đá biến
-                if (!string.IsNullOrEmpty(m.ProfileName))
-                {
-                    string pUpper = m.ProfileName.ToUpperInvariant();
-                    bool mIsCastInPlace = pUpper.Contains("ĐỔ TẠI CHỖ") || pUpper.Contains("DO TAI CHO") || pUpper.Contains("CAST_IN_PLACE") || pUpper.Contains("CIP");
-                    bool mIsTechnical = pUpper.Contains("KỸ THUẬT") || pUpper.Contains("KY THUAT") || pUpper.Contains("TECHNICAL") || pUpper.Contains("CKT");
-                    bool mIsPrecast = pUpper.Contains("ĐÚC SẴN") || pUpper.Contains("DUC SAN") || pUpper.Contains("PRECAST");
+                string mFullDesc = $"{m.ProfileName} {m.CategoryName} {m.GroupName}".ToUpperInvariant();
+                bool mIsCastInPlace = mFullDesc.Contains("ĐỔ TẠI CHỖ") || mFullDesc.Contains("DO TAI CHO") || mFullDesc.Contains("CAST_IN_PLACE") || mFullDesc.Contains("CIP");
+                bool mIsTechnical = mFullDesc.Contains("KỸ THUẬT") || mFullDesc.Contains("KY THUAT") || mFullDesc.Contains("TECHNICAL") || mFullDesc.Contains("CKT");
+                bool mIsPrecast = mFullDesc.Contains("ĐÚC SẴN") || mFullDesc.Contains("DUC SAN") || mFullDesc.Contains("PRECAST");
 
-                    if (data.IsTechnical)
+                if (data.IsTechnical)
+                {
+                    if (mIsPrecast || mIsCastInPlace) continue;
+                    if (mFullDesc.Contains("CỬA XẢ") || mFullDesc.Contains("SÂN GIA CỐ")) continue;
+                }
+                else if (data.IsCastInPlace)
+                {
+                    if (mIsPrecast || mIsTechnical) continue;
+                    if (!string.IsNullOrEmpty(m.ProfileName))
                     {
-                        if (mIsPrecast || mIsCastInPlace) continue;
-                    }
-                    else if (data.IsCastInPlace)
-                    {
-                        if (mIsPrecast || mIsTechnical) continue;
-                        if (!string.IsNullOrEmpty(data.AssignedProfileName) && !string.Equals(m.ProfileName, data.AssignedProfileName, StringComparison.OrdinalIgnoreCase))
+                        bool isCommonComponent = mFullDesc.Contains("SÂN GIA CỐ") || mFullDesc.Contains("SAN GIA CO") ||
+                                                 mFullDesc.Contains("CỬA XẢ") || mFullDesc.Contains("CUA XA") ||
+                                                 mFullDesc.Contains("HỘP NỐI") || mFullDesc.Contains("HOP NOI") ||
+                                                 mFullDesc.Contains("HỐ GA") || mFullDesc.Contains("HO GA");
+                        if (!isCommonComponent && !string.IsNullOrEmpty(data.AssignedProfileName) && !string.Equals(m.ProfileName, data.AssignedProfileName, StringComparison.OrdinalIgnoreCase))
                             continue;
                     }
-                    else // Precast
-                    {
-                        if (mIsCastInPlace || mIsTechnical) continue;
-                        if (pUpper.Contains("TRÒN") && (data.LoaiCong ?? "").ToUpperInvariant().Contains("HOP")) continue;
-                        if (pUpper.Contains("HỘP") && (data.LoaiCong ?? "").ToUpperInvariant().Contains("TRON")) continue;
-                    }
                 }
-                else
+                else // Precast
                 {
-                    // m.ProfileName rỗng: Phân định chủng loại Đúc sẵn / Đổ tại chỗ / Kỹ thuật
-                    if (data.IsCastInPlace && (m.CategoryName.Contains("đúc sẵn") || m.GroupName.Contains("đúc sẵn") || m.CategoryName.Contains("kỹ thuật")))
-                        continue;
-                    if (!data.IsCastInPlace && !data.IsTechnical && (m.CategoryName.Contains("đổ tại chỗ") || m.GroupName.Contains("đổ tại chỗ") || m.CategoryName.Contains("kỹ thuật")))
-                        continue;
-                    if (!data.IsTechnical && (m.CategoryName.Contains("kỹ thuật") || m.GroupName.Contains("kỹ thuật")))
-                        continue;
-                    if (data.IsTechnical && (m.CategoryName.Contains("đúc sẵn") || m.CategoryName.Contains("đổ tại chỗ") || m.CategoryName.Contains("Cửa xả") || m.CategoryName.Contains("Sân gia cố")))
-                        continue;
+                    if (mIsCastInPlace || mIsTechnical) continue;
+                    if (mFullDesc.Contains("TRÒN") && (data.LoaiCong ?? "").ToUpperInvariant().Contains("HOP")) continue;
+                    if (mFullDesc.Contains("HỘP") && (data.LoaiCong ?? "").ToUpperInvariant().Contains("TRON")) continue;
                 }
 
                 // Kiểm tra khớp cấu kiện:

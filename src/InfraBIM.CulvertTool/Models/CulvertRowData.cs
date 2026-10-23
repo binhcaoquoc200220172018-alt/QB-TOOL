@@ -85,8 +85,11 @@ namespace InfraBIM.CulvertTool.Models
         /// <summary>
         /// Tự động xác định loại cống rải chính xác theo cấu trúc thiết lập
         /// </summary>
+        public bool? IsTechnicalOverride { get; set; }
+
         public string DetermineCulvertType()
         {
+            if (IsTechnicalOverride == true) return "CỐNG KỸ THUẬT";
             if (!string.IsNullOrEmpty(AssignedProfileName))
             {
                 return AssignedProfileName;
@@ -123,7 +126,7 @@ namespace InfraBIM.CulvertTool.Models
         public string ResolvedCulvertType => DetermineCulvertType();
 
         public bool IsCastInPlace => DetermineCulvertType().Contains("ĐỔ TẠI CHỖ") || (SoCua > 1) || (!string.IsNullOrEmpty(AssignedProfileName) && AssignedProfileName.Contains("đổ tại chỗ", StringComparison.OrdinalIgnoreCase));
-        public bool IsTechnical => DetermineCulvertType().Contains("KỸ THUẬT") || (LoaiCong != null && (LoaiCong.Contains("kỹ thuật", StringComparison.OrdinalIgnoreCase) || LoaiCong.Contains("CKT", StringComparison.OrdinalIgnoreCase))) || (GhiChu != null && (GhiChu.Contains("kỹ thuật", StringComparison.OrdinalIgnoreCase) || GhiChu.Contains("CKT", StringComparison.OrdinalIgnoreCase)));
+        public bool IsTechnical => IsTechnicalOverride ?? (DetermineCulvertType().Contains("KỸ THUẬT") || (LoaiCong != null && (LoaiCong.Contains("kỹ thuật", StringComparison.OrdinalIgnoreCase) || LoaiCong.Contains("CKT", StringComparison.OrdinalIgnoreCase))) || (GhiChu != null && (GhiChu.Contains("kỹ thuật", StringComparison.OrdinalIgnoreCase) || GhiChu.Contains("CKT", StringComparison.OrdinalIgnoreCase))));
         public bool IsPrecast => !IsTechnical && !IsCastInPlace;
 
         // Quản lý giá trị tùy chỉnh tham số cho từng cống (Yêu cầu 4)
@@ -191,8 +194,20 @@ namespace InfraBIM.CulvertTool.Models
                 }
             }
 
-            // 2. Khóa theo Profile và tên param (vd: "Cống đổ tại chỗ 1::B_DDD")
-            if (!string.IsNullOrEmpty(effectiveProfile))
+            // 2. Khóa theo Profile và tên param (vd: "Cống đổ tại chỗ 1::B_DDD") - Chỉ dùng cho thân cống/đệm hoặc khi không chỉ định category
+            bool isSpecificNonBarrel = !string.IsNullOrEmpty(categoryName) && 
+                (categoryName.IndexOf("cửa xả", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 categoryName.IndexOf("cua xa", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 categoryName.IndexOf("sân gia cố", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 categoryName.IndexOf("san gia co", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 categoryName.IndexOf("hố ga", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 categoryName.IndexOf("ho ga", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 categoryName.IndexOf("hố kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 categoryName.IndexOf("ho ky thuat", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 categoryName.IndexOf("hộp nối", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 categoryName.IndexOf("hop noi", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            if (!string.IsNullOrEmpty(effectiveProfile) && !isSpecificNonBarrel)
             {
                 string profKey = $"{effectiveProfile.Trim()}::{paramName.Trim()}";
                 if (ParameterOverrides.TryGetValue(profKey, out var profVal) && !string.IsNullOrWhiteSpace(profVal))
@@ -201,19 +216,24 @@ namespace InfraBIM.CulvertTool.Models
                 }
             }
 
-            // 3. Khóa theo Category (áp dụng cho các cấu kiện chung như Cửa xả, Sân gia cố, Hố ga)
+            // 3. Khóa theo Category (áp dụng cho các cấu kiện chung như Cửa xả, Sân gia cố)
             if (!string.IsNullOrEmpty(categoryName))
             {
                 string catClean = categoryName.Trim().ToLowerInvariant();
                 bool isOutletTarget = catClean.Contains("cửa xả") || catClean.Contains("cua xa") || catClean.Contains("tường") || catClean.Contains("sân cống");
                 bool isApronTarget = catClean.Contains("sân gia cố") || catClean.Contains("san gia co") || catClean.Contains("tấm sân");
-                bool isBarrelTarget = !isOutletTarget && !isApronTarget;
+                bool isTechManholeTarget = catClean.Contains("hố kỹ thuật") || catClean.Contains("ho ky thuat");
+                bool isJuncTarget = catClean.Contains("hộp nối") || catClean.Contains("hop noi");
+                bool isBarrelTarget = !isOutletTarget && !isApronTarget && !isTechManholeTarget && !isJuncTarget;
 
-                // Thân cống & đệm thân cống có Profile riêng biệt, KHÔNG lấy khóa Category trần không Profile để tránh đá biến
-                string catKey = $"{categoryName.Trim()}::{paramName.Trim()}";
-                if (!isBarrelTarget && ParameterOverrides.TryGetValue(catKey, out var catVal) && !string.IsNullOrWhiteSpace(catVal))
+                // Thân cống, Hố kỹ thuật và Hộp nối cống có Profile riêng biệt, KHÔNG lấy khóa Category trần không Profile để chống đá biến
+                if (!isBarrelTarget && !isTechManholeTarget && !isJuncTarget)
                 {
-                    return catVal;
+                    string catKey = $"{categoryName.Trim()}::{paramName.Trim()}";
+                    if (ParameterOverrides.TryGetValue(catKey, out var catVal) && !string.IsNullOrWhiteSpace(catVal))
+                    {
+                        return catVal;
+                    }
                 }
 
                 // 3b. Khớp tương đối trong cùng cụm cấu kiện (vd: "Cửa xả - Đá dăm đệm" không bị lẫn với "Sân gia cố - Đá dăm đệm")
@@ -224,22 +244,21 @@ namespace InfraBIM.CulvertTool.Models
                         string kLower = kvp.Key.ToLowerInvariant();
                         bool kIsOutlet = kLower.Contains("cửa xả") || kLower.Contains("cua xa") || kLower.Contains("tường") || kLower.Contains("sân cống");
                         bool kIsApron = kLower.Contains("sân gia cố") || kLower.Contains("san gia co") || kLower.Contains("tấm sân");
-                        bool kIsBarrel = !kIsOutlet && !kIsApron;
+                        bool kIsTechManhole = kLower.Contains("hố kỹ thuật") || kLower.Contains("ho ky thuat");
+                        bool kIsJunc = kLower.Contains("hộp nối") || kLower.Contains("hop noi");
+                        bool kIsBarrel = !kIsOutlet && !kIsApron && !kIsTechManhole && !kIsJunc;
 
                         // Chỉ cho phép khớp tương đối nếu thuộc cùng một phân nhóm lớn
-                        if (isOutletTarget == kIsOutlet && isApronTarget == kIsApron && isBarrelTarget == kIsBarrel)
+                        if (isOutletTarget == kIsOutlet && isApronTarget == kIsApron && isTechManholeTarget == kIsTechManhole && isJuncTarget == kIsJunc && isBarrelTarget == kIsBarrel)
                         {
-                            // NẾU LÀ THÂN CỐNG / ĐỆM THÂN CỐNG: TUYỆT ĐỐI KHÔNG KHỚP CHÉO GIỮA ĐÚC SẴN VÀ ĐỔ TẠI CHỖ / KỸ THUẬT
-                            if (isBarrelTarget)
-                            {
-                                bool kIsCip = kLower.Contains("đổ tại chỗ") || kLower.Contains("do tai cho");
-                                bool kIsPrecast = kLower.Contains("đúc sẵn") || kLower.Contains("duc san");
-                                bool kIsCkt = kLower.Contains("kỹ thuật") || kLower.Contains("ky thuat");
+                            // TUYỆT ĐỐI KHÔNG KHỚP CHÉO GIỮA ĐÚC SẴN, ĐỔ TẠI CHỖ VÀ KỸ THUẬT (CẢ THÂN CỐNG, CỬA XẢ, SÂN GIA CỐ)
+                            bool kIsCip = kLower.Contains("đổ tại chỗ") || kLower.Contains("do tai cho") || kLower.Contains("cip");
+                            bool kIsPrecast = kLower.Contains("đúc sẵn") || kLower.Contains("duc san") || kLower.Contains("precast");
+                            bool kIsCkt = kLower.Contains("kỹ thuật") || kLower.Contains("ky thuat");
 
-                                if (IsPrecast && (kIsCip || kIsCkt)) continue;
-                                if (IsCastInPlace && (kIsPrecast || kIsCkt)) continue;
-                                if (IsTechnical && (kIsPrecast || kIsCip)) continue;
-                            }
+                            if (IsPrecast && (kIsCip || kIsCkt)) continue;
+                            if (IsCastInPlace && (kIsPrecast || kIsCkt)) continue;
+                            if (IsTechnical && (kIsPrecast || kIsCip)) continue;
 
                             if ((catClean.Contains("đá dăm") || catClean.Contains("da dam")) && (kLower.Contains("đá dăm") || kLower.Contains("da dam")))
                                 return kvp.Value;
@@ -253,17 +272,29 @@ namespace InfraBIM.CulvertTool.Models
             // 4. Khóa toàn cục theo tên param CHỈ KHI tham số được gán dạng độc lập (không Profile, không Category)
             if (ParameterOverrides.TryGetValue(paramName.Trim(), out var val) && !string.IsNullOrWhiteSpace(val))
             {
-                // Các tham số kích thước thân cống và đệm cống TUYỆT ĐỐI KHÔNG nhận fallback toàn cục để chống đá biến
-                bool isBarrelParam = paramName.Equals("B_DDD", StringComparison.OrdinalIgnoreCase) ||
-                                     paramName.Equals("H_DDD", StringComparison.OrdinalIgnoreCase) ||
-                                     paramName.Equals("B_BTL", StringComparison.OrdinalIgnoreCase) ||
-                                     paramName.Equals("H_BTL", StringComparison.OrdinalIgnoreCase) ||
-                                     paramName.Equals("B", StringComparison.OrdinalIgnoreCase) ||
-                                     paramName.Equals("H", StringComparison.OrdinalIgnoreCase) ||
-                                     paramName.Equals("L", StringComparison.OrdinalIgnoreCase) ||
-                                     paramName.Equals("L_Std", StringComparison.OrdinalIgnoreCase);
+                // Các tham số kích thước thân cống, hố kỹ thuật, hộp nối cống và đệm cống TUYỆT ĐỐI KHÔNG nhận fallback toàn cục để chống đá biến
+                bool isSpecificParam = paramName.StartsWith("CH_", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.StartsWith("HOP NOI CONG_", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.StartsWith("THAN GIENG_", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.StartsWith("CO GIENG_", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.StartsWith("HGDH_", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.StartsWith("TAM DAN_", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("CONG HOP_B", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("CONG HOP_H", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("BTL_H", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("B_DDD", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("H_DDD", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("B_BTL", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("H_BTL", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("B", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("H", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("L", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("L_Std", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("CO VAI KE", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("ẨN PHẢI", StringComparison.OrdinalIgnoreCase) ||
+                                       paramName.Equals("ẨN TRÁI", StringComparison.OrdinalIgnoreCase);
 
-                if (!isBarrelParam)
+                if (!isSpecificParam)
                 {
                     return val;
                 }
@@ -297,15 +328,15 @@ namespace InfraBIM.CulvertTool.Models
                 string fullKey = $"{effectiveProfile.Trim()}::{categoryName.Trim()}::{paramName.Trim()}";
                 ParameterOverrides[fullKey] = val;
             }
-            else if (!string.IsNullOrEmpty(effectiveProfile))
-            {
-                string profKey = $"{effectiveProfile.Trim()}::{paramName.Trim()}";
-                ParameterOverrides[profKey] = val;
-            }
             else if (!string.IsNullOrEmpty(categoryName))
             {
                 string catKey = $"{categoryName.Trim()}::{paramName.Trim()}";
                 ParameterOverrides[catKey] = val;
+            }
+            else if (!string.IsNullOrEmpty(effectiveProfile))
+            {
+                string profKey = $"{effectiveProfile.Trim()}::{paramName.Trim()}";
+                ParameterOverrides[profKey] = val;
             }
             else
             {

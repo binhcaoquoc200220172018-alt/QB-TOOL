@@ -10,6 +10,7 @@
     <AssemblyName>DV_TOOL_HTKT</AssemblyName>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
+    <CodePage>65001</CodePage>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 

@@ -4023,16 +4023,24 @@ public class MainViewModel : ViewModelBase
 		{
 			return;
 		}
-		foreach (ParameterMappingItem item in ParameterMappings.Where((ParameterMappingItem m) => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) && string.Equals(m.ProfileName, prof, StringComparison.OrdinalIgnoreCase)).ToList())
+		var existingList = ParameterMappings.Where((ParameterMappingItem m) => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) && string.Equals(m.ProfileName, prof, StringComparison.OrdinalIgnoreCase)).ToList();
+		foreach (ParameterMappingItem item in existingList)
 		{
 			item.PropertyChanged -= OnParameterMappingItemPropertyChanged;
 			ParameterMappings.Remove(item);
 		}
 		foreach (ParameterMappingItem item2 in FamilyParameterScannerService.ScanParametersForFamily(Doc, val, cat, prof))
 		{
-			if (item2.IsYesNoParameter)
+			var prev = existingList.FirstOrDefault(p => string.Equals(p.InternalName, item2.InternalName, StringComparison.OrdinalIgnoreCase));
+			if (prev != null)
 			{
-				item2.IsSelected = false;
+				if (!string.IsNullOrEmpty(prev.CustomValue)) item2.CustomValue = prev.CustomValue;
+				if (!string.IsNullOrEmpty(prev.MappedField)) item2.MappedField = prev.MappedField;
+				item2.IsSelected = prev.IsSelected;
+			}
+			else
+			{
+				item2.IsSelected = true;
 			}
 			item2.PropertyChanged += OnParameterMappingItemPropertyChanged;
 			ParameterMappings.Add(item2);
@@ -4252,24 +4260,24 @@ public class MainViewModel : ViewModelBase
 			List<ParameterMappingItem> scanned = FamilyParameterScannerService.ScanParametersForFamily(document, sym, cat, prof);
 			((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
 			{
-				foreach (ParameterMappingItem item in ParameterMappings.Where((ParameterMappingItem m) => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) && string.Equals(m.ProfileName, prof, StringComparison.OrdinalIgnoreCase)).ToList())
+				var existingList = ParameterMappings.Where((ParameterMappingItem m) => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) && string.Equals(m.ProfileName, prof, StringComparison.OrdinalIgnoreCase)).ToList();
+				foreach (ParameterMappingItem item in existingList)
 				{
 					item.PropertyChanged -= OnParameterMappingItemPropertyChanged;
 					ParameterMappings.Remove(item);
 				}
 				foreach (ParameterMappingItem item2 in scanned)
 				{
-					if (item2.IsYesNoParameter)
+					var prev = existingList.FirstOrDefault(p => string.Equals(p.InternalName, item2.InternalName, StringComparison.OrdinalIgnoreCase));
+					if (prev != null)
 					{
-						string text = (item2.InternalName ?? "").ToUpperInvariant();
-						if (text.Contains("VAI") || text.Contains("TAI"))
-						{
-							item2.IsSelected = false;
-						}
-						else
-						{
-							item2.IsSelected = item2.DefaultValue == "Có" || item2.DefaultValue == "1";
-						}
+						if (!string.IsNullOrEmpty(prev.CustomValue)) item2.CustomValue = prev.CustomValue;
+						if (!string.IsNullOrEmpty(prev.MappedField)) item2.MappedField = prev.MappedField;
+						item2.IsSelected = prev.IsSelected;
+					}
+					else
+					{
+						item2.IsSelected = true;
 					}
 					item2.PropertyChanged += OnParameterMappingItemPropertyChanged;
 					ParameterMappings.Add(item2);
@@ -4992,8 +5000,17 @@ public class MainViewModel : ViewModelBase
 				MappedField = m.MappedField,
 				CustomValue = m.CustomValue,
 				DefaultValue = m.DefaultValue,
-				DataType = m.DataType
+				DataType = m.DataType,
+				IsSelected = m.IsSelected
 			}).ToList(),
+			CulvertRowOverrides = AllCulvertRows
+				.Where(r => r.ParameterOverrides != null && r.ParameterOverrides.Count > 0)
+				.Select(r => new CulvertRowOverrideSaveDto
+				{
+					LyTrinh = r.LyTrinh ?? string.Empty,
+					STT = r.STT,
+					Overrides = new Dictionary<string, string>(r.ParameterOverrides, StringComparer.OrdinalIgnoreCase)
+				}).ToList(),
 			Materials = ComponentMaterials.Select((CulvertMaterialItem m) => new MaterialSaveDto
 			{
 				GroupType = m.GroupType,
@@ -5131,6 +5148,7 @@ public class MainViewModel : ViewModelBase
 					{
 						if (!string.IsNullOrEmpty(savedMap.MappedField)) target.MappedField = savedMap.MappedField;
 						if (!string.IsNullOrEmpty(savedMap.CustomValue)) target.CustomValue = savedMap.CustomValue;
+						target.IsSelected = savedMap.IsSelected;
 					}
 				}
 			}
@@ -5191,8 +5209,39 @@ public class MainViewModel : ViewModelBase
 			if (!string.IsNullOrEmpty(state.ExcelFilePath) && File.Exists(state.ExcelFilePath))
 			{
 				ExcelFilePath = state.ExcelFilePath;
-				SelectedSheetName = state.SelectedSheetName;
-				ReloadExcelData();
+				SheetNames.Clear();
+				foreach (string sheetName in ExcelReaderService.GetSheetNames(ExcelFilePath))
+				{
+					SheetNames.Add(sheetName);
+				}
+				if (!string.IsNullOrEmpty(state.SelectedSheetName) && SheetNames.Contains(state.SelectedSheetName))
+				{
+					SelectedSheetName = state.SelectedSheetName;
+				}
+				else if (SheetNames.Count > 0)
+				{
+					SelectedSheetName = SheetNames[0];
+				}
+				LoadExcelData();
+
+				if (state.CulvertRowOverrides != null && state.CulvertRowOverrides.Count > 0)
+				{
+					foreach (var ov in state.CulvertRowOverrides)
+					{
+						var row = AllCulvertRows.FirstOrDefault(r =>
+							(!string.IsNullOrEmpty(ov.LyTrinh) && string.Equals(r.LyTrinh?.Trim(), ov.LyTrinh.Trim(), StringComparison.OrdinalIgnoreCase))
+							|| r.STT == ov.STT);
+						if (row != null && ov.Overrides != null)
+						{
+							foreach (var kvp in ov.Overrides)
+							{
+								row.ParameterOverrides[kvp.Key] = kvp.Value;
+							}
+						}
+					}
+				}
+				UpdateInspectorCulvertRows();
+				RefreshInspectorParameterMappings();
 			}
 		}
 		catch (Exception ex)
@@ -5245,19 +5294,92 @@ public class MainViewModel : ViewModelBase
 		}
 	}
 
+	public bool CheckDocumentHasCulvertFamilies()
+	{
+		if (Doc == null) return false;
+		try
+		{
+			var cfg = ProjectConfigStorageService.LoadFromDocument(Doc);
+			if (cfg != null) return true;
+
+			return new FilteredElementCollector(Doc)
+				.OfClass(typeof(Family))
+				.Cast<Family>()
+				.Any(f => (f.Name != null && f.Name.StartsWith("TNN_", StringComparison.OrdinalIgnoreCase))
+					   || (f.Name != null && f.Name.Contains("THAN CONG", StringComparison.OrdinalIgnoreCase))
+					   || (f.Name != null && f.Name.Contains("HO KY THUAT", StringComparison.OrdinalIgnoreCase)));
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	public void AutoLoadFamiliesForNewProject()
+	{
+		string folder = FamilyFolderPath;
+		if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+		{
+			folder = @"C:\Users\ADMIN\Desktop\TEST TOOL\FAMLY REVIT_HTKT";
+		}
+		if (Directory.Exists(folder) && Doc != null && !Doc.IsReadOnly && _eventHandler != null && _externalEvent != null)
+		{
+			FamilyFolderPath = folder;
+			string[] rfaFiles = Directory.GetFiles(folder, "*.rfa", SearchOption.AllDirectories);
+			if (rfaFiles.Length > 0)
+			{
+				_eventHandler.SetAction((UIApplication app) =>
+				{
+					var doc = app.ActiveUIDocument?.Document;
+					if (doc == null) return;
+					int loadedCount = 0;
+					using (Transaction tx = new Transaction(doc, "u0110\u1ed3ng b\u1ed9 Family c\u1ed1ng m\u1edbi"))
+					{
+						tx.Start();
+						CustomFamilyLoadOptions opt = new CustomFamilyLoadOptions();
+						foreach (string file in rfaFiles)
+						{
+							try
+							{
+								if (doc.LoadFamily(file, opt, out Family fam))
+								{
+									loadedCount++;
+								}
+								else
+								{
+									loadedCount++;
+								}
+							}
+							catch { }
+						}
+						tx.Commit();
+					}
+					((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
+					{
+						LoadAvailableFamilies();
+						FamilyLoadStatus = $"D\u1ef1 \u00e1n m\u1edbi: \u0110\u00e3 t\u1ef1 \u0111\u1ed9ng n\u1ea1p {loadedCount}/{rfaFiles.Length} Family th\u00e0nh c\u00f4ng!";
+					}));
+				});
+				_externalEvent.Raise();
+			}
+		}
+	}
+
 	public void TryAutoLoadConfiguration()
 	{
 		StartupLogger.Log("[VM] TryAutoLoadConfiguration START");
 		try
 		{
 			ProjectStateConfig? config = null;
+			bool hasCulvertFamilies = CheckDocumentHasCulvertFamilies();
+
 			if (Doc != null && !Doc.IsReadOnly)
 			{
 				StartupLogger.Log("[VM] TryAutoLoadConfiguration: calling LoadFromDocument...");
 				config = ProjectConfigStorageService.LoadFromDocument(Doc);
 				StartupLogger.Log($"[VM] TryAutoLoadConfiguration: LoadFromDocument result: {(config != null ? "CONFIG FOUND" : "NULL")}");
 			}
-			if (config == null)
+			if (config == null && hasCulvertFamilies)
 			{
 				StartupLogger.Log("[VM] TryAutoLoadConfiguration: calling LoadFromLastSession...");
 				config = ProjectConfigStorageService.LoadFromLastSession();
@@ -5268,13 +5390,26 @@ public class MainViewModel : ViewModelBase
 				StartupLogger.Log("[VM] TryAutoLoadConfiguration: calling ApplyState...");
 				ApplyState(config);
 				StartupLogger.Log("[VM] TryAutoLoadConfiguration: ApplyState finished.");
-				ExecutionStatus = $"Đã tự động khôi phục cấu hình dự án (lưu lúc: {config.SavedAt:dd/MM/yyyy HH:mm}).";
+				FamilyLoadStatus = "\u0110\u00e3 nh\u1eadn di\u1ec7n Family c\u00f3 s\u1eb5n trong File Revit (kh\u00f4ng n\u1ea1p l\u1ea1i t\u1eeb \u1ed5 c\u1ee9ng).";
+				ExecutionStatus = $"\u0110\u00e3 t\u1ef1 \u0111\u1ed9ng kh\u00f4i ph\u1ee5c c\u1ea5u h\u00ecnh d\u1ef1 \u00e1n (l\u01b0u l\u00fac: {config.SavedAt:dd/MM/yyyy HH:mm}).";
+			}
+			else
+			{
+				if (!hasCulvertFamilies)
+				{
+					StartupLogger.Log("[VM] New project detected: auto-loading families from folder...");
+					AutoLoadFamiliesForNewProject();
+				}
+				else
+				{
+					FamilyLoadStatus = "\u0110\u00e3 nh\u1eadn di\u1ec7n Family c\u00f3 s\u1eb5n trong File Revit (kh\u00f4ng n\u1ea1p l\u1ea1i t\u1eeb \u1ed5 c\u1ee9ng).";
+				}
 			}
 		}
 		catch (Exception ex)
 		{
 			StartupLogger.Log($"[VM] TryAutoLoadConfiguration EXCEPTION: {ex.Message}");
-			System.Diagnostics.Debug.WriteLine($"Lỗi TryAutoLoadConfiguration: {ex.Message}");
+			System.Diagnostics.Debug.WriteLine($"Lá»—i TryAutoLoadConfiguration: {ex.Message}");
 		}
 		StartupLogger.Log("[VM] TryAutoLoadConfiguration END");
 	}

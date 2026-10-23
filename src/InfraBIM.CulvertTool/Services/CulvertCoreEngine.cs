@@ -118,7 +118,12 @@ namespace InfraBIM.CulvertTool.Services
             bool useSurveyPoint = true,
             IEnumerable<CulvertMaterialItem>? materialSettings = null,
             int duplicateOption = 0,
-            IEnumerable<CulvertTypeProfile>? castInPlaceProfiles = null)
+            IEnumerable<CulvertTypeProfile>? castInPlaceProfiles = null,
+            IList<CulvertComponentItem>? technicalBarrelComponents = null,
+            IList<CulvertComponentItem>? technicalManholeComponents = null,
+            double lStdTechnicalM = 1.0,
+            double jointGapTechnicalM = 0.01,
+            CulvertArrayMode arrayModeTechnical = CulvertArrayMode.CenterOut)
         {
             var logs = new List<string>();
             int successCount = 0;
@@ -151,7 +156,9 @@ namespace InfraBIM.CulvertTool.Services
                         .Concat(castInPlaceBarrelComponents ?? new List<CulvertComponentItem>())
                         .Concat(outletComponents ?? new List<CulvertComponentItem>())
                         .Concat(apronComponents ?? new List<CulvertComponentItem>())
-                        .Concat(manholeComponents ?? new List<CulvertComponentItem>());
+                        .Concat(manholeComponents ?? new List<CulvertComponentItem>())
+                        .Concat(technicalBarrelComponents ?? new List<CulvertComponentItem>())
+                        .Concat(technicalManholeComponents ?? new List<CulvertComponentItem>());
 
                     foreach (var c in allComps)
                     {
@@ -260,26 +267,48 @@ namespace InfraBIM.CulvertTool.Services
                                 matchedProfile = castInPlaceProfiles.FirstOrDefault();
                             }
 
-                            var targetBarrelList = isRowCastInPlace 
-                                ? (matchedProfile?.Components ?? castInPlaceBarrelComponents) 
-                                : precastBarrelComponents;
-                            double curLStd = isRowCastInPlace 
-                                ? (matchedProfile?.L_Std ?? lStdCastInPlaceM) 
-                                : lStdPrecastM;
-                            double curJointGap = isRowCastInPlace 
-                                ? (matchedProfile?.Khe_Ho ?? jointGapCastInPlaceM) 
-                                : jointGapPrecastM;
-                            CulvertArrayMode curArrayMode = isRowCastInPlace 
-                                ? (matchedProfile != null 
+                            bool isRowTechnical = row.IsTechnical || (row.DetermineCulvertType() == "CỐNG KỸ THUẬT") ||
+                                (row.LoaiCong != null && (row.LoaiCong.IndexOf("kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 || row.LoaiCong.IndexOf("CKT", StringComparison.OrdinalIgnoreCase) >= 0)) ||
+                                (row.GhiChu != null && (row.GhiChu.IndexOf("kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 || row.GhiChu.IndexOf("CKT", StringComparison.OrdinalIgnoreCase) >= 0));
+
+                            IList<CulvertComponentItem> targetBarrelList;
+                            IList<CulvertComponentItem> targetManholeList;
+                            double curLStd;
+                            double curJointGap;
+                            CulvertArrayMode curArrayMode;
+
+                            if (isRowTechnical)
+                            {
+                                targetBarrelList = technicalBarrelComponents ?? precastBarrelComponents;
+                                targetManholeList = technicalManholeComponents ?? manholeComponents;
+                                curLStd = lStdTechnicalM;
+                                curJointGap = jointGapTechnicalM;
+                                curArrayMode = arrayModeTechnical;
+                            }
+                            else if (isRowCastInPlace)
+                            {
+                                targetBarrelList = matchedProfile?.Components ?? castInPlaceBarrelComponents;
+                                targetManholeList = manholeComponents;
+                                curLStd = matchedProfile?.L_Std ?? lStdCastInPlaceM;
+                                curJointGap = matchedProfile?.Khe_Ho ?? jointGapCastInPlaceM;
+                                curArrayMode = matchedProfile != null 
                                     ? (matchedProfile.SelectedArrayModeIndex == 0 ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay) 
-                                    : arrayModeCastInPlace) 
-                                : arrayModePrecast;
+                                    : arrayModeCastInPlace;
+                            }
+                            else
+                            {
+                                targetBarrelList = precastBarrelComponents;
+                                targetManholeList = manholeComponents;
+                                curLStd = lStdPrecastM;
+                                curJointGap = jointGapPrecastM;
+                                curArrayMode = arrayModePrecast;
+                            }
 
                             // Tự động nhận diện / bảo toàn Family tương ứng cho từng dòng cống
                             var curBarrel = ResolveComponentsForCulvert(doc, targetBarrelList, row);
                             var curOutlet = ResolveComponentsForCulvert(doc, outletComponents, row);
                             var curApron = ResolveComponentsForCulvert(doc, apronComponents, row);
-                            var curManhole = ResolveComponentsForCulvert(doc, manholeComponents, row);
+                            var curManhole = ResolveComponentsForCulvert(doc, targetManholeList, row);
 
                             var rowOutlets = new List<FamilyInstance>();
                             var rowBarrels = new List<FamilyInstance>();
@@ -1239,18 +1268,14 @@ namespace InfraBIM.CulvertTool.Services
                 throw new InvalidOperationException("Chiều dài cống quá nhỏ (P1 trùng P2).");
 
             // KIỂM TRA NẾU LÀ CỐNG KỸ THUẬT: ĐIỀU HƯỚNG SANG THUẬT TOÁN RẢI CỐNG KỸ THUẬT RIÊNG
-            bool isTechnicalCulvert = data.DetermineCulvertType() == "CỐNG KỸ THUẬT" || 
+            bool isTechnicalCulvert = data.IsTechnical || 
+                data.DetermineCulvertType() == "CỐNG KỸ THUẬT" || 
                 data.LoaiCong?.ToUpperInvariant().Contains("KỸ THUẬT") == true || 
                 data.LoaiCong?.ToUpperInvariant().Contains("KY THUAT") == true || 
                 data.LoaiCong?.ToUpperInvariant().Contains("CKT") == true ||
                 data.GhiChu?.ToUpperInvariant().Contains("KỸ THUẬT") == true || 
                 data.GhiChu?.ToUpperInvariant().Contains("KY THUAT") == true ||
-                data.GhiChu?.ToUpperInvariant().Contains("CKT") == true ||
-                (manholeComponents != null && manholeComponents.Any(c => 
-                    c.GroupType?.IndexOf("Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    c.CategoryType?.IndexOf("Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    c.SelectedSymbol?.Symbol?.FamilyName?.Contains("HO KY THUAT") == true ||
-                    c.SelectedSymbol?.Symbol?.FamilyName?.Contains("CKT") == true));
+                data.GhiChu?.ToUpperInvariant().Contains("CKT") == true;
 
             if (isTechnicalCulvert)
             {
@@ -1360,8 +1385,12 @@ namespace InfraBIM.CulvertTool.Services
             var upstreamOutlets = new List<FamilyInstance>();
             var downstreamOutlets = new List<FamilyInstance>();
 
-            PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, upstreamOutlets);
-            PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, downstreamOutlets);
+            bool isRowCastInPlace = isCastInPlace || 
+                (data.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (data.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, upstreamOutlets, isRowCastInPlace);
+            PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, downstreamOutlets, isRowCastInPlace);
 
             outletInstances.AddRange(upstreamOutlets);
             outletInstances.AddRange(downstreamOutlets);
@@ -1433,30 +1462,21 @@ namespace InfraBIM.CulvertTool.Services
             }
 
             // 3. Đặt Sân gia cố Thượng lưu & Hạ lưu:
-            // Sân gia cố liền kề ngay mép ngoài của Sân cống (CX_L1 + lSanCongM), không có khoảng cách hở
-            double lOuterCX_M = cxL1M + lSanCongM;
-            double lOuterCX_Feet = UnitUtils.ConvertToInternalUnits(lOuterCX_M, UnitTypeId.Meters);
-
-            XYZ uOutTL = -new XYZ(u.X, u.Y, 0).Normalize();
-            XYZ uOutHL = new XYZ(u.X, u.Y, 0).Normalize();
-            XYZ ptSC2_TL = p1 + uOutTL * lOuterCX_Feet;
-            XYZ ptSC2_HL = p2 + uOutHL * lOuterCX_Feet;
+            // Sân gia cố tiếp giáp liền kề ngay mép ngoài của Sân cống (tại P1 và P2), hoàn toàn không có khoảng cách hở
+            XYZ ptSC2_TL = p1;
+            XYZ ptSC2_HL = p2;
 
             double lSgcTL = data.L_SGC_TL > 0.05 ? data.L_SGC_TL : 3.0;
             double lSgcHL = data.L_SGC_HL > 0.05 ? data.L_SGC_HL : 3.0;
 
-            PlaceApronAssembly(doc, ptSC2_TL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSgcTL, materialSettings, apronInstances);
-            PlaceApronAssembly(doc, ptSC2_HL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSgcHL, materialSettings, apronInstances);
+            PlaceApronAssembly(doc, ptSC2_TL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSgcTL, materialSettings, apronInstances, isRowCastInPlace);
+            PlaceApronAssembly(doc, ptSC2_HL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSgcHL, materialSettings, apronInstances, isRowCastInPlace);
 
             // 4. Rải thân cống và hộp nối: Offset xuống 1 đoạn L_ngam_san như trong file Excel & Hình 4
             double lNgamSanM = data.L_Ngam_San > 0 ? data.L_Ngam_San : 0.0;
             double lNgamSanFeet = UnitUtils.ConvertToInternalUnits(lNgamSanM, UnitTypeId.Meters);
             XYZ p1_Culvert = p1 - new XYZ(0, 0, lNgamSanFeet);
             XYZ p2_Culvert = p2 - new XYZ(0, 0, lNgamSanFeet);
-
-            bool isRowCastInPlace = isCastInPlace || 
-                (data.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
-                (data.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
 
             var sampleOutlet = upstreamOutlets.FirstOrDefault() ?? downstreamOutlets.FirstOrDefault();
             var cipDetails = outCipDetails ?? new CastInPlaceDetails();
@@ -2347,7 +2367,8 @@ namespace InfraBIM.CulvertTool.Services
             bool isUpstream,
             double lSanCongFeet,
             IEnumerable<CulvertMaterialItem>? materialSettings,
-            List<FamilyInstance>? createdOutlets = null)
+            List<FamilyInstance>? createdOutlets = null,
+            bool isCastInPlace = false)
         {
             if (outletComponents == null || outletComponents.Count == 0) return;
 
@@ -2466,9 +2487,13 @@ namespace InfraBIM.CulvertTool.Services
                 string tenCK = $"{comp.CategoryType}_{suffix}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "CỬA XẢ THƯỢNG LƯU" : "CỬA XẢ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z); } catch { }
                 try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, comp.CategoryType ?? "Cửa xả"); } catch { }
-                string? outletMat = materialSettings?.FirstOrDefault(m => m.CategoryType == comp.CategoryType)?.MaterialName;
+                string? outletMat = materialSettings?.FirstOrDefault(m => 
+                    m.CategoryType == comp.CategoryType && 
+                    ((isCastInPlace && (m.CulvertType.Contains("ĐỔ TẠI CHỖ") || m.GroupType.Contains("ĐỔ TẠI CHỖ"))) ||
+                     (!isCastInPlace && (m.CulvertType.Contains("ĐÚC SẴN") || m.GroupType.Contains("ĐÚC SẴN")))))?.MaterialName
+                    ?? materialSettings?.FirstOrDefault(m => m.CategoryType == comp.CategoryType)?.MaterialName;
                 try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, comp.CategoryType ?? "Cửa xả", null, suffix, outletMat, doc, bimConfig.AutoCreateSharedParameters); } catch { }
-                try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
+                try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "", isCastInPlace ? "CỐNG ĐỔ TẠI CHỖ" : "CỐNG ĐÚC SẴN"); } catch { }
             }
         }
 
@@ -2484,7 +2509,8 @@ namespace InfraBIM.CulvertTool.Services
             bool isUpstream,
             double lSgcM,
             IEnumerable<CulvertMaterialItem>? materialSettings,
-            List<FamilyInstance>? createdAprons = null)
+            List<FamilyInstance>? createdAprons = null,
+            bool isCastInPlace = false)
         {
             if (apronComponents == null || apronComponents.Count == 0) return;
 
@@ -2573,9 +2599,13 @@ namespace InfraBIM.CulvertTool.Services
                 string tenCK = $"{comp.CategoryType}_{suffix}";
                 try { BimParameterService.SetElementBimProperties(inst, bimConfig, tenCK, isUpstream ? "SÂN GIA CỐ THƯỢNG LƯU" : "SÂN GIA CỐ HẠ LƯU", null, null, pA_off.X, pA_off.Y, pA_off.Z); } catch { }
                 try { BimParameterService.ApplyFamilyMappedParameters(inst, familyParameterMappings, data, comp.CategoryType ?? "Sân gia cố"); } catch { }
-                string? apronMat = materialSettings?.FirstOrDefault(m => m.CategoryType == comp.CategoryType)?.MaterialName;
+                string? apronMat = materialSettings?.FirstOrDefault(m => 
+                    m.CategoryType == comp.CategoryType && 
+                    ((isCastInPlace && (m.CulvertType.Contains("ĐỔ TẠI CHỖ") || m.GroupType.Contains("ĐỔ TẠI CHỖ"))) ||
+                     (!isCastInPlace && (m.CulvertType.Contains("ĐÚC SẴN") || m.GroupType.Contains("ĐÚC SẴN")))))?.MaterialName
+                    ?? materialSettings?.FirstOrDefault(m => m.CategoryType == comp.CategoryType)?.MaterialName;
                 try { BimParameterService.ApplyCustomBimParameters(inst, customBimParams, data, comp.CategoryType ?? "Sân gia cố", null, suffix, apronMat, doc, bimConfig.AutoCreateSharedParameters); } catch { }
-                try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? ""); } catch { }
+                try { TryApplyMaterial(doc, inst, materialSettings, comp.CategoryType ?? "", isCastInPlace ? "CỐNG ĐỔ TẠI CHỖ" : "CỐNG ĐÚC SẴN"); } catch { }
             }
         }
 
@@ -4672,16 +4702,36 @@ namespace InfraBIM.CulvertTool.Services
             else if (!string.IsNullOrEmpty(culvertType)) targetGroup = culvertType;
             else targetGroup = "CỐNG ĐÚC SẴN";
 
-            // 1. Khớp chính xác cả Group/CulvertType và CategoryType
-            CulvertMaterialItem? item = materialSettings.FirstOrDefault(m =>
-                m.IsActive &&
-                (string.Equals(m.CulvertType, targetGroup, StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(m.GroupType, targetGroup, StringComparison.OrdinalIgnoreCase) ||
-                 (targetGroup.Contains("ĐỔ TẠI CHỖ") && m.CulvertType != null && m.CulvertType.Contains("đổ tại chỗ", StringComparison.OrdinalIgnoreCase)) ||
-                 (targetGroup.Contains("ĐÚC SẴN") && m.CulvertType != null && m.CulvertType.Contains("đúc sẵn", StringComparison.OrdinalIgnoreCase))) &&
-                (string.Equals(m.CategoryType, cat, StringComparison.OrdinalIgnoreCase) ||
-                 m.CategoryType.IndexOf(cat, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 cat.IndexOf(m.CategoryType, StringComparison.OrdinalIgnoreCase) >= 0));
+            CulvertMaterialItem? item = null;
+
+            // 1a. Với Cửa xả & Sân gia cố: ưu tiên tìm cấu hình riêng cho Đổ tại chỗ hoặc Đúc sẵn
+            if (isOutlet || isApron)
+            {
+                bool isCip = culvertType != null && (culvertType.Contains("ĐỔ TẠI CHỖ") || culvertType.Contains("DO TAI CHO") || culvertType.Contains("CIP"));
+                string typeSuffix = isCip ? "ĐỔ TẠI CHỖ" : "ĐÚC SẴN";
+
+                item = materialSettings.FirstOrDefault(m =>
+                    m.IsActive &&
+                    ((m.CulvertType != null && m.CulvertType.Contains(targetGroup, StringComparison.OrdinalIgnoreCase) && m.CulvertType.Contains(typeSuffix, StringComparison.OrdinalIgnoreCase)) ||
+                     (m.GroupType != null && m.GroupType.Contains(targetGroup, StringComparison.OrdinalIgnoreCase) && m.GroupType.Contains(typeSuffix, StringComparison.OrdinalIgnoreCase))) &&
+                    (string.Equals(m.CategoryType, cat, StringComparison.OrdinalIgnoreCase) ||
+                     m.CategoryType.IndexOf(cat, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     cat.IndexOf(m.CategoryType, StringComparison.OrdinalIgnoreCase) >= 0));
+            }
+
+            // 1b. Khớp chính xác cả Group/CulvertType và CategoryType
+            if (item == null)
+            {
+                item = materialSettings.FirstOrDefault(m =>
+                    m.IsActive &&
+                    (string.Equals(m.CulvertType, targetGroup, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(m.GroupType, targetGroup, StringComparison.OrdinalIgnoreCase) ||
+                     (targetGroup.Contains("ĐỔ TẠI CHỖ") && m.CulvertType != null && m.CulvertType.Contains("đổ tại chỗ", StringComparison.OrdinalIgnoreCase)) ||
+                     (targetGroup.Contains("ĐÚC SẴN") && m.CulvertType != null && m.CulvertType.Contains("đúc sẵn", StringComparison.OrdinalIgnoreCase))) &&
+                    (string.Equals(m.CategoryType, cat, StringComparison.OrdinalIgnoreCase) ||
+                     m.CategoryType.IndexOf(cat, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     cat.IndexOf(m.CategoryType, StringComparison.OrdinalIgnoreCase) >= 0));
+            }
 
             // 2. Khớp CategoryType trong cùng targetGroup nếu có lớp đệm (Đá dăm / BTL)
             if (item == null && !string.IsNullOrEmpty(targetGroup))

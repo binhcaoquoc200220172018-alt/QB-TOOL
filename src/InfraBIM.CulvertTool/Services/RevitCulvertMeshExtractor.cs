@@ -31,10 +31,41 @@ namespace InfraBIM.CulvertTool.Services
 
             try
             {
-                // 1. Chuẩn bị dữ liệu cống và tọa độ đánh giá
+                // 1. Chuẩn bị dữ liệu cống và tọa độ đánh giá (Clone row để bảo vệ dữ liệu gốc không bị biến đổi)
                 bool useSurveyPoint = (vm.SelectedCoordSysIndex == 0);
-                CulvertRowData evalRow = row;
-                if (vm.IsTechnicalCulvertMode)
+                CulvertRowData evalRow = new CulvertRowData
+                {
+                    STT = row.STT,
+                    LyTrinh = row.LyTrinh,
+                    LoaiCong = row.LoaiCong,
+                    CauKien = row.CauKien,
+                    KhauDo = row.KhauDo,
+                    ChieuDai = row.ChieuDai,
+                    SoCua = row.SoCua,
+                    DoDoc = row.DoDoc,
+                    Z1 = row.Z1,
+                    Z2 = row.Z2,
+                    L_Ngam_San = row.L_Ngam_San,
+                    L_SGC_TL = row.L_SGC_TL,
+                    L_SGC_HL = row.L_SGC_HL,
+                    SoHopNoi = row.SoHopNoi,
+                    Dist_HN1 = row.Dist_HN1,
+                    Dist_HN2 = row.Dist_HN2,
+                    B_HT1 = row.B_HT1,
+                    B_HT2 = row.B_HT2,
+                    GhiChu = row.GhiChu,
+                    X1 = row.X1,
+                    Y1 = row.Y1,
+                    X2 = row.X2,
+                    Y2 = row.Y2,
+                    AssignedProfileName = row.AssignedProfileName,
+                    ActiveParamName = row.ActiveParamName,
+                    ActiveParamValue = row.ActiveParamValue,
+                    ParameterOverrides = row.ParameterOverrides != null ? new Dictionary<string, string>(row.ParameterOverrides, StringComparer.OrdinalIgnoreCase) : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                };
+
+                bool isRowTechnical = row.IsTechnical || (vm.IsTechnicalCulvertMode && string.IsNullOrEmpty(row.AssignedProfileName) && string.IsNullOrEmpty(row.LoaiCong));
+                if (isRowTechnical)
                 {
                     evalRow.LoaiCong = "CỐNG KỸ THUẬT";
                     evalRow.GhiChu = "CỐNG KỸ THUẬT";
@@ -102,12 +133,12 @@ namespace InfraBIM.CulvertTool.Services
                             (evalRow.GhiChu?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
                             (evalRow.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
 
-                        var barrelSource = (vm.IsTechnicalCulvertMode && vm.TechnicalBarrelComponents.Count > 0)
+                        var barrelSource = (isRowTechnical && vm.TechnicalBarrelComponents.Count > 0)
                             ? vm.TechnicalBarrelComponents.ToList()
                             : (isRowCastInPlace && vm.CastInPlaceBarrelComponents.Count > 0)
                                 ? vm.CastInPlaceBarrelComponents.ToList()
                                 : vm.BarrelComponents.ToList();
-                        var manholeSource = (vm.IsTechnicalCulvertMode && vm.TechnicalManholeComponents.Count > 0)
+                        var manholeSource = (isRowTechnical && vm.TechnicalManholeComponents.Count > 0)
                             ? vm.TechnicalManholeComponents.ToList()
                             : vm.ManholeComponents.ToList();
 
