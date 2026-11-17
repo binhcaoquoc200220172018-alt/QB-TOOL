@@ -1,97 +1,171 @@
 # 🤖 HƯỚNG DẪN ĐỒNG HÀNH PHÁT TRIỂN REVIT API ADD-IN (AGENT.MD)
 
-Tài liệu này đóng vai trò là **kim chỉ nam (System Instruction & Project Context)** cho Trợ lý AI khi đồng hành cùng Kỹ sư phát triển bộ công cụ Add-in Revit chuyên ngành **Hạ tầng Kỹ thuật (HTKT - Thoát nước mưa, Thoát nước thải, Cấp nước, Giao thông...)**.
+Tài liệu này đóng vai trò là **Kim chỉ nam (System Instruction, Technical Stack & AI Collaboration Framework)** cho Trợ lý AI khi đồng hành cùng Kỹ sư phát triển hệ thống Add-in Revit chuyên ngành **Hạ tầng Kỹ thuật (HTKT - Thoát nước mưa, Thoát nước thải, Cấp nước, Cống ngang, Cống kỹ thuật, Hố ga)**.
 
 ---
 
-## 📌 1. LƯU Ý BẮT BUỘC: QUẢN LÝ TRẠNG THÁI VÀ NHẬT KÝ (CHANGELOG)
+## 📌 1. QUẢN LÝ TRẠNG THÁI & LIÊN KẾT NHẬT KÝ (CHANGELOG.MD)
 > [!IMPORTANT]
-> **Liên kết bắt buộc:** Mọi thông tin trạng thái làm việc, cập nhật tính năng, sửa lỗi hoặc quyết định kỹ thuật quan trọng **PHẢI** được ghi nhận và đồng bộ vào file **[`CHANGELOG.md`](./CHANGELOG.md)**.
-> - **AI chủ động cập nhật** file này sau mỗi lần hoàn thành một tính năng lớn, tái cấu trúc mã nguồn, hoặc khi kết thúc phiên làm việc.
-> - Khi bắt đầu phiên làm việc mới, AI phải đọc `CHANGELOG.md` để nắm trạng thái dang dở gần nhất.
+> **Liên kết bắt buộc:** Mọi thông tin trạng thái làm việc, cập nhật tính năng, sửa đổi mã nguồn hoặc quyết định kỹ thuật quan trọng **PHẢI** được ghi nhận và đồng bộ vào file **[`CHANGELOG.md`](./CHANGELOG.md)**.
+> - **AI chủ động cập nhật:** AI có trách nhiệm tự động cập nhật `CHANGELOG.md` mỗi khi hoàn thành một chức năng, tái cấu trúc mã nguồn, khắc phục lỗi hoặc khi người dùng yêu cầu.
+> - **Khởi đầu phiên làm việc:** Mỗi khi mở phiên trao đổi mới, AI phải đọc `CHANGELOG.md` đầu tiên để nắm bắt chính xác tiến độ và trạng thái dang dở của dự án.
 
 ---
 
-## 🚀 2. ĐỀ XUẤT CÔNG NGHỆ & QUY TRÌNH (BEST OFFERS FOR REVIT API)
-Vì bạn mới bắt đầu phát triển Revit API, dưới đây là bộ khuyến nghị chuẩn công nghiệp để việc lập trình cùng AI đạt hiệu suất cao nhất và ít lỗi nhất:
+## 🚀 2. ĐỀ XUẤT TỐT NHẤT (BEST OFFERS) KHI PHÁT TRIỂN REVIT API VỚI AI
+Dành cho kỹ sư mới bắt đầu lập trình Revit API, dưới đây là bộ khuyến nghị chuẩn công nghiệp để việc phát triển đạt hiệu quả tối đa, tối ưu tốc độ và hạn chế phát sinh lỗi:
 
-### 2.1. Lựa chọn Ngôn ngữ & Framework
+### 2.1. Lựa chọn Ngôn ngữ & Nền tảng Runtime
 * **Ngôn ngữ chủ đạo:** **C#** (Khuyến nghị 100%).
-  * *Lý do:* Revit API được tối ưu sâu nhất bằng .NET/C#. Cộng đồng hỗ trợ lớn, mã nguồn mở phong phú, kiểm tra lỗi lúc biên dịch (Compile-time type checking).
-* **Phiên bản .NET mục tiêu:** **.NET 8.0 Windows (`net8.0-windows`)** cho **Revit 2025**.
-  * *Lưu ý quan trọng:* Từ Revit 2025, Autodesk đã chính thức chuyển đổi toàn bộ runtime từ .NET Framework 4.8 sang **.NET 8**. Cần đảm bảo SDK .NET 8 đã được cài đặt trên máy.
+  * *Lý do:* Revit API được viết và tối ưu hóa sâu nhất cho .NET C#. Hỗ trợ kiểm tra lỗi lúc biên dịch (compile-time type safety), cộng đồng giải pháp lớn nhất.
+* **Phiên bản Framework:** **.NET 8.0 Windows (`net8.0-windows`)** cho **Revit 2025+**.
+  * *Lưu ý quan trọng:* Từ Revit 2025, Autodesk đã chuyển toàn bộ lõi Revit API từ .NET Framework 4.8 sang **.NET 8**. Không dùng các package cũ chỉ hỗ trợ .NET Framework.
+* **Thư viện xử lý Excel:** **ClosedXML** (phiên bản `0.104.2+`).
+  * Đọc/ghi trực tiếp file `.xlsx` tốc độ cao, không cần cài đặt Microsoft Excel trên máy tính, không sợ xung đột tiến trình COM (`EXCEL.EXE`).
 
-### 2.2. Bộ công cụ hỗ trợ "sống còn" (Must-have Tools)
-1. **RevitLookup (Bắt buộc cài):**
-   * Tiện ích mở rộng chạy trực tiếp trong Revit giúp xem cấu trúc dữ liệu, Parameter, ElementId, BoundingBox của bất kỳ đối tượng nào trên màn hình.
-2. **Revit Add-In Manager (Autodesk / Jeremy Tammik):**
-   * Cho phép tải lại (Reload) file `.dll` trực tiếp mà **KHÔNG CẦN TẮT MỞ LẠI REVIT**. Tiết kiệm 80% thời gian thử nghiệm.
-3. **IDE:**
-   * **Visual Studio 2022 Community** (Khuyên dùng cho người mới vì hỗ trợ kéo thả giao diện WPF/XAML trực quan và debug mạnh mẽ).
-   * Hoặc **VS Code** với tiện ích C# Dev Kit.
+### 2.2. Bộ ba Công cụ "Sống còn" Cần Cài Đặt Ngay
+1. **RevitLookup (Bắt buộc phải có):**
+   * Tiện ích mở rộng chạy trực tiếp trong Revit, cho phép "soi" cấu trúc dữ liệu, Parameter ID, BuiltInParameter, StorageType, BoundingBox của bất kỳ cấu kiện nào trên màn hình.
+2. **Revit Add-In Manager (Jeremy Tammik / Autodesk):**
+   * Cho phép tải lại (Reload / Modify) file `.dll` trực tiếp mà **KHÔNG CẦN TẮT MỞ LẠI REVIT**. Tiết kiệm hàng chục giờ kiểm thử mỗi tuần.
+3. **Visual Studio 2022 Community (hoặc VS Code C# Dev Kit):**
+   * Hỗ trợ thiết kế trực quan giao diện WPF/XAML, IntelliSense gợi ý mã nguồn và trình gỡ lỗi (Debugger) mạnh mẽ.
 
-### 2.3. Cấu trúc dự án khuyến nghị (Pattern Clean & MVVM)
-```text
-PHAT TRIEN TOOL_HTKT/
-├── CAD/                     # Dữ liệu bản vẽ đầu vào (.dwg trắc dọc, bình đồ)
-├── REVIT/                   # Thư viện Family mẫu (.rfa hố ga, cống, móng...)
-├── src/
-│   ├── ToolHTKT.Core/       # Logic nghiệp vụ, thuật toán hình học, tính toán
-│   ├── ToolHTKT.Revit/      # Tương tác Revit API (Commands, Events, Updaters)
-│   │   ├── Commands/        # Các lệnh gắn vào nút bấm trên Ribbon (IExternalCommand)
-│   │   ├── Common/          # Tiện ích chuyển đổi đơn vị, lấy tham số, lọc đối tượng
-│   │   └── App.cs           # Khởi tạo Ribbon, Panels, PushButtons (IExternalApplication)
-│   └── ToolHTKT.UI/         # Giao diện người dùng (WPF / MVVM)
-├── AGENT.md                 # Chỉ dẫn AI & Quy tắc phát triển (File này)
-└── CHANGELOG.md             # Lịch sử thay đổi và tiến độ dự án
+### 2.3. Mô hình Kiến trúc Chuẩn (MVVM & Modeless Window Thread-Safety)
+Revit API là môi trường **Single-Threaded** (đơn luồng). Khi thiết kế giao diện WPF không khóa màn hình Revit (Modeless Window):
+* **Tuyệt đối KHÔNG gọi Revit API trực tiếp từ sự kiện UI Click** nếu không đang trong luồng chính của Revit.
+* **Bắt buộc sử dụng cơ chế `IExternalEventHandler` / `ExternalEvent`:**
+  * WPF Window chỉ nhận tương tác từ người dùng và chuẩn bị dữ liệu trong ViewModel.
+  * Khi bấm nút (ví dụ: *Rải Hố Ga*), kích hoạt `externalEvent.Raise()`.
+  * Mã lệnh Revit API sẽ thực thi an toàn trong hàm `Execute(UIApplication app)` của Handler.
+
+```
+┌─────────────────────────────────┐
+│     WPF UI Window (Modeless)    │
+│  (DataBinding, Validations)     │
+└──────────────┬──────────────────┘
+               │ 1. Người dùng bấm nút / Đổi cấu hình
+               ▼
+┌─────────────────────────────────┐
+│           ViewModel             │
+│   (Chuẩn bị dữ liệu / Model)    │
+└──────────────┬──────────────────┘
+               │ 2. externalEvent.Raise()
+               ▼
+┌─────────────────────────────────┐
+│    IExternalEventHandler        │
+│   (Chạy trong Revit Main Thread)│
+└──────────────┬──────────────────┘
+               │ 3. Mở Transaction & Gọi Core Engine
+               ▼
+┌─────────────────────────────────┐
+│        Revit Core Engine        │
+│ (NewFamilyInstance, Parameters) │
+└─────────────────────────────────┘
 ```
 
----
-
-## 📐 3. CÁC QUY TẮC CỐT LÕI TRONG REVIT API
-Khi viết mã Revit API cùng AI, luôn tuân thủ nghiêm ngặt các nguyên tắc sau:
-
-1. **Quy tắc Đơn vị (Revit Internal Units):**
-   * Mọi chiều dài trong Revit API đều tính bằng **Feet (ft)**.
-   * Góc tính bằng **Radian**.
-   * *Bắt buộc:* Luôn sử dụng hàm chuyển đổi:
-     ```csharp
-     // Từ mm sang feet:
-     double feet = UnitUtils.ConvertToInternalUnits(mm, UnitTypeId.Millimeters);
-     // Từ feet sang mm:
-     double mm = UnitUtils.ConvertFromInternalUnits(feet, UnitTypeId.Millimeters);
-     ```
-2. **Quản lý Transaction:**
-   * Mọi thao tác tạo, sửa, xóa phần tử trong mô hình **BẮT BUỘC** nằm trong một `Transaction`.
-   * Luôn bọc trong khối `using (Transaction t = new Transaction(doc, "Tên hành động")) { t.Start(); ... t.Commit(); }`.
-   * Hạn chế Transaction lồng nhau; dùng `SubTransaction` hoặc `TransactionGroup` khi cần gom nhóm lệnh Undo.
-3. **Luồng thực thi (Thread Safety):**
-   * Revit API là **Single-Threaded**. Không bao giờ gọi Revit API từ luồng nền (Background Thread / Task.Run) nếu không thông qua cơ chế `ExternalEvent` hoặc `Idling`.
-4. **Xử lý cảnh báo/lỗi (Failure Handling):**
-   * Khi tự động đặt hàng loạt cống/hố ga, Revit có thể hiện pop-up cảnh báo (Warning). Cần cấu hình `IFailuresPreprocessor` để tự động bỏ qua cảnh báo không nghiêm trọng mà không làm dừng tiến trình.
+### 2.4. Nguyên Tắc Phát Triển & Trình Duyệt Giao Diện (Visual Live Preview Trong Antigravity)
+> [!IMPORTANT]
+> **Quy trình tương tác giao diện bắt buộc giữa AI và Kỹ sư:**
+> 1. **Luôn hiển thị Live Preview trực tiếp trong chat:** Mỗi khi đề xuất thiết kế, điều chỉnh bố cục, bổ sung tính năng hoặc cập nhật giao diện Add-in, AI **BẮT BUỘC** phải nhúng trực tiếp giao diện tương tác (Live Preview Widget) bằng thẻ `<agent-embed src="file:///.../preview_manhole_ui.html"></agent-embed>` ngay trong khung chat của Antigravity.
+> 2. **Kỹ sư thao tác trực tiếp trước khi duyệt:** Kỹ sư sẽ thao tác trực tiếp trên giao diện nhúng này (chuyển tab, click chọn hố ga, xoay 3D, đổi góc nhìn, kiểm tra các ô thông số cao độ) để hình dung trọn vẹn và đánh giá thực tế.
+> 3. **Chỉ sửa code Add-in khi Kỹ sư nói "CHỐT":** Tuyệt đối không vội vàng sửa file `.cs` / `.xaml` khi Kỹ sư chưa chốt phương án. Chỉ khi Kỹ sư phản hồi *"chốt"* hoặc đồng ý phương án, AI mới được phép tiến hành sửa mã nguồn, biên dịch kiểm thử và đồng bộ vào Revit.
 
 ---
 
-## 🎯 4. LỘ TRÌNH PHÁT TRIỂN TOOL HẠ TẦNG KỸ THUẬT (HTKT)
+## 📐 3. CÁC QUY TẮC VÀNG TRONG LẬP TRÌNH REVIT API
 
-* **Giai đoạn 1: Thiết lập nền tảng & Tiện ích chung**
-  * Tạo Solution .NET C# hỗ trợ Revit 2020 - 2026.
-  * Xây dựng module nạp và quản lý Family (`CONG HOP`, `TNN_CT_THAN CONG`, `HG...`).
-  * Xây dựng bộ thư viện hình học phụ trợ (tính độ dốc, cao độ đáy, nội suy tọa độ).
-* **Giai đoạn 2: Tự động hóa Dựng cống & Hố ga**
-  * Đọc dữ liệu tuyến từ CAD (Polyline, Block hố ga) hoặc Excel bảng tọa độ/trắc dọc.
-  * Tự động rải Family Hố ga (`HG`) tại các nút giao / góc đổi hướng.
-  * Tự động nối ống/cống giữa 2 hố ga và căn chỉnh cao độ đầu cống/cuối cống theo độ dốc.
-* **Giai đoạn 3: Tự động lắp ghép Cấu tạo chi tiết**
-  * Tự động gán móng đệm đá dăm (`DA DAM DEM`), bê tông lót (`BE TONG LOT`), gối cống (`GOI CONG`) tương ứng với từng đoạn cống.
-  * Tự động đặt cửa xả (`CUA XA`) tại điểm xả cuối tuyến.
-* **Giai đoạn 4: Thống kê & Xuất hồ sơ**
-  * Tự động tính toán khối lượng đào đắp rãnh cống.
-  * Xuất bảng thống kê cống hộp, cống tròn, hố ga theo mẫu dự toán Việt Nam.
+### 3.1. Đơn vị đo nội bộ (Internal Units)
+* **Chiều dài:** Revit API luôn luôn tính bằng **Feet (ft)** (1 meter ≈ 3.28084 feet).
+* **Góc:** Luôn luôn tính bằng **Radian** (180° = π rad).
+* **Bắt buộc sử dụng hàm chuẩn của Revit:**
+  ```csharp
+  // Chuyển từ Mét sang Feet nội bộ
+  double feet = UnitUtils.ConvertToInternalUnits(chieuDaiMet, UnitTypeId.Meters);
+  // Chuyển từ Feet nội bộ sang Mét
+  double met = UnitUtils.ConvertFromInternalUnits(feet, UnitTypeId.Meters);
+  // Đổi góc từ Độ sang Radian
+  double rad = gocDo * Math.PI / 180.0;
+  ```
+
+### 3.2. Quản lý Giao dịch (Transaction & TransactionGroup)
+* Mọi hành động thêm, sửa, xoá phần tử trong Revit bắt buộc phải đặt trong `Transaction`.
+* Để gom nhiều bước (tạo cấu kiện, gán thông số, gán vật liệu) thành 1 bước Undo duy nhất trong Revit, sử dụng `TransactionGroup`:
+  ```csharp
+  using (var tg = new TransactionGroup(doc, "Rải Hố Ga Tự Động"))
+  {
+      tg.Start();
+      using (var t = new Transaction(doc, "Đặt Family Hố Ga"))
+      {
+          t.Start();
+          // Thao tác Revit API...
+          t.Commit();
+      }
+      tg.Assimilate(); // Gom toàn bộ hành động thành 1 Undo duy nhất
+  }
+  ```
+
+### 3.3. Tự động xử lý Cảnh báo (Suppress All Warnings)
+Khi tự động rải hàng loạt phần tử, Revit thường hiện hộp thoại Warning (như trùng lặp vị trí, lệch mặt cắt...) làm gián đoạn tiến trình. Cần gắn bộ tiền xử lý `IFailuresPreprocessor`:
+```csharp
+public class SuppressAllWarningsFailuresPreprocessor : IFailuresPreprocessor
+{
+    public FailureProcessingResult PreprocessFailures(FailuresAccessor failuresAccessor)
+    {
+        var msgs = failuresAccessor.GetFailureMessages();
+        foreach (var msg in msgs)
+        {
+            if (msg.GetSeverity() == FailureSeverity.Warning)
+            {
+                failuresAccessor.DeleteWarning(msg);
+            }
+        }
+        return FailureProcessingResult.Continue;
+    }
+}
+```
+
+### 3.4. Xử lý Family Lồng nhau (Nested Shared Families)
+Các Family hạ tầng phức tạp (Hố ga có nắp gang, thân, cổ thu, ống nối) thường được ghép từ các Family con:
+* Để truy cập các bộ phận con bên trong một `FamilyInstance`, sử dụng:
+  ```csharp
+  ICollection<ElementId> subIds = instance.GetSubComponentIds();
+  foreach (ElementId subId in subIds)
+  {
+      Element subElem = doc.GetElement(subId);
+      // Gán Parameter hoặc vật liệu cho cấu kiện con
+  }
+  ```
+* Luôn kiểm tra tính sẵn sàng trước khi gán tham số:
+  ```csharp
+  Parameter p = elem.LookupParameter("Tên Tham Số");
+  if (p != null && !p.IsReadOnly)
+  {
+      p.Set(value);
+  }
+  ```
 
 ---
 
-## 🤝 5. NGUYÊN TẮC LÀM VIỆC CÙNG AI
-1. **Chia nhỏ bài toán:** Không yêu cầu viết một tool hoàn chỉnh cả nghìn dòng code cùng lúc. Hãy giải quyết từng hàm, từng Command đơn lẻ (ví dụ: "Bước 1: Viết hàm load Family", "Bước 2: Viết hàm đặt 1 hố ga theo tọa độ X, Y, Z").
-2. **Kiểm tra và Phản hồi:** Sau mỗi đoạn mã được cung cấp, người dùng biên dịch và báo cáo lỗi (nếu có) kèm ảnh chụp hoặc mã lỗi để AI tối ưu ngay.
-3. **Giữ gìn Documentation:** Mọi thay đổi logic đều phải được ghi chú rõ ràng bằng tiếng Việt trong code comment.
+## 🎨 4. PHONG CÁCH GIAO DIỆN (UI/UX DESIGN SYSTEM)
+Đồng bộ 100% với hệ thống giao diện công cụ Hạ tầng Kỹ thuật đã phát triển:
+* **Màu nền chủ đạo:** Dark Navy (`#0A1120`), Khung Card (`#132035`), Khung con (`#182A44`), Đường viền (`#223959`).
+* **Màu điểm nhấn (Accent):**
+  * Xanh lơ (Cyan): `#38BDF8` (Tiêu đề, Tab đang chọn, Focus, Border).
+  * Xanh lá mạ (Mint Green): `#4ADE80` / `#16A34A` (Nút bấm thực thi chính, Trạng thái thành công).
+* **Màu cảnh báo / Lỗi:** Đỏ cam (`#EF4444`).
+* **Font chữ:** `Segoe UI`, kích thước chuẩn 12 - 13px, độ tương phản cao với chữ trắng (`#FFFFFF`) và xanh nhạt (`#BAE6FD`).
+
+---
+
+## 🤝 5. QUY TẮC PHỐI HỢP VỚI AI
+1. **Chia nhỏ và Xác nhận theo Module:**
+   * Module 1: Xử lý Đọc/Ghi dữ liệu Excel & Tạo file mẫu.
+   * Module 2: Nạp Family, Phân tích tham số (Kích thước, Vật liệu, Văn bản).
+   * Module 3: Xây dựng Giao diện người dùng WPF (4 Tabs).
+   * Module 4: Xây dựng Core Engine Revit API (Chuyển đổi tọa độ, Đặt Family, Xoay góc, Gán thông số & Subcomponents).
+2. **Ghi chú bằng Tiếng Việt chuẩn:**
+   * Mọi mã nguồn C# đều phải có XML Documentation (`/// <summary>`) bằng tiếng Việt rõ ràng, dễ hiểu.
+3. **Bảo toàn và Tương thích:**
+   * Không phá vỡ các thư viện dùng chung (`CoordinateService`, `ExcelReaderService`).
+   * Đảm bảo biên dịch thành công 0 lỗi với `dotnet build`.

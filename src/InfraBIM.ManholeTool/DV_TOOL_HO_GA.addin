@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>ĐV_TOOL_HTKT_HO_GA</Name>
+    <Assembly>DV_TOOL_HO_GA\DV_TOOL_HO_GA.dll</Assembly>
+    <FullClassName>InfraBIM.ManholeTool.App</FullClassName>
+    <ClientId>9D3F376A-7E59-4D6C-81F3-2BF4E03487DE</ClientId>
+    <VendorId>DV_HTKT</VendorId>
+    <VendorDescription>ĐV TOOL Hạ Tầng Kỹ Thuật - Rải Hố Ga Tự Động</VendorDescription>
+  </AddIn>
+</RevitAddIns>

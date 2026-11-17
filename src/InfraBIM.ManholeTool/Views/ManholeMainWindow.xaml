@@ -1,0 +1,1008 @@
+<Window x:Class="InfraBIM.ManholeTool.Views.ManholeMainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:InfraBIM.ManholeTool.Views"
+        xmlns:vm="clr-namespace:InfraBIM.ManholeTool.ViewModels"
+        mc:Ignorable="d"
+        Title="ĐV_TOOL_HTKT_TNN_RẢI HỐ GA TỰ ĐỘNG" 
+        Height="870" Width="1400"
+        MinHeight="720" MinWidth="1160"
+        WindowStartupLocation="CenterScreen"
+        Background="#0A1120" Foreground="#F8FAFC"
+        FontFamily="Segoe UI" FontSize="13">
+
+    <Window.Resources>
+        <!-- Converters -->
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis"/>
+        <local:WarningToColorConverter x:Key="WarningToColorConverter"/>
+        <local:BindingProxy x:Key="MainVmProxy" Data="{Binding}"/>
+
+        <!-- BẢNG MÀU CHUYÊN NGHIỆP: XANH ĐẬM (NAVY), XANH LƠ (CYAN), XANH LÁ NHẠT (MINT) CHUẨN CỐNG NGANG -->
+        <SolidColorBrush x:Key="NavyBg" Color="#0A1120"/>
+        <SolidColorBrush x:Key="NavyDark" Color="#0B132B"/>
+        <SolidColorBrush x:Key="NavyCard" Color="#132035"/>
+        <SolidColorBrush x:Key="NavyCardInner" Color="#182A44"/>
+        <SolidColorBrush x:Key="NavyBorder" Color="#223959"/>
+        <SolidColorBrush x:Key="NavyBorderFocus" Color="#38BDF8"/>
+
+        <!-- Xanh lơ (Cyan) -->
+        <SolidColorBrush x:Key="CyanPrimary" Color="#38BDF8"/>
+        <SolidColorBrush x:Key="CyanLight" Color="#7DD3FC"/>
+        <SolidColorBrush x:Key="CyanDark" Color="#0284C7"/>
+
+        <!-- Xanh lá nhạt (Mint Green) -->
+        <SolidColorBrush x:Key="MintLight" Color="#86EFAC"/>
+        <SolidColorBrush x:Key="MintPrimary" Color="#4ADE80"/>
+        <SolidColorBrush x:Key="MintDark" Color="#16A34A"/>
+
+        <!-- Màu chữ độ tương phản cao -->
+        <SolidColorBrush x:Key="TextWhite" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="TextLight" Color="#F8FAFC"/>
+        <SolidColorBrush x:Key="TextMuted" Color="#BAE6FD"/>
+        <SolidColorBrush x:Key="TextLabel" Color="#E2E8F0"/>
+
+        <!-- Base Styles -->
+        <Style TargetType="GroupBox">
+            <Setter Property="Background" Value="{StaticResource NavyCard}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource NavyBorder}"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="HeaderTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <Border Background="#16325C" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,0,4">
+                            <TextBlock Text="{Binding}" Foreground="#38BDF8" FontWeight="Bold" FontSize="13"/>
+                        </Border>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{StaticResource NavyCardInner}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CyanDark}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="7,4"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <!-- ComboBox Toggle Button Template -->
+        <ControlTemplate x:Key="ComboBoxToggleButton" TargetType="ToggleButton">
+            <Border Background="{TemplateBinding Background}" 
+                    BorderBrush="{TemplateBinding BorderBrush}" 
+                    BorderThickness="{TemplateBinding BorderThickness}" 
+                    CornerRadius="4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="26"/>
+                    </Grid.ColumnDefinitions>
+                    <Path Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" 
+                          Data="M 0 0 L 4 4 L 8 0 Z" Fill="#38BDF8"/>
+                </Grid>
+            </Border>
+        </ControlTemplate>
+
+        <!-- ComboBox Dark Theme chuẩn -->
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#13233A"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#0284C7"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="7,4"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Name="ToggleButton" 
+                                          Template="{StaticResource ComboBoxToggleButton}" 
+                                          Background="{TemplateBinding Background}" 
+                                          BorderBrush="{TemplateBinding BorderBrush}" 
+                                          BorderThickness="{TemplateBinding BorderThickness}" 
+                                          Focusable="false" 
+                                          IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" 
+                                          ClickMode="Press"/>
+                            <ContentPresenter Name="ContentSite" 
+                                              IsHitTestVisible="False" 
+                                              Content="{TemplateBinding SelectionBoxItem}" 
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" 
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" 
+                                              Margin="8,3,28,3" 
+                                              VerticalAlignment="Center" 
+                                              HorizontalAlignment="Left">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                        <Setter Property="FontSize" Value="12.5"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                            <Popup Name="Popup" 
+                                   Placement="Bottom" 
+                                   IsOpen="{TemplateBinding IsDropDownOpen}" 
+                                   AllowsTransparency="True" 
+                                   Focusable="False" 
+                                   PopupAnimation="Slide">
+                                <Grid Name="DropDown" 
+                                      SnapsToDevicePixels="True" 
+                                      MinWidth="{TemplateBinding ActualWidth}" 
+                                      MaxHeight="260">
+                                    <Border Background="#13233A" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="4">
+                                        <ScrollViewer Margin="4" SnapsToDevicePixels="True">
+                                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ToggleButton" Property="BorderBrush" Value="#38BDF8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="#13233A"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="7,5"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#0284C7"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#1E3A8A"/>
+                    <Setter Property="Foreground" Value="#38BDF8"/>
+                    <Setter Property="FontWeight" Value="Bold"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Button Styles -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource NavyCardInner}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CyanDark}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+        </Style>
+
+        <Style x:Key="BtnExecuteStyle" TargetType="Button">
+            <Setter Property="Background" Value="#16A34A"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{StaticResource MintLight}"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+            <Setter Property="Padding" Value="22,8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+        </Style>
+
+        <Style x:Key="BtnActionStyle" TargetType="Button">
+            <Setter Property="Background" Value="#0284C7"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CyanLight}"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+        </Style>
+
+        <!-- TabControl & TabItem Dark Navy Style -->
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="{StaticResource NavyBg}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="Background" Value="{StaticResource NavyCard}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource NavyBorder}"/>
+            <Setter Property="BorderThickness" Value="1,1,1,0"/>
+            <Setter Property="Padding" Value="18,8"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border Name="Border" 
+                                Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}" 
+                                CornerRadius="4,4,0,0" 
+                                Margin="0,0,3,0" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#16325C"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#38BDF8"/>
+                                <Setter Property="Foreground" Value="#38BDF8"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource CyanLight}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- DataGrid Styles with 2-way Scrollbars -->
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="{StaticResource NavyCardInner}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{StaticResource NavyBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="RowBackground" Value="#132035"/>
+            <Setter Property="AlternatingRowBackground" Value="#0F1B2F"/>
+            <Setter Property="GridLinesVisibility" Value="All"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource NavyBorder}"/>
+            <Setter Property="VerticalGridLinesBrush" Value="{StaticResource NavyBorder}"/>
+            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="CanUserAddRows" Value="False"/>
+            <Setter Property="SelectionMode" Value="Extended"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#16325C"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="BorderBrush" Value="#0284C7"/>
+            <Setter Property="BorderThickness" Value="0,0,1,2"/>
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#0284C7"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- Row 0: Top Header -->
+            <RowDefinition Height="Auto"/>
+            <!-- Row 1: Main 5 Workflow Tabs -->
+            <RowDefinition Height="*"/>
+            <!-- Row 2: Bottom Status & Actions -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- TOP HEADER CHUẨN CỐNG NGANG -->
+        <Border Grid.Row="0" Background="{StaticResource NavyCard}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="0,0,0,1" Padding="14,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="#1E3A5F" CornerRadius="6" Padding="6,3" Margin="0,0,10,0">
+                        <TextBlock Text="ĐV" FontSize="15" FontWeight="ExtraBold" Foreground="{StaticResource CyanPrimary}"/>
+                    </Border>
+                    <TextBlock Text="ĐV_TOOL_HTKT" FontSize="16" FontWeight="Bold" Foreground="{StaticResource CyanPrimary}" VerticalAlignment="Center"/>
+                    <TextBlock Text=" | TNN - RẢI HỐ GA TỰ ĐỘNG (REVIT 2025)" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource MintLight}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="💾 Lưu Cấu Hình (.json)" Command="{Binding SaveConfigCommand}" Margin="0,0,8,0" Padding="8,4" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" Foreground="{StaticResource TextLight}" FontSize="11.5" Cursor="Hand" ToolTip="Lưu toàn bộ thiết lập vào file JSON"/>
+                    <Button Content="📂 Nạp Cấu Hình (.json)" Command="{Binding LoadConfigCommand}" Margin="0,0,8,0" Padding="8,4" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" Foreground="{StaticResource TextLight}" FontSize="11.5" Cursor="Hand" ToolTip="Nạp toàn bộ thiết lập từ file JSON"/>
+                    <Button Content="📄 Xuất Excel Mẫu" Command="{Binding ExportSampleExcelCommand}" Margin="0,0,10,0" Padding="8,4" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" Foreground="{StaticResource TextLight}" FontSize="11.5" Cursor="Hand" ToolTip="Xuất file Excel mẫu chuẩn 2 sheet 7 cột"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- MAIN 5 WORKFLOW TABS (ĐỒNG BỘ 100% CỐNG NGANG) -->
+        <TabControl Grid.Row="1" Background="{StaticResource NavyBg}" BorderThickness="0" Margin="4">
+
+            <!-- ============================================== -->
+            <!-- TAB 01: KHAI BÁO & NẠP FAMILY (KÈM BẢNG SỐ LIỆU EXCEL) -->
+            <!-- ============================================== -->
+            <TabItem Header="01 KHAI BÁO &amp; NẠP FAMILY">
+                <Grid Margin="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.15*"/>
+                            <ColumnDefinition Width="1*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- KHUNG 1: NGUỒN DỮ LIỆU EXCEL -->
+                        <GroupBox Header="1. NGUỒN DỮ LIỆU EXCEL (2 SHEET: HO GA TRAI, HO GA PHAI)" Grid.Column="0">
+                            <StackPanel Margin="2">
+                                <TextBlock Text="Đường dẫn file Excel (.xlsx):" Margin="0,2,0,2" Foreground="{StaticResource TextMuted}"/>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding ExcelFilePath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" Padding="6,4"/>
+                                    <Button Grid.Column="1" Content="Chọn File Excel..." Command="{Binding BrowseExcelCommand}" Margin="6,0,0,0" Padding="10,4" BorderBrush="{StaticResource CyanDark}"/>
+                                    <Button Grid.Column="2" Content="Xuất File Mẫu" Command="{Binding ExportSampleExcelCommand}" Margin="6,0,0,0" Padding="10,4" BorderBrush="{StaticResource CyanDark}"/>
+                                </Grid>
+
+                                <!-- Tùy chọn nhánh & Chuyển đổi xem dữ liệu nhanh -->
+                                <Border Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,2,0,2">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0" Content="Rải Hố Ga Trái (HO GA TRAI)" IsChecked="{Binding RunHoGaTrai}" FontWeight="Bold" Foreground="{StaticResource CyanPrimary}" Margin="0,0,16,0"/>
+                                        <CheckBox Grid.Column="1" Content="Rải Hố Ga Phải (HO GA PHAI)" IsChecked="{Binding RunHoGaPhai}" FontWeight="Bold" Foreground="{StaticResource MintPrimary}" Margin="0,0,16,0"/>
+                                        
+                                        <!-- Nút lọc xem bảng dữ liệu -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <TextBlock Text="Xem bảng: " Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                            <Button Content="Tất cả" Command="{Binding SetReviewFilterAllCommand}" Padding="8,2" Margin="0,0,3,0" FontSize="11.5"/>
+                                            <Button Content="Sheet Trái" Command="{Binding SetReviewFilterTraiCommand}" Padding="8,2" Margin="0,0,3,0" FontSize="11.5"/>
+                                            <Button Content="Sheet Phải" Command="{Binding SetReviewFilterPhaiCommand}" Padding="8,2" FontSize="11.5"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- KHUNG 2: FAMILY HỐ GA & HỆ TỌA ĐỘ ĐẶT -->
+                        <GroupBox Header="2. FAMILY HỐ GA &amp; HỆ TỌA ĐỘ ĐẶT" Grid.Column="1">
+                            <Grid Margin="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="100"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- File Family -->
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="File Family:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding FamilyFilePath}" Margin="0,0,6,4" Padding="6,4"/>
+                                <Button Grid.Row="0" Grid.Column="2" Content="Chọn Family (.rfa)..." Command="{Binding BrowseFamilyCommand}" Margin="0,0,0,4" Padding="10,4"/>
+
+                                <!-- Family / Type -->
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Family / Type:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="1.2*"/>
+                                        <ColumnDefinition Width="1*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox Grid.Column="0" ItemsSource="{Binding AvailableFamilies}" SelectedItem="{Binding SelectedFamilyName}" Margin="0,0,4,0"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableSymbols}" SelectedItem="{Binding SelectedSymbol}" DisplayMemberPath="Name"/>
+                                </Grid>
+
+                                <!-- Level -->
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Level / Tầng:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <ComboBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" ItemsSource="{Binding AvailableLevels}" SelectedItem="{Binding SelectedLevel}" DisplayMemberPath="Name" Margin="0,0,0,4"/>
+
+                                <!-- Tùy chọn đặt -->
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Tùy chọn đặt:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <StackPanel Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <RadioButton Content="Đặt theo CĐ ĐỈNH (A)" IsChecked="{Binding PlaceByCdDinh}" Foreground="{StaticResource TextWhite}" Margin="0,0,12,0"/>
+                                    <RadioButton Content="Đặt theo CĐ ĐÁY (D)" IsChecked="{Binding PlaceByCdDay}" Foreground="{StaticResource TextWhite}" Margin="0,0,16,0"/>
+                                    <CheckBox Content="Tọa độ VN2000 (Survey Point)" IsChecked="{Binding UseSurveyPoint}" Foreground="{StaticResource TextWhite}" ToolTip="Bù trừ Survey Point và góc xoay True North của dự án"/>
+                                </StackPanel>
+                            </Grid>
+                        </GroupBox>
+                    </Grid>
+
+                    <!-- BẢNG DỮ LIỆU EXCEL ĐƯỢC REVIEW ĐẦY ĐỦ 11 CỘT (HỖ TRỢ THANH CUỘN 2 CHIỀU) -->
+                    <GroupBox Header="3. BẢNG DỮ LIỆU TRÍCH XUẤT TỪ EXCEL (TỰ ĐỘNG TÍNH CHIỀU CAO THÂN = CĐ ĐỈNH - CĐ ĐÁY)" Grid.Row="1" Margin="0,4,0,0">
+                        <DataGrid ItemsSource="{Binding DisplayManholeList}"
+                                  AutoGenerateColumns="False"
+                                  CanUserAddRows="False"
+                                  CanUserResizeColumns="True"
+                                  CanUserSortColumns="True"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  ScrollViewer.CanContentScroll="True">
+                            <DataGrid.Columns>
+                                <DataGridCheckBoxColumn Header="Chọn" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
+                                <DataGridTextColumn Header="STT" Binding="{Binding STT}" Width="55"/>
+                                <DataGridTextColumn Header="Bên Tuyến" Binding="{Binding Side}" Width="110" FontWeight="SemiBold" Foreground="{StaticResource MintLight}"/>
+                                <DataGridTextColumn Header="Tên Hố Ga" Binding="{Binding TenHoGa}" Width="110" FontWeight="Bold" Foreground="{StaticResource CyanLight}"/>
+                                <DataGridTextColumn Header="Tọa Độ X (m)" Binding="{Binding ToaDoX, StringFormat={}{0:F3}}" Width="120"/>
+                                <DataGridTextColumn Header="Tọa Độ Y (m)" Binding="{Binding ToaDoY, StringFormat={}{0:F3}}" Width="120"/>
+                                <DataGridTextColumn Header="CĐ Đỉnh A (m)" Binding="{Binding CdDinh, StringFormat={}{0:F3}}" Width="110" Foreground="{StaticResource MintPrimary}" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="CĐ Đáy D (m)" Binding="{Binding CdDay, StringFormat={}{0:F3}}" Width="110" Foreground="#F59E0B" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Góc PV (°)" Binding="{Binding GocPv, StringFormat={}{0:F1}}" Width="95"/>
+                                
+                                <!-- Cột Chiều Cao Thân với Cảnh Báo Màu Đỏ nếu Đỉnh <= Đáy -->
+                                <DataGridTemplateColumn Header="H Thân = A - D (m)" Width="140">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding ChieuCaoThan, StringFormat={}{0:F3}}" 
+                                                       Foreground="{Binding HasWarning, Converter={StaticResource WarningToColorConverter}}" 
+                                                       FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <!-- Trạng thái / Cảnh báo -->
+                                <DataGridTemplateColumn Header="Trạng Thái / Cảnh Báo" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding WarningMessage}" 
+                                                       Foreground="{Binding HasWarning, Converter={StaticResource WarningToColorConverter}}" 
+                                                       VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- ============================================== -->
+            <!-- TAB 02: PARAMETER HÌNH HỌC (QUÉT THEO FAMILY) -->
+            <!-- ============================================== -->
+            <TabItem Header="02 PARAMETER HÌNH HỌC">
+                <Grid Margin="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Top: Cấu hình biến Chiều cao thân & Thiết lập dải STT -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="1.2*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Box 1: Chiều cao thân tự động -->
+                        <GroupBox Grid.Column="0" Header="THIẾT LẬP BIẾN CHIỀU CAO THÂN TỰ ĐỘNG">
+                            <StackPanel Margin="2">
+                                <Grid Margin="0,2,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="135"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Biến Chiều Cao Thân:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableHeightParams}" SelectedItem="{Binding SelectedHeightParam}"/>
+                                </Grid>
+                                <Grid Margin="0,4,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="135"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Bù trừ cổ/đáy (m):" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding HeightOffsetM, UpdateSourceTrigger=PropertyChanged}"/>
+                                </Grid>
+                                <Border Background="{StaticResource NavyCardInner}" CornerRadius="4" Padding="8,4" Margin="0,4,0,0">
+                                    <TextBlock Text="💡 Công thức: Chiều cao gán = (CD DINH - CD DAY) + Bù trừ (m)" Foreground="{StaticResource MintLight}" FontSize="11.5"/>
+                                </Border>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Box 2: Tùy chỉnh tham số theo STT -->
+                        <GroupBox Grid.Column="1" Header="ÁP DỤNG THAM SỐ HÌNH HỌC THEO DẢI STT">
+                            <StackPanel Margin="2">
+                                <Grid Margin="0,2,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="90"/>
+                                        <ColumnDefinition Width="130"/>
+                                        <ColumnDefinition Width="70"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Nhánh Tuyến:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                    <ComboBox Grid.Column="1" SelectedItem="{Binding SttTargetSide}">
+                                        <ComboBoxItem Content="Cả hai" IsSelected="True"/>
+                                        <ComboBoxItem Content="HO GA TRAI"/>
+                                        <ComboBoxItem Content="HO GA PHAI"/>
+                                    </ComboBox>
+                                    <TextBlock Grid.Column="2" Text="Dải STT:" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,6,0" Foreground="{StaticResource TextMuted}"/>
+                                    <TextBox Grid.Column="3" Text="{Binding SttRangeText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Ví dụ: 1-10, 15, 20-30"/>
+                                </Grid>
+
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Nhập giá trị ở bảng bên trái rồi bấm Áp dụng:" VerticalAlignment="Center" Foreground="{StaticResource TextLabel}" FontSize="11.5"/>
+                                    <Button Grid.Column="1" Content="Áp Dụng Cho STT Đã Chọn" Command="{Binding ApplySttCommand}" Style="{StaticResource BtnActionStyle}" Margin="0,0,6,0"/>
+                                    <Button Grid.Column="2" Content="Xóa Cấu Hình STT" Command="{Binding ClearSttOverridesCommand}"/>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                    </Grid>
+
+                    <!-- Bottom Split: Danh sách Parameter Family vs Bảng tổng hợp STT -->
+                    <Grid Grid.Row="1" Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.15*"/>
+                            <ColumnDefinition Width="1*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Bảng Parameter của Family -->
+                        <GroupBox Grid.Column="0" Header="DANH SÁCH THAM SỐ HÌNH HỌC / KÍCH THƯỚC TRONG FAMILY">
+                            <DataGrid ItemsSource="{Binding GeoParameters}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Tên Parameter" Binding="{Binding Name}" Width="170" FontWeight="Bold" Foreground="{StaticResource CyanLight}"/>
+                                    <DataGridTemplateColumn Header="Giá Trị Áp Dụng" Width="140">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <!-- Nếu là Yes/No thì hiển thị Checkbox, ngược lại Textbox -->
+                                                <Grid>
+                                                    <CheckBox IsChecked="{Binding BoolValue, UpdateSourceTrigger=PropertyChanged}" 
+                                                              Visibility="{Binding IsYesNo, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Center"/>
+                                                    <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" 
+                                                             Visibility="{Binding IsYesNo, Converter={StaticResource InverseBoolToVis}}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Kiểu Dữ Liệu" Binding="{Binding DataType}" Width="120" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Phân Nhóm" Binding="{Binding Group}" Width="140" IsReadOnly="True"/>
+                                    <DataGridCheckBoxColumn Header="Type?" Binding="{Binding IsType}" Width="55" IsReadOnly="True"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </GroupBox>
+
+                        <!-- Bảng kết quả gán theo STT -->
+                        <GroupBox Grid.Column="1" Header="BẢNG TỔNG HỢP GIÁ TRỊ PARAMETER THEO TỪNG STT">
+                            <DataGrid ItemsSource="{Binding SttDisplayRows}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Bên Tuyến" Binding="{Binding Side}" Width="105" Foreground="{StaticResource MintLight}"/>
+                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" Width="50"/>
+                                    <DataGridTextColumn Header="Tên Hố Ga" Binding="{Binding TenHoGa}" Width="95" FontWeight="Bold" Foreground="{StaticResource CyanLight}"/>
+                                    <DataGridTextColumn Header="Bộ Thông Số Tùy Chỉnh Đang Mang" Binding="{Binding ParamSummary}" Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </GroupBox>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- ============================================== -->
+            <!-- TAB 03: KIỂM TRA MÔ HÌNH 3D (ĐÚNG MẪU 1 CHỐT)  -->
+            <!-- ============================================== -->
+            <TabItem Header="03 KIỂM TRA MÔ HÌNH 3D">
+                <Grid Margin="4">
+                    <Grid.ColumnDefinitions>
+                        <!-- Cột trái: Bảng danh sách & Card thông số cao độ chi tiết -->
+                        <ColumnDefinition Width="430"/>
+                        <!-- Cột phải: Viewport 3D Toàn Tuyến & Cận Cảnh Thông Minh -->
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- CỘT TRÁI: KIỂM TRA DỮ LIỆU & CAO ĐỘ -->
+                    <Grid Grid.Column="0" Margin="0,0,6,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Box 1: Chọn Sheet & Chế độ xem -->
+                        <GroupBox Grid.Row="0" Header="CHỌN NHÁNH TUYẾN &amp; CHẾ ĐỘ XEM 3D">
+                            <StackPanel Margin="2">
+                                <Grid Margin="0,2,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Nhánh Tuyến:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}" FontWeight="SemiBold"/>
+                                    <ComboBox Grid.Column="1" SelectedValue="{Binding PreviewSheetName, Mode=TwoWay}" SelectedValuePath="Content">
+                                        <ComboBoxItem Content="HO GA TRAI" IsSelected="True"/>
+                                        <ComboBoxItem Content="HO GA PHAI"/>
+                                    </ComboBox>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Content="🌐 Xem Toàn Tuyến" Command="{Binding SwitchToFullPipelineCommand}" Style="{StaticResource BtnActionStyle}" Margin="0,0,3,0"/>
+                                    <Button Grid.Column="1" Content="🔍 Focus Cận Cảnh" Command="{Binding SwitchToSingleFocusCommand}" Style="{StaticResource BtnActionStyle}" Margin="3,0,0,0"/>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Box 2: Bảng danh sách hố ga trong Sheet -->
+                        <GroupBox Grid.Row="1" Header="DANH SÁCH HỐ GA (CLICK ĐỂ FOCUS &amp; HIGHLIGHT 3D)">
+                            <DataGrid ItemsSource="{Binding PreviewInspectionList}" 
+                                      SelectedItem="{Binding SelectedInspectionItem, Mode=TwoWay}"
+                                      SelectionMode="Single">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="STT" Binding="{Binding STT}" Width="40"/>
+                                    <DataGridTextColumn Header="Tên Hố Ga" Binding="{Binding TenHoGa}" Width="80" FontWeight="Bold" Foreground="{StaticResource CyanLight}"/>
+                                    <DataGridTextColumn Header="CĐ Đỉnh A" Binding="{Binding CdDinh, StringFormat={}{0:F3}}" Width="75" Foreground="{StaticResource MintPrimary}"/>
+                                    <DataGridTextColumn Header="CĐ Đáy D" Binding="{Binding CdDay, StringFormat={}{0:F3}}" Width="75" Foreground="#F59E0B"/>
+                                    <DataGridTemplateColumn Header="H Thân" Width="70">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding ChieuCaoThan, StringFormat={}{0:F3}}" 
+                                                           Foreground="{Binding HasWarning, Converter={StaticResource WarningToColorConverter}}" 
+                                                           FontWeight="Bold" HorizontalAlignment="Right"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Tình Trạng" Width="*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding WarningMessage}" 
+                                                           Foreground="{Binding HasWarning, Converter={StaticResource WarningToColorConverter}}"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </GroupBox>
+
+                        <!-- Box 3: Card kiểm tra chi tiết cao độ Đỉnh / Đáy của hố ga đang chọn -->
+                        <GroupBox Grid.Row="2" Header="KIỂM TRA CAO ĐỘ THỰC TẾ &amp; THƯỚC ĐO">
+                            <StackPanel Margin="2">
+                                <Grid Margin="0,2,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding SelectedInspectionItem.TenHoGa, StringFormat='Đang chọn: {0}'}" 
+                                               Foreground="{StaticResource CyanPrimary}" FontWeight="Bold" FontSize="13.5" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="◀ Trước" Command="{Binding SelectPrevInspectionCommand}" Margin="0,0,4,0" Padding="6,2" FontSize="11"/>
+                                    <Button Grid.Column="2" Content="Sau ▶" Command="{Binding SelectNextInspectionCommand}" Padding="6,2" FontSize="11"/>
+                                </Grid>
+
+                                <!-- 3 Ô Card lớn: CĐ Đỉnh (A) - CĐ Đáy (D) - Chiều Cao Thân (H) -->
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- CĐ Đỉnh -->
+                                    <Border Grid.Column="0" Background="#16325C" BorderBrush="#4ADE80" BorderThickness="1.5" CornerRadius="4" Padding="4,5" Margin="0,0,3,0">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="CĐ ĐỈNH (A)" Foreground="{StaticResource TextMuted}" FontSize="10.5" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding SelectedInspectionItem.CdDinh, StringFormat={}{0:F3}}" Foreground="#4ADE80" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- CĐ Đáy -->
+                                    <Border Grid.Column="1" Background="#16325C" BorderBrush="#F59E0B" BorderThickness="1.5" CornerRadius="4" Padding="4,5" Margin="2,0,2,0">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="CĐ ĐÁY (D)" Foreground="{StaticResource TextMuted}" FontSize="10.5" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding SelectedInspectionItem.CdDay, StringFormat={}{0:F3}}" Foreground="#F59E0B" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Chiều Cao Thân -->
+                                    <Border Grid.Column="2" Background="#16325C" BorderBrush="#38BDF8" BorderThickness="1.5" CornerRadius="4" Padding="4,5" Margin="3,0,0,0">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="H THÂN (m)" Foreground="{StaticResource TextMuted}" FontSize="10.5" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding SelectedInspectionItem.ChieuCaoThan, StringFormat={}{0:F3}}" 
+                                                       Foreground="{Binding SelectedInspectionItem.HasWarning, Converter={StaticResource WarningToColorConverter}}" 
+                                                       FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <!-- Tọa độ & Độ dốc đến hố tiếp theo -->
+                                <Grid Margin="0,2,0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding SelectedInspectionItem.ToaDoX, StringFormat='Tọa độ X: {0:F3}'}" Foreground="{StaticResource TextLabel}" FontSize="11"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedInspectionItem.ToaDoY, StringFormat='Tọa độ Y: {0:F3}'}" Foreground="{StaticResource TextLabel}" FontSize="11"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding SelectedInspectionItem.GocPv, StringFormat='Góc xoay: {0:F1}°'}" Foreground="{StaticResource TextLabel}" FontSize="11"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedInspectionItem.DoDocDenHoSau, StringFormat='Độ dốc cống: {0:F2}%'}" Foreground="{StaticResource MintLight}" FontWeight="SemiBold" FontSize="11"/>
+                                </Grid>
+
+                                <!-- Trạng thái cảnh báo -->
+                                <Border Background="{StaticResource NavyCardInner}" CornerRadius="4" Padding="6,4" Margin="0,2,0,0">
+                                    <TextBlock Text="{Binding SelectedInspectionItem.WarningMessage}" 
+                                               Foreground="{Binding SelectedInspectionItem.HasWarning, Converter={StaticResource WarningToColorConverter}}" 
+                                               FontWeight="Bold" FontSize="11.5"/>
+                                </Border>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Box 4: Nút Đọc hình học Family thực tế -->
+                        <Border Grid.Row="3" Background="{StaticResource NavyCard}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,4,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="ĐỌC HÌNH HỌC FAMILY TỪ REVIT" Foreground="{StaticResource CyanPrimary}" FontWeight="Bold" FontSize="11.5"/>
+                                    <TextBlock Text="Trích xuất trực tiếp khối 3D Solid của Family vào Viewport." Foreground="{StaticResource TextMuted}" FontSize="10.5"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Đọc Family" Command="{Binding ExtractGeometryCommand}" Style="{StaticResource BtnActionStyle}" Padding="10,4" FontSize="11.5"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- CỘT PHẢI: VIEWPORT 3D TOÀN TUYẾN & FOCUS CẬN CẢNH (MẪU 1) -->
+                    <GroupBox Grid.Column="1" Header="KHÔNG GIAN 3D TRỰC QUAN (MẪU 1: TOÀN TUYẾN 3D &amp; FOCUS CẬN CẢNH)">
+                        <local:Manhole3DViewportControl InspectionItem="{Binding SelectedInspectionItem, Mode=TwoWay}"
+                                                        AllInspectionItems="{Binding PreviewInspectionList}"
+                                                        ViewMode="{Binding PreviewViewMode, Mode=TwoWay}"
+                                                        RealGeometry="{Binding ExtractedRealGeometry}"/>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- ============================================== -->
+            <!-- TAB 04: GÁN VẬT LIỆU (ĐỒNG BỘ 100% CỐNG NGANG) -->
+            <!-- ============================================== -->
+            <TabItem Header="04 GÁN VẬT LIỆU">
+                <Grid Margin="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}" BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,0,6">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="BẢNG ÁNH XẠ VẬT LIỆU TRONG FAMILY HỐ GA" Foreground="{StaticResource CyanPrimary}" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="Tự động lọc các biến Material (thân ga, cổ ga, bê tông lót, nắp gang, song chắn rác, ống nối) để gán sang vật liệu trong Project Revit." Foreground="{StaticResource TextMuted}" FontSize="12"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Tự Động Ghép Vật Liệu (Auto Match)" Command="{Binding AutoMatchMaterialsCommand}" Style="{StaticResource BtnActionStyle}"/>
+                        </Grid>
+                    </Border>
+
+                    <GroupBox Grid.Row="1" Header="DANH SÁCH THAM SỐ VẬT LIỆU TRONG FAMILY">
+                        <DataGrid ItemsSource="{Binding MaterialMappings}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Tên Tham Số Vật Liệu Trong Family" Binding="{Binding ParamName}" Width="280" FontWeight="Bold" Foreground="{StaticResource CyanLight}"/>
+                                <DataGridCheckBoxColumn Header="Là Type?" Binding="{Binding IsType}" Width="80" IsReadOnly="True"/>
+                                
+                                <!-- ComboBox chọn vật liệu Revit -->
+                                <DataGridTemplateColumn Header="Vật Liệu Revit Project Tương Ứng" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ComboBox ItemsSource="{Binding Data.AvailableProjectMaterials, Source={StaticResource MainVmProxy}}"
+                                                      SelectedItem="{Binding SelectedMaterialName, UpdateSourceTrigger=PropertyChanged}" Margin="2"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <!-- Phạm vi áp dụng -->
+                                <DataGridTemplateColumn Header="Áp Dụng Cho" Width="160">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ComboBox SelectedItem="{Binding TargetSide, UpdateSourceTrigger=PropertyChanged}" Margin="2">
+                                                <ComboBoxItem Content="ALL" IsSelected="True"/>
+                                                <ComboBoxItem Content="HO GA TRAI"/>
+                                                <ComboBoxItem Content="HO GA PHAI"/>
+                                            </ComboBox>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- ============================================== -->
+            <!-- TAB 05: GÁN THÔNG TIN BIM (ĐỒNG BỘ CỐNG NGANG) -->
+            <!-- ============================================== -->
+            <TabItem Header="05 GÁN THÔNG TIN BIM">
+                <Grid Margin="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Top 2 boxes: Dự án & Ánh xạ tự động -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.2*"/>
+                            <ColumnDefinition Width="1*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Box 1: Thông tin dự án -->
+                        <GroupBox Grid.Column="0" Header="THÔNG TIN DỰ ÁN &amp; QUẢN LÝ BIM METADATA">
+                            <Grid Margin="4">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tên Công Trình:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding BimMetadata.TenCongTrinh}" Margin="0,0,8,4"/>
+
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Hạng Mục:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <TextBox Grid.Row="0" Grid.Column="3" Text="{Binding BimMetadata.HangMuc}" Margin="0,0,0,4"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Gói Thầu:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BimMetadata.GoiThau}" Margin="0,0,8,4"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="Đơn Vị Tư Vấn:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding BimMetadata.DonViTuVan}" Margin="0,0,0,4"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Nhà Thầu TC:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding BimMetadata.NhaThauThiCong}" Margin="0,0,8,4"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="2" Text="Tuyến / Lý Trình:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding BimMetadata.LyTrinhTuyen}" Margin="0,0,0,4"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Ghi Chú:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding BimMetadata.GhiChu}" Margin="0,0,8,0"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="2" Text="Mã Cấu Kiện:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                <TextBox Grid.Row="3" Grid.Column="3" Text="{Binding BimMetadata.MaCauKien}" Margin="0,0,0,0"/>
+                            </Grid>
+                        </GroupBox>
+
+                        <!-- Box 2: Tự động ánh xạ từ Excel & Đồng bộ Subcomponents -->
+                        <GroupBox Grid.Column="1" Header="ÁNH XẠ TỰ ĐỘNG &amp; FAMILY LỒNG NHAU (NESTED FAMILIES)">
+                            <StackPanel Margin="4">
+                                <Grid Margin="0,2,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Gán TEN HO GA vào:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableTextParams}" SelectedItem="{Binding BimMetadata.TenHoGaParamName}"/>
+                                </Grid>
+
+                                <Grid Margin="0,2,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Gán Vị Trí Nhánh vào:" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableTextParams}" SelectedItem="{Binding BimMetadata.ViTriParamName}"/>
+                                </Grid>
+
+                                <Grid Margin="0,2,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Chuỗi Nhánh (Trái/Phải):" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding BimMetadata.LeftPrefix}" Margin="0,0,4,0"/>
+                                    <TextBox Grid.Column="2" Text="{Binding BimMetadata.RightPrefix}"/>
+                                </Grid>
+
+                                <Border Background="#16325C" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,2,0,0">
+                                    <CheckBox Content="Đồng bộ thông tin xuống tất cả cấu kiện con (SubComponents)" 
+                                              IsChecked="{Binding BimMetadata.SyncSubComponents}" 
+                                              FontWeight="Bold" Foreground="{StaticResource CyanPrimary}"
+                                              ToolTip="Tự động duyệt GetSubComponentIds() để gán tên hố ga, metadata và vật liệu xuống các Family lồng bên trong"/>
+                                </Border>
+                            </StackPanel>
+                        </GroupBox>
+                    </Grid>
+
+                    <!-- Bottom: Danh sách tham số văn bản tùy biến khác -->
+                    <GroupBox Grid.Row="1" Header="CÁC THAM SỐ VĂN BẢN (STRING) KHÁC TRONG FAMILY">
+                        <DataGrid ItemsSource="{Binding CustomNonGeoParams}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Tên Parameter" Binding="{Binding ParamName}" Width="260" FontWeight="Bold" Foreground="{StaticResource CyanLight}" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="Giá Trị Gán" Binding="{Binding ParamValue}" Width="*"/>
+                                <DataGridCheckBoxColumn Header="Chỉ Đọc (Read Only)?" Binding="{Binding IsReadOnly}" Width="150" IsReadOnly="True"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- BOTTOM ACTION & STATUS BAR (CHUẨN CỐNG NGANG) -->
+        <Border Grid.Row="2" Background="{StaticResource NavyCard}" BorderBrush="{StaticResource NavyBorder}" BorderThickness="0,1,0,0" Padding="14,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Thông tin phiên bản bên trái -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="#1E3A5F" CornerRadius="4" Padding="8,4" Margin="0,0,12,0">
+                        <TextBlock Text="ĐV_TOOL_HTKT 2025" Foreground="{StaticResource CyanLight}" FontWeight="Bold" FontSize="11.5"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- Thanh Tiến Trình & Trạng Thái ở giữa -->
+                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="{Binding StatusMessage}" Foreground="{StaticResource TextMuted}" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,4"/>
+                    <ProgressBar Grid.Row="1" Height="14" Minimum="0" Maximum="{Binding ProgressMax}" Value="{Binding ProgressValue}" 
+                                 Foreground="#4ADE80" Background="{StaticResource NavyCardInner}" BorderBrush="{StaticResource CyanDark}"/>
+                </Grid>
+
+                <!-- Nút Thực Thi Chính RẢI HỐ GA (Nổi bật màu xanh lá cây) -->
+                <Button Grid.Column="2" Content="RẢI HỐ GA" Command="{Binding ExecuteCommand}" Style="{StaticResource BtnExecuteStyle}"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
