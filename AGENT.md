@@ -10,6 +10,17 @@ Tài liệu này đóng vai trò là **Kim chỉ nam (System Instruction, Techni
 > - **AI chủ động cập nhật:** AI có trách nhiệm tự động cập nhật `CHANGELOG.md` mỗi khi hoàn thành một chức năng, tái cấu trúc mã nguồn, khắc phục lỗi hoặc khi người dùng yêu cầu.
 > - **Khởi đầu phiên làm việc:** Mỗi khi mở phiên trao đổi mới, AI phải đọc `CHANGELOG.md` đầu tiên để nắm bắt chính xác tiến độ và trạng thái dang dở của dự án.
 
+### ⚠️ QUY TẮC BẤT DI BẤT DỊCH VỀ THUẬT TOÁN & QUY TRÌNH "CHỐT" (NGƯỜI DÙNG ĐÃ ĐỊNH HƯỚNG)
+1. **BẢO TỒN 100% THUẬT TOÁN ĐÃ ĐÚNG:**
+   - Các thuật toán rải cống hộp (đúc sẵn, đổ tại chỗ), cống kỹ thuật (CKT), sân cống, sân gia cố, hố ga, các phụ kiện... đã được Kỹ sư kiểm tra và chạy HOÀN TOÀN CHÍNH XÁC.
+   - **Tuyệt đối KHÔNG ĐƯỢC TỰ Ý SỬA ĐỔI, viết lại hay thay đổi bất kỳ logic rải nào đã đúng.** Sửa lại là sai.
+2. **CHỈ BỔ SUNG TÍNH NĂNG MỚI (CHẾ ĐỘ MODULAR):**
+   - Bộ Add-in chỉ được phép cập nhật thêm tính năng (như sắp tới là bổ sung module Rải cống tròn).
+   - Mọi tính năng bổ sung phải chạy song song, độc lập, không làm ảnh hưởng đến các thuật toán cống hộp / CKT đã ổn định.
+3. **CHỈ SỬA CODE KHI KỸ SƯ NÓI "CHỐT":**
+   - Khi Kỹ sư muốn update thêm tính năng, AI chỉ được trao đổi, phân tích, đề xuất kế hoạch.
+   - **CHỈ KHI NÀO KỸ SƯ NÓI TỪ "CHỐT", AI MỚI ĐƯỢC PHÉP CHỈNH SỬA MÃ NGUỒN ADD-IN VÀ THÊM TÍNH NĂNG MỚI.** Không có lệnh "chốt" thì tuyệt đối không sửa code.
+
 ---
 
 ## 🚀 2. ĐỀ XUẤT TỐT NHẤT (BEST OFFERS) KHI PHÁT TRIỂN REVIT API VỚI AI

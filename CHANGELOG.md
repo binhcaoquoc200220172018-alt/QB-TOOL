@@ -1,6 +1,21 @@
 # 📝 NHẬT KÝ THAY ĐỔI & TIẾN ĐỘ DỰ ÁN (CHANGELOG)
 
-Tài liệu này ghi lại toàn bộ lịch sử phát triển, cập nhật tính năng, tối ưu hóa mã nguồn và trạng thái làm việc của bộ Add-in Revit Hạ tầng Kỹ thuật (Tool Rải Hố Ga).
+Tài liệu này ghi lại toàn bộ lịch sử phát triển, cập nhật tính năng, tối ưu hóa mã nguồn và trạng thái làm việc của bộ Add-in Revit Hạ tầng Kỹ thuật (Tool Rải Hố Ga & Tool Rải Cống Ngang).
+
+---
+
+## 🔒 [2026-11-18] - Xác Lập Nguyên Tắc Bất Di Bất Dịch & Đóng Băng Thuật Toán Đã Chuẩn Xác
+
+### 🎯 Nguyên tắc cốt lõi đã chốt cùng Kỹ sư:
+1. **Đóng băng 100% thuật toán rải hiện tại:**
+   - Thuật toán rải cống hộp (đúc sẵn, đổ tại chỗ), cống kỹ thuật (CKT), sân cống, sân gia cố, cửa xả, hố ga, các phụ kiện... đã chạy hoàn toàn chính xác theo đúng thực tế thi công.
+   - **Tuyệt đối KHÔNG ĐƯỢC THAY ĐỔI/CHỈNH SỬA các thuật toán rải này.**
+2. **Nguyên tắc phát triển tương lai (Add-on Only):**
+   - Bộ Add-in từ nay về sau **CHỈ ĐƯỢC CẬP NHẬT THÊM** (nhiệm vụ tiếp theo là bổ sung tính năng rải cống tròn).
+   - Module mới phải độc lập, không được gây ảnh hưởng hay làm sai lệch logic cống hộp / CKT đã chuẩn.
+3. **Quy trình phê duyệt bắt buộc — Chỉ sửa code khi có từ "CHỐT":**
+   - Khi Kỹ sư yêu cầu cập nhật hoặc thêm tính năng, AI chỉ trao đổi, phân tích và lên phương án.
+   - **CHỈ KHI KỸ SƯ NÓI "CHỐT", AI MỚI ĐƯỢC PHÉP CHỈNH SỬA MÃ NGUỒN ADD-IN.**
 
 ---
 
