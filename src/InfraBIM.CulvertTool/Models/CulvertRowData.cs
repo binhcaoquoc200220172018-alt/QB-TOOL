@@ -76,8 +76,21 @@ namespace InfraBIM.CulvertTool.Models
         public double L_SGC_TL { get; set; } = 3.0;
         public double L_SGC_HL { get; set; } = 3.0;
 
+        // Cao độ Điểm 2 Sân gia cố Thượng lưu và Hạ lưu (m) - Family Adaptive 2 điểm (Điểm 1 lấy theo mép sân cống)
+        public double Z_SGC_TL { get; set; } = 0.0;
+        public double Z_SGC_HL { get; set; } = 0.0;
+
         // Cột cuối: Ghi chú loại cống rải tự động
         public string GhiChu { get; set; } = string.Empty;
+
+        // Chuỗi quy cách đốt tùy chỉnh cho cống tròn (ví dụ: "6@2.5, 2@3.0")
+        public string CustomPattern { get; set; } = string.Empty;
+
+        // Đoạn mối nối cống tròn thụt vào trong thân cống (m) (Mặc định 0.40m = 40cm khớp CAD)
+        public double OffsetMoiNoi { get; set; } = 0.40;
+
+        // Trạng thái đảo chiều rải cống tròn (P2 -> P1 thay vì P1 -> P2)
+        public bool IsReversedPlacement { get; set; } = false;
 
         // Hồ sơ loại cống chỉ định (vd: "Cống đổ tại chỗ 1", "Cống đổ tại chỗ 2"...)
         public string AssignedProfileName { get; set; } = string.Empty;
@@ -278,6 +291,17 @@ namespace InfraBIM.CulvertTool.Models
                             if (IsPrecast && (kIsCip || kIsCkt)) continue;
                             if (IsCastInPlace && (kIsPrecast || kIsCkt)) continue;
                             if (IsTechnical && (kIsPrecast || kIsCip)) continue;
+
+                            // TUYỆT ĐỐI KHÔNG KHỚP CHÉO GIỮA CÁC CẤU KIỆN CON KHÁC NHAU CỦA CÙNG CỤM CỬA XẢ / SÂN GIA CỐ
+                            bool cIsTd = catClean.Contains("tường đầu") || catClean.Contains("tuong dau");
+                            bool cIsTc = catClean.Contains("tường cánh") || catClean.Contains("tuong canh");
+                            bool cIsSc = catClean.Contains("sân cống") || catClean.Contains("san cong");
+                            bool kIsTd = kLower.Contains("tường đầu") || kLower.Contains("tuong dau");
+                            bool kIsTc = kLower.Contains("tường cánh") || kLower.Contains("tuong canh");
+                            bool kIsSc = kLower.Contains("sân cống") || kLower.Contains("san cong");
+
+                            if ((cIsTd && (kIsTc || kIsSc)) || (cIsTc && (kIsTd || kIsSc)) || (cIsSc && (kIsTd || kIsTc)))
+                                continue;
 
                             if ((catClean.Contains("đá dăm") || catClean.Contains("da dam")) && (kLower.Contains("đá dăm") || kLower.Contains("da dam")))
                                 return kvp.Value;

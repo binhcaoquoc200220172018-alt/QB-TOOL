@@ -827,24 +827,27 @@ namespace InfraBIM.CulvertTool.Views
             Point ap3_HL_t = Project3D(totalL, yHL + bH + 0.4, bW + 0.4);
             Draw3DPrism(dc, ap0_HL, ap1_HL, ap2_HL, ap3_HL, ap0_HL_t, ap1_HL_t, ap2_HL_t, ap3_HL_t, ApronBrush, ApronPen);
 
-            // 5. VẼ SÂN GIA CỐ NỐI TIẾP RA DẦM CHÂN KHAY
-            Point sgc0_TL = Project3D(-(lApron + lSgcTL), -0.1, -0.5);
+            // 5. VẼ SÂN GIA CỐ NỐI TIẾP RA DẦM CHÂN KHAY (CÓ XÉT CAO ĐỘ ĐIỂM 2 DỐC)
+            double zDeltaTL = (Math.Abs(geom.Z_SGC_TL) > 0.001 && Math.Abs(geom.Z1) > 0.001) ? (geom.Z_SGC_TL - geom.Z1) : 0.0;
+            double zDeltaHL = (Math.Abs(geom.Z_SGC_HL) > 0.001 && Math.Abs(geom.Z2) > 0.001) ? (geom.Z_SGC_HL - geom.Z2) : 0.0;
+
+            Point sgc0_TL = Project3D(-(lApron + lSgcTL), -0.1 + zDeltaTL, -0.5);
             Point sgc1_TL = Project3D(-lApron, -0.1, -0.5);
             Point sgc2_TL = Project3D(-lApron, -0.1, bW + 0.5);
-            Point sgc3_TL = Project3D(-(lApron + lSgcTL), -0.1, bW + 0.5);
-            Point sgc0_TL_t = Project3D(-(lApron + lSgcTL), 0.2, -0.5);
+            Point sgc3_TL = Project3D(-(lApron + lSgcTL), -0.1 + zDeltaTL, bW + 0.5);
+            Point sgc0_TL_t = Project3D(-(lApron + lSgcTL), 0.2 + zDeltaTL, -0.5);
             Point sgc1_TL_t = Project3D(-lApron, 0.2, -0.5);
             Point sgc2_TL_t = Project3D(-lApron, 0.2, bW + 0.5);
-            Point sgc3_TL_t = Project3D(-(lApron + lSgcTL), 0.2, bW + 0.5);
+            Point sgc3_TL_t = Project3D(-(lApron + lSgcTL), 0.2 + zDeltaTL, bW + 0.5);
             Draw3DPrism(dc, sgc0_TL, sgc1_TL, sgc2_TL, sgc3_TL, sgc0_TL_t, sgc1_TL_t, sgc2_TL_t, sgc3_TL_t, new SolidColorBrush(Color.FromArgb(160, 30, 58, 138)), new Pen(new SolidColorBrush(Color.FromRgb(96, 165, 250)), 1.0));
 
             Point sgc0_HL = Project3D(totalL + lApron, yHL - 0.1, -0.5);
-            Point sgc1_HL = Project3D(totalL + lApron + lSgcHL, yHL - 0.1, -0.5);
-            Point sgc2_HL = Project3D(totalL + lApron + lSgcHL, yHL - 0.1, bW + 0.5);
+            Point sgc1_HL = Project3D(totalL + lApron + lSgcHL, yHL - 0.1 + zDeltaHL, -0.5);
+            Point sgc2_HL = Project3D(totalL + lApron + lSgcHL, yHL - 0.1 + zDeltaHL, bW + 0.5);
             Point sgc3_HL = Project3D(totalL + lApron, yHL - 0.1, bW + 0.5);
             Point sgc0_HL_t = Project3D(totalL + lApron, yHL + 0.2, -0.5);
-            Point sgc1_HL_t = Project3D(totalL + lApron + lSgcHL, yHL + 0.2, -0.5);
-            Point sgc2_HL_t = Project3D(totalL + lApron + lSgcHL, yHL + 0.2, bW + 0.5);
+            Point sgc1_HL_t = Project3D(totalL + lApron + lSgcHL, yHL + 0.2 + zDeltaHL, -0.5);
+            Point sgc2_HL_t = Project3D(totalL + lApron + lSgcHL, yHL + 0.2 + zDeltaHL, bW + 0.5);
             Point sgc3_HL_t = Project3D(totalL + lApron, yHL + 0.2, bW + 0.5);
             Draw3DPrism(dc, sgc0_HL, sgc1_HL, sgc2_HL, sgc3_HL, sgc0_HL_t, sgc1_HL_t, sgc2_HL_t, sgc3_HL_t, new SolidColorBrush(Color.FromArgb(160, 30, 58, 138)), new Pen(new SolidColorBrush(Color.FromRgb(96, 165, 250)), 1.0));
 

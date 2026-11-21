@@ -26,7 +26,8 @@ namespace InfraBIM.CulvertTool.Services
             bool hasBtlSan = false,
             bool hasBtlHn = false,
             double offsetZ_BTL_San = -0.10,
-            double offsetZ_BTL_HN = -0.30)
+            double offsetZ_BTL_HN = -0.30,
+            double doublePipeSpacingM = 2.12)
         {
             string lc = (row.LoaiCong ?? "").ToUpperInvariant();
             bool isTron = isRound || lc.Contains("TRON") || lc.Contains("TRÒN") || lc.Contains("CT");
@@ -56,6 +57,7 @@ namespace InfraBIM.CulvertTool.Services
                 IsCastInPlace = isCastInPlace,
                 IsRoundCulvert = isTron,
                 IsDoublePipe = isDoi,
+                DoublePipeSpacingM = doublePipeSpacingM > 0.1 ? doublePipeSpacingM : 2.12,
                 HasGoiCong = isTron,
                 HasMongTren = isTron,
                 HasDaDamDem = true,
@@ -68,12 +70,17 @@ namespace InfraBIM.CulvertTool.Services
                 OffsetZ_BTL_San = offsetZ_BTL_San,
                 OffsetZ_BTL_HN = offsetZ_BTL_HN,
                 L_SGC_TL = row.L_SGC_TL > 0.05 ? row.L_SGC_TL : 3.0,
-                L_SGC_HL = row.L_SGC_HL > 0.05 ? row.L_SGC_HL : 3.0
+                L_SGC_HL = row.L_SGC_HL > 0.05 ? row.L_SGC_HL : 3.0,
+                Z_SGC_TL = row.Z_SGC_TL,
+                Z_SGC_HL = row.Z_SGC_HL,
+                IsConnectionJointP1 = isTron && RoundCulvertService.IsConnectionToExisting(row) && RoundCulvertService.IsConnectionAtP1(row),
+                IsConnectionJointP2 = isTron && RoundCulvertService.IsConnectionToExisting(row) && !RoundCulvertService.IsConnectionAtP1(row)
             };
 
-            // CX_TD_DD_W: Độ thụt mép ngoài tường đầu cửa xả của BTL và đá dăm đệm (chuẩn 1000mm = 1.0m)
-            double cxTdDdW = 1.0;
-            string cxVal = row.GetParamOverride("Cửa xả", "CX_TD_DD_W", string.Empty);
+            // CX_TD_DD_W: Độ thụt mép ngoài tường đầu cửa xả của BTL và đá dăm đệm
+            double cxTdDdW = 0.40;
+            string cxVal = row.GetParamOverride("Cửa xả", "Cửa xả - Tường đầu", "CX_TD_DD_W", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxVal)) cxVal = row.GetParamOverride("Cửa xả", "CX_TD_DD_W", string.Empty);
             if (string.IsNullOrWhiteSpace(cxVal)) cxVal = row.GetParamOverride(null, "CX_TD_DD_W", string.Empty);
             if (string.IsNullOrWhiteSpace(cxVal) && row.ParameterOverrides != null)
             {
@@ -95,6 +102,78 @@ namespace InfraBIM.CulvertTool.Services
             }
             if (cxTdDdW <= 0.05) cxTdDdW = 1.45;
             geom.CX_TD_DD_W = cxTdDdW;
+
+            // CX_L1: Chiều dài tường đầu cửa xả
+            double cxL1 = 1.30;
+            string cxL1Val = row.GetParamOverride("Cửa xả", "Cửa xả - Tường đầu", "CX_L1", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxL1Val)) cxL1Val = row.GetParamOverride("Cửa xả", "CX_L1", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxL1Val)) cxL1Val = row.GetParamOverride(null, "CX_L1", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxL1Val) && row.ParameterOverrides != null)
+            {
+                foreach (var kvp in row.ParameterOverrides)
+                {
+                    if (kvp.Key.IndexOf("CX_L1", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        (kvp.Key.Contains("Cửa xả", StringComparison.OrdinalIgnoreCase) && kvp.Key.EndsWith("::L1", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        cxL1Val = kvp.Value;
+                        break;
+                    }
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(cxL1Val) && double.TryParse(cxL1Val.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double parsedL1) && parsedL1 > 0)
+            {
+                cxL1 = (Math.Abs(parsedL1) >= 10.0) ? parsedL1 / 1000.0 : parsedL1;
+            }
+            geom.CX_L1 = cxL1;
+
+            // CX_L san cong: Chiều dài sân cống
+            double cxLSanCong = 2.16;
+            string cxLSanCongVal = row.GetParamOverride("Cửa xả", "Cửa xả - Tường đầu", "CX_L san cong", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxLSanCongVal)) cxLSanCongVal = row.GetParamOverride("Cửa xả", "CX_L san cong", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxLSanCongVal)) cxLSanCongVal = row.GetParamOverride(null, "CX_L san cong", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxLSanCongVal) && row.ParameterOverrides != null)
+            {
+                foreach (var kvp in row.ParameterOverrides)
+                {
+                    if (kvp.Key.IndexOf("L san cong", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        kvp.Key.IndexOf("L_SAN_CONG", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        cxLSanCongVal = kvp.Value;
+                        break;
+                    }
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(cxLSanCongVal) && double.TryParse(cxLSanCongVal.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double parsedLSanCong) && parsedLSanCong > 0)
+            {
+                cxLSanCong = (Math.Abs(parsedLSanCong) >= 10.0) ? parsedLSanCong / 1000.0 : parsedLSanCong;
+            }
+            geom.CX_L_SanCong = cxLSanCong;
+
+            // CX_B Cong: Bề rộng cống cửa xả
+            double cxBCong = 3.62;
+            string cxBCongVal = row.GetParamOverride("Cửa xả", "Cửa xả - Tường đầu", "CX_B Cong", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxBCongVal)) cxBCongVal = row.GetParamOverride("Cửa xả", "CX_B Cong", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxBCongVal)) cxBCongVal = row.GetParamOverride(null, "CX_B Cong", string.Empty);
+            if (string.IsNullOrWhiteSpace(cxBCongVal) && row.ParameterOverrides != null)
+            {
+                foreach (var kvp in row.ParameterOverrides)
+                {
+                    if (kvp.Key.IndexOf("CX_B Cong", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        kvp.Key.IndexOf("B Cong", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        cxBCongVal = kvp.Value;
+                        break;
+                    }
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(cxBCongVal) && double.TryParse(cxBCongVal.Replace("mm", "").Replace("m", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double parsedBCong) && parsedBCong > 0)
+            {
+                cxBCong = (Math.Abs(parsedBCong) >= 10.0) ? parsedBCong / 1000.0 : parsedBCong;
+            }
+            geom.CX_B_Cong = cxBCong;
+
+            geom.OffsetMoiNoi = row.OffsetMoiNoi > 0 ? row.OffsetMoiNoi : 0.40;
+            geom.IsReversedPlacement = row.IsReversedPlacement;
 
             string prof = !string.IsNullOrEmpty(row.AssignedProfileName)
                 ? row.AssignedProfileName
@@ -221,13 +300,14 @@ namespace InfraBIM.CulvertTool.Services
             double totalL = geom.TotalLengthM;
             if (totalL <= 0.5) return geom;
 
-            // Thiết lập sân Thượng lưu & Hạ lưu (Chiều dài tổng cửa xả CX_L1 + CX_L san cong chuẩn = 3.46m theo Revit & CAD)
+            // Thiết lập sân Thượng lưu & Hạ lưu (Chiều dài tổng cửa xả CX_L1 + CX_L san cong tùy biến theo Tab 02)
+            double totalCX = (geom.CX_L1 > 0.05 ? geom.CX_L1 : 1.30) + (geom.CX_L_SanCong > 0.05 ? geom.CX_L_SanCong : 2.16);
             geom.ApronTL = new PreviewApronItem
             {
                 Title = "Sân thượng lưu",
                 PositionX = 0,
                 ElevationZ = geom.Z1,
-                LengthM = 3.46,
+                LengthM = totalCX,
                 WallHeightM = geom.BarrelHeightM + 0.6,
                 SlabThicknessM = 0.3
             };
@@ -237,7 +317,7 @@ namespace InfraBIM.CulvertTool.Services
                 Title = "Sân hạ lưu",
                 PositionX = totalL,
                 ElevationZ = geom.Z2,
-                LengthM = 3.46,
+                LengthM = totalCX,
                 WallHeightM = geom.BarrelHeightM + 0.6,
                 SlabThicknessM = 0.3
             };
@@ -299,7 +379,54 @@ namespace InfraBIM.CulvertTool.Services
                 // Trường hợp 0 hộp nối: Rải suốt chiều dài cống
                 double startDist = 0.0;
                 double segLen = totalL;
-                if (segLen > 0)
+
+                // YÊU CẦU 2 (Người dùng đã chốt): Cống tròn rải theo 2 điểm trong excel (từ 0.0 đến totalL)
+                // Chỉ có bê tông lót và đá dăm đệm tiếp xúc với mối nối mới dừng lại
+
+                // Nếu có chuỗi đốt tùy chỉnh (giữ nguyên thứ tự từ P1 về P2 theo yêu cầu người dùng)
+                var customLengths = RoundCulvertService.ParseCustomSegmentPattern(row.CustomPattern);
+                if (isTron && customLengths != null && customLengths.Count > 0)
+                {
+                    double cur = startDist;
+                    for (int i = 0; i < customLengths.Count; i++)
+                    {
+                        double segM = customLengths[i];
+                        if (cur + segM > startDist + segLen) segM = (startDist + segLen) - cur;
+                        if (segM <= 0.001) break;
+                        geom.Segments.Add(new PreviewSegmentItem
+                        {
+                            Index = dotCounter++,
+                            SegmentName = $"Đốt cống tròn ({segM:N2}m)",
+                            IsStandard = true,
+                            LengthM = segM,
+                            StartDistanceM = cur,
+                            EndDistanceM = cur + segM,
+                            StartElevationZ = GetElevationAt(cur),
+                            EndElevationZ = GetElevationAt(cur + segM)
+                        });
+                        stdCount++;
+                        cur += segM + geom.JointGapM;
+                        if (cur >= startDist + segLen - 0.02) break;
+                    }
+                    double remain = (startDist + segLen) - cur;
+                    if (remain > 0.05)
+                    {
+                        compCount++;
+                        compLenSum += remain;
+                        geom.Segments.Add(new PreviewSegmentItem
+                        {
+                            Index = dotCounter++,
+                            SegmentName = $"Đốt bù ({remain:N2}m)",
+                            IsStandard = false,
+                            LengthM = remain,
+                            StartDistanceM = cur,
+                            EndDistanceM = startDist + segLen,
+                            StartElevationZ = GetElevationAt(cur),
+                            EndElevationZ = GetElevationAt(startDist + segLen)
+                        });
+                    }
+                }
+                else if (segLen > 0)
                 {
                     GenerateSpanSegments(geom, startDist, segLen, geom.L_Std, geom.JointGapM, arrayMode, ref dotCounter, ref stdCount, ref compCount, ref compLenSum, ref isCompValid, GetElevationAt);
                 }
@@ -599,8 +726,18 @@ namespace InfraBIM.CulvertTool.Services
 
             string s = khauDo.Trim().ToUpperInvariant();
 
+            // Khớp cống tròn nhiều ống trước: 2xD1500, 2x1500, 2*D1200, 2xD1.5m
+            var multiMatch = Regex.Match(s, @"\d+\s*[xX*]\s*(?:D|Ø|Phi)?\s*(\d+(?:[\.,]\d+)?)", RegexOptions.IgnoreCase);
+            if (multiMatch.Success && double.TryParse(multiMatch.Groups[1].Value.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedMultiD))
+            {
+                double dM = (parsedMultiD >= 10.0) ? (parsedMultiD / 1000.0) : parsedMultiD;
+                width = dM;
+                height = dM;
+                return;
+            }
+
             // Khớp cống tròn: D1000, D1200, D1500, D2000, 1000, 1200, 1500
-            var matchD = Regex.Match(s, @"D?(\d{3,4})");
+            var matchD = Regex.Match(s, @"(?:D|Ø|Phi)?\s*(\d{3,4})");
             if (matchD.Success && double.TryParse(matchD.Groups[1].Value, out double dMm))
             {
                 double dM = dMm / 1000.0;

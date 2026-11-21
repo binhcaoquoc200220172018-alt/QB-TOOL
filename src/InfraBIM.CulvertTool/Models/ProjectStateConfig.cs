@@ -33,6 +33,23 @@ namespace InfraBIM.CulvertTool.Models
         public double Khe_Ho_Technical { get; set; } = 0.01;
         public int SelectedArrayModeIndex_Technical { get; set; } = 0;
 
+        public double L_Std_RoundSingle { get; set; } = 2.5;
+        public double Khe_Ho_RoundSingle { get; set; } = 0.02;
+        public int SelectedArrayModeIndex_RoundSingle { get; set; } = 1;
+        public string? SelectedRoundSinglePipeTypeName { get; set; }
+        public string? SelectedRoundSingleConnectionSymbolName { get; set; }
+        public double OffsetMoiNoi_RoundSingle { get; set; } = 0.40;
+
+        public double L_Std_RoundDouble { get; set; } = 2.5;
+        public double Khe_Ho_RoundDouble { get; set; } = 0.02;
+        public int SelectedArrayModeIndex_RoundDouble { get; set; } = 1;
+        public double KhoangCachTim_RoundDouble { get; set; } = 2.12;
+        public string? SelectedRoundDoublePipeTypeName { get; set; }
+        public string? SelectedRoundDoubleConnectionSymbolName { get; set; }
+        public double OffsetMoiNoi_RoundDouble { get; set; } = 0.40;
+        public bool IsReverseRoundPlacement { get; set; } = false;
+        public string? RoundCulvertCustomPatternText { get; set; }
+
         public double L_Std { get; set; } = 1.0;
         public double Khe_Ho { get; set; } = 0.01;
         public double B_Box { get; set; } = 1.5;
@@ -47,6 +64,8 @@ namespace InfraBIM.CulvertTool.Models
         public List<ComponentSaveDto> Manholes { get; set; } = new();
         public List<ComponentSaveDto> TechnicalBarrels { get; set; } = new();
         public List<ComponentSaveDto> TechnicalManholes { get; set; } = new();
+        public List<ComponentSaveDto> RoundSingleBarrels { get; set; } = new();
+        public List<ComponentSaveDto> RoundDoubleBarrels { get; set; } = new();
 
         // Tab 02 - Parameter hình học (Mappings & Custom Dimensions)
         public List<ParameterMappingSaveDto> ParameterMappings { get; set; } = new();

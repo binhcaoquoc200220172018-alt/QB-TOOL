@@ -103,6 +103,11 @@ namespace InfraBIM.CulvertTool.Models
         public double OffsetZ_BTL { get; set; } = -0.10;
         public double OffsetZ_Cat { get; set; } = -0.20;
         public double CX_TD_DD_W { get; set; } = 1.45; // Độ thụt mép ngoài tường đầu cửa xả của BTL và đá dăm đệm (m)
+        public double CX_L1 { get; set; } = 1.30;       // Chiều dài tường đầu cửa xả (m)
+        public double CX_L_SanCong { get; set; } = 2.16; // Chiều dài sân cống (m)
+        public double CX_B_Cong { get; set; } = 3.62;   // Bề rộng cống cửa xả (m)
+        public double OffsetMoiNoi { get; set; } = 0.40; // Độ thụt mối nối cống tròn (m)
+        public bool IsReversedPlacement { get; set; } = false; // Trạng thái đảo chiều rải cống tròn
 
         // Kích thước tùy biến lớp đệm BTL và Đá dăm đệm (Tab 02)
         public double B_DDD { get; set; } = 0.0;       // Bề rộng đá dăm đệm (m) (ví dụ 7.20m = 7200mm)
@@ -114,6 +119,10 @@ namespace InfraBIM.CulvertTool.Models
         public double JointGapM { get; set; } = 0.01;
         public bool IsRoundCulvert { get; set; } = false;
         public bool IsDoublePipe { get; set; } = false;
+        public double DoublePipeSpacingM { get; set; } = 2.12;
+
+        public bool IsConnectionJointP1 { get; set; } = false;
+        public bool IsConnectionJointP2 { get; set; } = false;
         public bool HasGoiCong { get; set; } = false;
         public bool HasMongTren { get; set; } = false;
         public bool HasDaDamDem { get; set; } = true;
@@ -127,6 +136,8 @@ namespace InfraBIM.CulvertTool.Models
 
         public double L_SGC_TL { get; set; } = 3.0;
         public double L_SGC_HL { get; set; } = 3.0;
+        public double Z_SGC_TL { get; set; } = 0.0;
+        public double Z_SGC_HL { get; set; } = 0.0;
 
         public PreviewApronItem ApronTL { get; set; } = new();
         public PreviewApronItem ApronHL { get; set; } = new();

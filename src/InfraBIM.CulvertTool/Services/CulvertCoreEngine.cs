@@ -123,7 +123,16 @@ namespace InfraBIM.CulvertTool.Services
             IList<CulvertComponentItem>? technicalManholeComponents = null,
             double lStdTechnicalM = 1.0,
             double jointGapTechnicalM = 0.01,
-            CulvertArrayMode arrayModeTechnical = CulvertArrayMode.CenterOut)
+            CulvertArrayMode arrayModeTechnical = CulvertArrayMode.CenterOut,
+            IList<CulvertComponentItem>? roundSingleBarrelComponents = null,
+            IList<CulvertComponentItem>? roundDoubleBarrelComponents = null,
+            double lStdRoundSingleM = 2.5,
+            double jointGapRoundSingleM = 0.02,
+            CulvertArrayMode arrayModeRoundSingle = CulvertArrayMode.OneWay,
+            double lStdRoundDoubleM = 2.5,
+            double jointGapRoundDoubleM = 0.02,
+            CulvertArrayMode arrayModeRoundDouble = CulvertArrayMode.OneWay,
+            double khoangCachTimRoundDoubleM = 2.12)
         {
             var logs = new List<string>();
             int successCount = 0;
@@ -158,7 +167,9 @@ namespace InfraBIM.CulvertTool.Services
                         .Concat(apronComponents ?? new List<CulvertComponentItem>())
                         .Concat(manholeComponents ?? new List<CulvertComponentItem>())
                         .Concat(technicalBarrelComponents ?? new List<CulvertComponentItem>())
-                        .Concat(technicalManholeComponents ?? new List<CulvertComponentItem>());
+                        .Concat(technicalManholeComponents ?? new List<CulvertComponentItem>())
+                        .Concat(roundSingleBarrelComponents ?? new List<CulvertComponentItem>())
+                        .Concat(roundDoubleBarrelComponents ?? new List<CulvertComponentItem>());
 
                     foreach (var c in allComps)
                     {
@@ -271,6 +282,9 @@ namespace InfraBIM.CulvertTool.Services
                                 (row.LoaiCong != null && (row.LoaiCong.IndexOf("kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 || row.LoaiCong.IndexOf("CKT", StringComparison.OrdinalIgnoreCase) >= 0)) ||
                                 (row.GhiChu != null && (row.GhiChu.IndexOf("kỹ thuật", StringComparison.OrdinalIgnoreCase) >= 0 || row.GhiChu.IndexOf("CKT", StringComparison.OrdinalIgnoreCase) >= 0));
 
+                            bool isRowRound = RoundCulvertService.IsRoundCulvert(row);
+                            bool isRowRoundDouble = isRowRound && RoundCulvertService.IsDoublePipe(row);
+
                             IList<CulvertComponentItem> targetBarrelList;
                             IList<CulvertComponentItem> targetManholeList;
                             double curLStd;
@@ -284,6 +298,25 @@ namespace InfraBIM.CulvertTool.Services
                                 curLStd = lStdTechnicalM;
                                 curJointGap = jointGapTechnicalM;
                                 curArrayMode = arrayModeTechnical;
+                            }
+                            else if (isRowRound)
+                            {
+                                if (isRowRoundDouble)
+                                {
+                                    targetBarrelList = roundDoubleBarrelComponents ?? precastBarrelComponents;
+                                    targetManholeList = manholeComponents;
+                                    curLStd = lStdRoundDoubleM;
+                                    curJointGap = jointGapRoundDoubleM;
+                                    curArrayMode = arrayModeRoundDouble;
+                                }
+                                else
+                                {
+                                    targetBarrelList = roundSingleBarrelComponents ?? precastBarrelComponents;
+                                    targetManholeList = manholeComponents;
+                                    curLStd = lStdRoundSingleM;
+                                    curJointGap = jointGapRoundSingleM;
+                                    curArrayMode = arrayModeRoundSingle;
+                                }
                             }
                             else if (isRowCastInPlace)
                             {
@@ -332,7 +365,7 @@ namespace InfraBIM.CulvertTool.Services
                                 curLStd,
                                 curJointGap,
                                 bBoxM,
-                                defaultKhoangCachTim,
+                                isRowRoundDouble ? khoangCachTimRoundDoubleM : defaultKhoangCachTim,
                                 curArrayMode,
                                 isRowCastInPlace,
                                 useSurveyPoint,
@@ -434,7 +467,7 @@ namespace InfraBIM.CulvertTool.Services
                                 // Cống ngang thông thường (Đúc sẵn & Đổ tại chỗ)
                                 if (rowOutlets.Count > 0 && (rowBarrels.Count > 0 || rowBeddings.Count > 0))
                                 {
-                                    using (var cutT = new Transaction(doc, $"Cut Geometry Cửa xả và Cống hộp STT {row.STT}"))
+                                    using (var cutT = new Transaction(doc, $"Cut Geometry Cửa xả và Cống STT {row.STT}"))
                                     {
                                         try
                                         {
@@ -445,16 +478,23 @@ namespace InfraBIM.CulvertTool.Services
 
                                             cutT.Start();
 
-                                            ExecuteAllCulvertCuts(
-                                                doc,
-                                                isRowCastInPlace,
-                                                rowUpOutlets,
-                                                rowDnOutlets,
-                                                rowBarrels,
-                                                rowBeddings,
-                                                rowManholes,
-                                                rowCipDetails,
-                                                rowAprons);
+                                            if (RoundCulvertService.IsRoundCulvert(row))
+                                            {
+                                                RoundCulvertService.ExecuteRoundCulvertCuts(doc, rowOutlets, rowBarrels, rowBeddings);
+                                            }
+                                            else
+                                            {
+                                                ExecuteAllCulvertCuts(
+                                                    doc,
+                                                    isRowCastInPlace,
+                                                    rowUpOutlets,
+                                                    rowDnOutlets,
+                                                    rowBarrels,
+                                                    rowBeddings,
+                                                    rowManholes,
+                                                    rowCipDetails,
+                                                    rowAprons);
+                                            }
 
                                             cutT.Commit();
                                         }
@@ -1389,8 +1429,34 @@ namespace InfraBIM.CulvertTool.Services
                 (data.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
                 (data.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
 
-            PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, upstreamOutlets, isRowCastInPlace);
-            PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, downstreamOutlets, isRowCastInPlace);
+            // NHẬN DIỆN MỐI NỐI ĐẤU NỐI CỐNG HIỆN TRẠNG (CỐNG TRÒN) - YÊU CẦU 1, 3, 4
+            bool isConnRow = RoundCulvertService.IsRoundCulvert(data) && RoundCulvertService.IsConnectionToExisting(data);
+            bool isConnP1 = isConnRow && RoundCulvertService.IsConnectionAtP1(data);
+            bool isConnP2 = isConnRow && !isConnP1;
+
+            FamilySymbol? connSym = isConnRow ? ResolveRoundConnectionSymbol(doc, barrelComponents, data) : null;
+            var connComp = isConnRow ? barrelComponents?.FirstOrDefault(c => RoundCulvertService.IsConnectionComponent(c)) : null;
+            double offsetZConnM = connComp?.OffsetZ ?? 0.0;
+
+            if (isConnP1)
+            {
+                // YÊU CẦU 4: Tại P1 chỉ rải Family Mối nối, không rải cửa xả
+                RoundCulvertService.PlaceRoundCulvertConnectionJoint(doc, p1, u, connSym, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, materialSettings, upstreamOutlets, offsetZConnM);
+            }
+            else
+            {
+                PlaceOutletAssembly(doc, p1, u, rotOutletTL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSanCongFeet, materialSettings, upstreamOutlets, isRowCastInPlace);
+            }
+
+            if (isConnP2)
+            {
+                // YÊU CẦU 4: Tại P2 chỉ rải Family Mối nối, không rải cửa xả
+                RoundCulvertService.PlaceRoundCulvertConnectionJoint(doc, p2, u, connSym, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, materialSettings, downstreamOutlets, offsetZConnM);
+            }
+            else
+            {
+                PlaceOutletAssembly(doc, p2, u, rotOutletHL, outletComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSanCongFeet, materialSettings, downstreamOutlets, isRowCastInPlace);
+            }
 
             outletInstances.AddRange(upstreamOutlets);
             outletInstances.AddRange(downstreamOutlets);
@@ -1462,7 +1528,7 @@ namespace InfraBIM.CulvertTool.Services
             }
 
             // 3. Đặt Sân gia cố Thượng lưu & Hạ lưu:
-            // Sân gia cố tiếp giáp liền kề ngay mép ngoài của Sân cống (CX_L1 + lSanCongM), hoàn toàn không có khoảng cách hở
+            // Sân gia cố tiếp giáp liền kề ngay mép ngoài của Sân cống / Cửa xả: điểm 1 cách điểm Excel một đoạn (CX_L1 + CX_L san cong)
             double lOuterCX_M = cxL1M + lSanCongM;
             double lOuterCX_Feet = UnitUtils.ConvertToInternalUnits(lOuterCX_M, UnitTypeId.Meters);
 
@@ -1474,8 +1540,15 @@ namespace InfraBIM.CulvertTool.Services
             double lSgcTL = data.L_SGC_TL > 0.05 ? data.L_SGC_TL : 3.0;
             double lSgcHL = data.L_SGC_HL > 0.05 ? data.L_SGC_HL : 3.0;
 
-            PlaceApronAssembly(doc, ptSC2_TL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSgcTL, materialSettings, apronInstances, isRowCastInPlace);
-            PlaceApronAssembly(doc, ptSC2_HL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSgcHL, materialSettings, apronInstances, isRowCastInPlace);
+            // YÊU CẦU 4: Bỏ qua Sân gia cố tại đầu đấu nối cống hiện trạng
+            if (!isConnP1)
+            {
+                PlaceApronAssembly(doc, ptSC2_TL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: true, lSgcTL, materialSettings, apronInstances, isRowCastInPlace, useSurveyPoint);
+            }
+            if (!isConnP2)
+            {
+                PlaceApronAssembly(doc, ptSC2_HL, u, apronComponents, bimConfig, customBimParams, familyParameterMappings, data, isUpstream: false, lSgcHL, materialSettings, apronInstances, isRowCastInPlace, useSurveyPoint);
+            }
 
             // 4. Rải thân cống và hộp nối: Offset xuống 1 đoạn L_ngam_san như trong file Excel & Hình 4
             double lNgamSanM = data.L_Ngam_San > 0 ? data.L_Ngam_San : 0.0;
@@ -1485,7 +1558,30 @@ namespace InfraBIM.CulvertTool.Services
 
             var sampleOutlet = upstreamOutlets.FirstOrDefault() ?? downstreamOutlets.FirstOrDefault();
             var cipDetails = outCipDetails ?? new CastInPlaceDetails();
-            if (isRowCastInPlace)
+            if (RoundCulvertService.IsRoundCulvert(data))
+            {
+                RoundCulvertService.BuildRoundCulvertBarrelsAndBeddings(
+                    doc,
+                    data,
+                    bimConfig,
+                    customBimParams,
+                    familyParameterMappings,
+                    barrelComponents,
+                    p1_Culvert,
+                    p2_Culvert,
+                    u,
+                    rotAngle,
+                    lStdFeet,
+                    jointGapFeet,
+                    defaultKhoangCachTim,
+                    arrayMode,
+                    materialSettings,
+                    barrelInstances,
+                    beddingInstances,
+                    outletComponents,
+                    sampleOutlet);
+            }
+            else if (isRowCastInPlace)
             {
                 BuildCastInPlaceBoxCulvert(
                     doc,
@@ -1520,16 +1616,27 @@ namespace InfraBIM.CulvertTool.Services
             // CHỈ THỰC HIỆN KHI performCutGeometry == true (khi bấm "Khởi tạo và thực hiện mô hình" hoặc Review 3D trích xuất mesh)
             if (performCutGeometry)
             {
-                ExecuteAllCulvertCuts(
-                    doc,
-                    isRowCastInPlace,
-                    upstreamOutlets,
-                    downstreamOutlets,
-                    barrelInstances,
-                    beddingInstances,
-                    manholeInstances,
-                    cipDetails,
-                    apronInstances);
+                if (RoundCulvertService.IsRoundCulvert(data))
+                {
+                    RoundCulvertService.ExecuteRoundCulvertCuts(
+                        doc,
+                        upstreamOutlets.Concat(downstreamOutlets).ToList(),
+                        barrelInstances,
+                        beddingInstances);
+                }
+                else
+                {
+                    ExecuteAllCulvertCuts(
+                        doc,
+                        isRowCastInPlace,
+                        upstreamOutlets,
+                        downstreamOutlets,
+                        barrelInstances,
+                        beddingInstances,
+                        manholeInstances,
+                        cipDetails,
+                        apronInstances);
+                }
             }
 
             // Gán Mark (CN-STT), Comments và BIM_LyTrinh cho toàn bộ cấu kiện Cống Ngang vừa tạo
@@ -2359,6 +2466,53 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
+        private static FamilySymbol? ResolveRoundConnectionSymbol(
+            Document doc,
+            IList<CulvertComponentItem>? barrelComponents,
+            CulvertRowData data)
+        {
+            if (doc == null || data == null) return null;
+
+            // 1. Thử lấy từ thiết lập cấu kiện người dùng đã chọn trên giao diện
+            if (barrelComponents != null)
+            {
+                var comp = barrelComponents.FirstOrDefault(c => c.IsActive && c.SelectedSymbol != null &&
+                    ((c.CategoryType ?? "").IndexOf("Mối nối", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     (c.CategoryType ?? "").IndexOf("MOI NOI", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     (c.SelectedSymbol.FamilyName ?? "").IndexOf("MOI NOI", StringComparison.OrdinalIgnoreCase) >= 0));
+                if (comp?.SelectedSymbol != null)
+                {
+                    var fs = comp.SelectedSymbol.GetFreshSymbol(doc);
+                    if (fs != null) return fs;
+                }
+            }
+
+            // 2. Tự động nhận diện Loại 1 vs Loại 2 từ Ghi chú hoặc cống tròn đôi
+            bool isLoai2 = (data.GhiChu ?? "").IndexOf("LOAI 2", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                           (data.GhiChu ?? "").IndexOf("LOẠI 2", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                           RoundCulvertService.IsDoublePipe(data);
+
+            string targetFam = isLoai2 ? "TNN_CT_CX_MOI NOI_LOAI 2" : "TNN_CT_CX_MOI NOI_LOAI 1";
+            string fallbackFam = isLoai2 ? "TNN_CT_CX_MOI NOI_LOAI 1" : "TNN_CT_CX_MOI NOI_LOAI 2";
+
+            var allSymbols = new FilteredElementCollector(doc)
+                .OfClass(typeof(FamilySymbol))
+                .Cast<FamilySymbol>()
+                .ToList();
+
+            var exact = allSymbols.FirstOrDefault(s => s.FamilyName.Equals(targetFam, StringComparison.OrdinalIgnoreCase));
+            if (exact != null) return exact;
+
+            var partial = allSymbols.FirstOrDefault(s => s.FamilyName.IndexOf(targetFam, StringComparison.OrdinalIgnoreCase) >= 0);
+            if (partial != null) return partial;
+
+            var fallback = allSymbols.FirstOrDefault(s => s.FamilyName.IndexOf(fallbackFam, StringComparison.OrdinalIgnoreCase) >= 0);
+            if (fallback != null) return fallback;
+
+            var anyConn = allSymbols.FirstOrDefault(s => s.FamilyName.IndexOf("MOI NOI", StringComparison.OrdinalIgnoreCase) >= 0);
+            return anyConn;
+        }
+
         private static void PlaceOutletAssembly(
             Document doc,
             XYZ ptBase,
@@ -2515,7 +2669,8 @@ namespace InfraBIM.CulvertTool.Services
             double lSgcM,
             IEnumerable<CulvertMaterialItem>? materialSettings,
             List<FamilyInstance>? createdAprons = null,
-            bool isCastInPlace = false)
+            bool isCastInPlace = false,
+            bool useSurveyPoint = true)
         {
             if (apronComponents == null || apronComponents.Count == 0) return;
 
@@ -2527,7 +2682,27 @@ namespace InfraBIM.CulvertTool.Services
             double lSgcFeet = UnitUtils.ConvertToInternalUnits(lSgcM, UnitTypeId.Meters);
 
             XYZ pA = ptSC2;
-            XYZ pB = ptSC2 + uOut * lSgcFeet;
+
+            // Xác định cao độ Điểm 2 (pB) của Sân gia cố:
+            // Nếu người dùng nhập cao độ Z_SGC trong Excel (khác 0), quy đổi theo hệ tọa độ Revit
+            // Nếu để trống hoặc 0, mặc định giữ nguyên cao độ theo Điểm 1 (pA.Z) như trước đây
+            double zSgcM = isUpstream ? data.Z_SGC_TL : data.Z_SGC_HL;
+            double targetZ_B = pA.Z;
+            if (Math.Abs(zSgcM) > 0.0001)
+            {
+                double zFeet = UnitUtils.ConvertToInternalUnits(zSgcM, UnitTypeId.Meters);
+                if (useSurveyPoint && doc.ActiveProjectLocation != null)
+                {
+                    ProjectPosition pos = doc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero);
+                    targetZ_B = zFeet - pos.Elevation;
+                }
+                else
+                {
+                    targetZ_B = zFeet;
+                }
+            }
+
+            XYZ pB = new XYZ(ptSC2.X + uOut.X * lSgcFeet, ptSC2.Y + uOut.Y * lSgcFeet, targetZ_B);
 
             foreach (var comp in apronComponents)
             {
@@ -2736,6 +2911,106 @@ namespace InfraBIM.CulvertTool.Services
             }
 
             return voidSuccess;
+        }
+
+        internal static bool TryCutSolidDirectional(Document doc, Element? solidToCut, Element? cuttingSolid)
+        {
+            if (doc == null || solidToCut == null || cuttingSolid == null || !solidToCut.IsValidObject || !cuttingSolid.IsValidObject) return false;
+            if (solidToCut.Id == cuttingSolid.Id) return false;
+
+            var targets = GetElementWithSubcomponents(doc, solidToCut);
+            var cutters = GetElementWithSubcomponents(doc, cuttingSolid);
+
+            bool anyCut = false;
+
+            foreach (var target in targets)
+            {
+                foreach (var cutter in cutters)
+                {
+                    if (target.Id == cutter.Id) continue;
+
+                    // Kiểm tra va chạm BoundingBox với dung sai rộng 3.0 feet (~0.9m)
+                    if (!BoundingBoxesIntersect(target, cutter, 3.0)) continue;
+
+                    // 1. Unjoin nếu đã Join trước đó để tránh xung đột
+                    try
+                    {
+                        if (JoinGeometryUtils.AreElementsJoined(doc, target, cutter))
+                        {
+                            JoinGeometryUtils.UnjoinGeometry(doc, target, cutter);
+                        }
+                    }
+                    catch { }
+
+                    // 2. Thử InstanceVoidCut trước (đặc biệt khi cống tròn cắt Tường đầu hoặc Mối nối/BTL bằng Void)
+                    bool cutDone = false;
+                    try
+                    {
+                        if (InstanceVoidCutUtils.CanBeCutWithVoid(target))
+                        {
+                            if (InstanceVoidCutUtils.InstanceVoidCutExists(target, cutter))
+                            {
+                                cutDone = true;
+                            }
+                            else
+                            {
+                                using (var st = new SubTransaction(doc))
+                                {
+                                    st.Start();
+                                    try
+                                    {
+                                        InstanceVoidCutUtils.AddInstanceVoidCut(doc, target, cutter);
+                                        doc.Regenerate();
+                                        st.Commit();
+                                        cutDone = true;
+                                    }
+                                    catch
+                                    {
+                                        if (st.HasStarted() && !st.HasEnded()) st.RollBack();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+
+                    // 3. Nếu chưa cut bằng Void, thử SolidSolidCutUtils (CHỈ CẮT 1 CHIỀU: target bị cắt bởi cutter)
+                    if (!cutDone)
+                    {
+                        try
+                        {
+                            var cuttingSolids = SolidSolidCutUtils.GetCuttingSolids(target);
+                            if (cuttingSolids != null && cuttingSolids.Contains(cutter.Id))
+                            {
+                                cutDone = true;
+                            }
+                            else if (SolidSolidCutUtils.CanElementCutElement(cutter, target, out _))
+                            {
+                                using (var st = new SubTransaction(doc))
+                                {
+                                    st.Start();
+                                    try
+                                    {
+                                        SolidSolidCutUtils.AddCutBetweenSolids(doc, target, cutter);
+                                        doc.Regenerate();
+                                        st.Commit();
+                                        cutDone = true;
+                                    }
+                                    catch
+                                    {
+                                        if (st.HasStarted() && !st.HasEnded()) st.RollBack();
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (cutDone) anyCut = true;
+                }
+            }
+
+            return anyCut;
         }
 
         internal static bool TryCutSolidSolid(Document doc, Element? elemA, Element? elemB)
@@ -4684,7 +4959,7 @@ namespace InfraBIM.CulvertTool.Services
             }
         }
 
-        private static void TryApplyMaterial(
+        internal static void TryApplyMaterial(
             Document doc,
             FamilyInstance inst,
             IEnumerable<CulvertMaterialItem>? materialSettings,

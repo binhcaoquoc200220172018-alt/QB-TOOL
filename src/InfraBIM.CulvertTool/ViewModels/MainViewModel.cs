@@ -7,6 +7,7 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Forms;
@@ -81,6 +82,46 @@ public class MainViewModel : ViewModelBase
 	private string _kheHoTechnicalText = "0.01";
 
 	private int _selectedArrayModeIndexTechnical;
+
+	private double _lStdRoundSingle = 2.5;
+
+	private string _lStdRoundSingleText = "2.50";
+
+	private double _kheHoRoundSingle = 0.02;
+
+	private string _kheHoRoundSingleText = "0.02";
+
+	private int _selectedArrayModeIndexRoundSingle = 1;
+
+	private double _lStdRoundDouble = 2.5;
+
+	private string _lStdRoundDoubleText = "2.50";
+
+	private double _kheHoRoundDouble = 0.02;
+
+	private string _kheHoRoundDoubleText = "0.02";
+
+	private int _selectedArrayModeIndexRoundDouble = 1;
+
+	private double _offsetMoiNoiRoundSingle = 0.40;
+	private string _offsetMoiNoiRoundSingleText = "0.40";
+
+	private double _offsetMoiNoiRoundDouble = 0.40;
+	private string _offsetMoiNoiRoundDoubleText = "0.40";
+
+	private bool _isReverseRoundPlacement = false;
+
+	private double _khoangCachTimRoundDouble = 2.12;
+
+	private string _khoangCachTimRoundDoubleText = "2.12";
+
+	private FamilySymbolWrapper? _selectedRoundSinglePipeSymbol;
+
+	private FamilySymbolWrapper? _selectedRoundDoublePipeSymbol;
+
+	private FamilySymbolWrapper? _selectedRoundSingleConnectionSymbol;
+
+	private FamilySymbolWrapper? _selectedRoundDoubleConnectionSymbol;
 
 	private double _lStd = 1.0;
 
@@ -182,7 +223,31 @@ public class MainViewModel : ViewModelBase
 
 	private bool _isFilteringTab02;
 
-	public Document? Doc => _uiApp?.ActiveUIDocument?.Document;
+	private readonly Dictionary<string, List<CulvertRowOverrideSaveDto>> _overridesBySheet = new Dictionary<string, List<CulvertRowOverrideSaveDto>>(StringComparer.OrdinalIgnoreCase);
+
+	private string _selectedTargetScopeForTab04 = "Tất cả cấu kiện";
+
+	private bool _isUpdatingCustomBimPreviews;
+
+	private Document? _cachedDoc;
+	public Document? Doc
+	{
+		get
+		{
+			if (_cachedDoc != null && _cachedDoc.IsValidObject)
+			{
+				return _cachedDoc;
+			}
+			try
+			{
+				_cachedDoc = _uiApp?.ActiveUIDocument?.Document;
+			}
+			catch
+			{
+			}
+			return _cachedDoc;
+		}
+	}
 
 	public string SelectedTypeFilter
 	{
@@ -226,6 +291,33 @@ public class MainViewModel : ViewModelBase
 				SaveCurrentSheetOverrides();
 				UpdateModeFromSheetName(value);
 				LoadExcelData();
+				if (IsRoundCulvertMode)
+				{
+					bool isDouble = FilteredCulvertRows.Any(r => r.SoCua >= 2 || (r.KhauDo != null && r.KhauDo.IndexOf("2x", StringComparison.OrdinalIgnoreCase) >= 0));
+					if (isDouble)
+					{
+						_selectedRoundCulvertSubTabIndex = 1;
+						OnPropertyChanged("SelectedRoundCulvertSubTabIndex");
+						ApplyAssemblyTemplate("CỐNG TRÒN ĐÔI");
+						SelectedCulvertTypeForTab03 = "CỐNG TRÒN ĐÔI";
+						SelectedCulvertTypeForTab04 = "CỐNG TRÒN ĐÔI";
+						SelectedTab02GroupFilter = "RoundDouble";
+					}
+					else
+					{
+						_selectedRoundCulvertSubTabIndex = 0;
+						OnPropertyChanged("SelectedRoundCulvertSubTabIndex");
+						ApplyAssemblyTemplate("CỐNG TRÒN ĐƠN");
+						SelectedCulvertTypeForTab03 = "CỐNG TRÒN ĐƠN";
+						SelectedCulvertTypeForTab04 = "CỐNG TRÒN ĐƠN";
+						SelectedTab02GroupFilter = "RoundSingle";
+					}
+					RefreshActiveAssignedFamiliesForTab02();
+					ApplyTab02FamilyFilter();
+					SyncMaterialsFromAssemblyComponents();
+					ApplyMaterialGroupFilter();
+					UpdateAvailableTargetScopesForTab04();
+				}
 				RestoreCurrentSheetOverrides();
 				UpdateInspectorCulvertRows();
 				RefreshInspectorParameterMappings();
@@ -293,6 +385,10 @@ public class MainViewModel : ViewModelBase
 
 	public ObservableCollection<CulvertComponentItem> CastInPlaceBarrelComponents { get; } = new ObservableCollection<CulvertComponentItem>();
 
+	public ObservableCollection<CulvertComponentItem> RoundSingleBarrelComponents { get; } = new ObservableCollection<CulvertComponentItem>();
+
+	public ObservableCollection<CulvertComponentItem> RoundDoubleBarrelComponents { get; } = new ObservableCollection<CulvertComponentItem>();
+
 	public ObservableCollection<CulvertTypeProfile> CastInPlaceProfiles { get; } = new ObservableCollection<CulvertTypeProfile>();
 
 	public CulvertTypeProfile? SelectedCastInPlaceProfile
@@ -358,11 +454,103 @@ public class MainViewModel : ViewModelBase
 			if (SetProperty(ref _isTechnicalCulvertMode, value, "IsTechnicalCulvertMode"))
 			{
 				OnPropertyChanged("IsNormalCulvertMode");
+				OnPropertyChanged("IsNotTechnicalCulvertMode");
 			}
 		}
 	}
 
-	public bool IsNormalCulvertMode => !IsTechnicalCulvertMode;
+	private bool _isRoundCulvertMode;
+	public bool IsRoundCulvertMode
+	{
+		get => _isRoundCulvertMode;
+		set
+		{
+			if (SetProperty(ref _isRoundCulvertMode, value, "IsRoundCulvertMode"))
+			{
+				OnPropertyChanged("IsNormalCulvertMode");
+				OnPropertyChanged("IsNotTechnicalCulvertMode");
+			}
+		}
+	}
+
+	public bool IsNormalCulvertMode => !IsTechnicalCulvertMode && !IsRoundCulvertMode;
+	public bool IsNotTechnicalCulvertMode => !IsTechnicalCulvertMode;
+
+	private int _selectedRoundCulvertSubTabIndex = 0;
+	public int SelectedRoundCulvertSubTabIndex
+	{
+		get => _selectedRoundCulvertSubTabIndex;
+		set
+		{
+			if (SetProperty(ref _selectedRoundCulvertSubTabIndex, value, "SelectedRoundCulvertSubTabIndex"))
+			{
+				if (value == 0)
+				{
+					ApplyAssemblyTemplate("CỐNG TRÒN ĐƠN");
+					SelectedCulvertTypeForTab03 = "CỐNG TRÒN ĐƠN";
+					SelectedCulvertTypeForTab04 = "CỐNG TRÒN ĐƠN";
+					SelectedTab02GroupFilter = "RoundSingle";
+				}
+				else if (value == 1)
+				{
+					ApplyAssemblyTemplate("CỐNG TRÒN ĐÔI");
+					SelectedCulvertTypeForTab03 = "CỐNG TRÒN ĐÔI";
+					SelectedCulvertTypeForTab04 = "CỐNG TRÒN ĐÔI";
+					SelectedTab02GroupFilter = "RoundDouble";
+				}
+				else if (value == 2)
+				{
+					SelectedTab02GroupFilter = "Outlet";
+				}
+				else if (value == 3)
+				{
+					SelectedTab02GroupFilter = "Apron";
+				}
+				RefreshActiveAssignedFamiliesForTab02();
+				ApplyTab02FamilyFilter();
+				SyncMaterialsFromAssemblyComponents();
+				ApplyMaterialGroupFilter();
+				UpdateAvailableTargetScopesForTab04();
+				UpdateFilteredCulvertRowsForTab04();
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public ObservableCollection<string> RoundCulvertLayoutModes { get; } = new ObservableCollection<string>
+	{
+		"Rải một chiều (Đốt chuẩn + Đốt bù)",
+		"Tùy chỉnh đốt (Quy cách chuỗi)"
+	};
+
+	private int _selectedRoundCulvertLayoutModeIndex = 0;
+	public int SelectedRoundCulvertLayoutModeIndex
+	{
+		get => _selectedRoundCulvertLayoutModeIndex;
+		set
+		{
+			if (SetProperty(ref _selectedRoundCulvertLayoutModeIndex, value, "SelectedRoundCulvertLayoutModeIndex"))
+			{
+				OnPropertyChanged("IsCustomPatternRoundLayoutActive");
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public bool IsCustomPatternRoundLayoutActive => SelectedRoundCulvertLayoutModeIndex == 1;
+
+	private string _roundCulvertCustomPatternText = "6@2.5, 2@3.0";
+	public string RoundCulvertCustomPatternText
+	{
+		get => _roundCulvertCustomPatternText;
+		set
+		{
+			if (SetProperty(ref _roundCulvertCustomPatternText, value, "RoundCulvertCustomPatternText"))
+			{
+				UpdatePreviewGeometry();
+			}
+		}
+	}
 
 	public ObservableCollection<CulvertComponentItem> AssemblyComponents { get; } = new ObservableCollection<CulvertComponentItem>();
 
@@ -643,6 +831,381 @@ public class MainViewModel : ViewModelBase
 		}
 	}
 
+	public double L_Std_RoundSingle
+	{
+		get
+		{
+			return _lStdRoundSingle;
+		}
+		set
+		{
+			if (SetProperty(ref _lStdRoundSingle, value, "L_Std_RoundSingle"))
+			{
+				_lStdRoundSingleText = value.ToString("0.##", CultureInfo.InvariantCulture);
+				OnPropertyChanged("L_Std_RoundSingle_Text");
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public string L_Std_RoundSingle_Text
+	{
+		get
+		{
+			return _lStdRoundSingleText;
+		}
+		set
+		{
+			if (SetProperty(ref _lStdRoundSingleText, value, "L_Std_RoundSingle_Text") && TryParseFlexible(value, out var value2) && value2 > 0.0)
+			{
+				_lStdRoundSingle = value2;
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public double Khe_Ho_RoundSingle
+	{
+		get
+		{
+			return _kheHoRoundSingle;
+		}
+		set
+		{
+			if (SetProperty(ref _kheHoRoundSingle, value, "Khe_Ho_RoundSingle"))
+			{
+				_kheHoRoundSingleText = value.ToString("0.###", CultureInfo.InvariantCulture);
+				OnPropertyChanged("Khe_Ho_RoundSingle_Text");
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public string Khe_Ho_RoundSingle_Text
+	{
+		get
+		{
+			return _kheHoRoundSingleText;
+		}
+		set
+		{
+			if (SetProperty(ref _kheHoRoundSingleText, value, "Khe_Ho_RoundSingle_Text") && TryParseFlexible(value, out var value2) && value2 >= 0.0)
+			{
+				_kheHoRoundSingle = value2;
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public int SelectedArrayModeIndex_RoundSingle
+	{
+		get
+		{
+			return _selectedArrayModeIndexRoundSingle;
+		}
+		set
+		{
+			if (SetProperty(ref _selectedArrayModeIndexRoundSingle, value, "SelectedArrayModeIndex_RoundSingle"))
+			{
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public double L_Std_RoundDouble
+	{
+		get
+		{
+			return _lStdRoundDouble;
+		}
+		set
+		{
+			if (SetProperty(ref _lStdRoundDouble, value, "L_Std_RoundDouble"))
+			{
+				_lStdRoundDoubleText = value.ToString("0.##", CultureInfo.InvariantCulture);
+				OnPropertyChanged("L_Std_RoundDouble_Text");
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public string L_Std_RoundDouble_Text
+	{
+		get
+		{
+			return _lStdRoundDoubleText;
+		}
+		set
+		{
+			if (SetProperty(ref _lStdRoundDoubleText, value, "L_Std_RoundDouble_Text") && TryParseFlexible(value, out var value2) && value2 > 0.0)
+			{
+				_lStdRoundDouble = value2;
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public double Khe_Ho_RoundDouble
+	{
+		get
+		{
+			return _kheHoRoundDouble;
+		}
+		set
+		{
+			if (SetProperty(ref _kheHoRoundDouble, value, "Khe_Ho_RoundDouble"))
+			{
+				_kheHoRoundDoubleText = value.ToString("0.###", CultureInfo.InvariantCulture);
+				OnPropertyChanged("Khe_Ho_RoundDouble_Text");
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public string Khe_Ho_RoundDouble_Text
+	{
+		get
+		{
+			return _kheHoRoundDoubleText;
+		}
+		set
+		{
+			if (SetProperty(ref _kheHoRoundDoubleText, value, "Khe_Ho_RoundDouble_Text") && TryParseFlexible(value, out var value2) && value2 >= 0.0)
+			{
+				_kheHoRoundDouble = value2;
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public int SelectedArrayModeIndex_RoundDouble
+	{
+		get
+		{
+			return _selectedArrayModeIndexRoundDouble;
+		}
+		set
+		{
+			if (SetProperty(ref _selectedArrayModeIndexRoundDouble, value, "SelectedArrayModeIndex_RoundDouble"))
+			{
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public double KhoangCachTim_RoundDouble
+	{
+		get
+		{
+			return _khoangCachTimRoundDouble;
+		}
+		set
+		{
+			if (SetProperty(ref _khoangCachTimRoundDouble, value, "KhoangCachTim_RoundDouble"))
+			{
+				_khoangCachTimRoundDoubleText = value.ToString("0.##", CultureInfo.InvariantCulture);
+				OnPropertyChanged("KhoangCachTim_RoundDouble_Text");
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public string KhoangCachTim_RoundDouble_Text
+	{
+		get
+		{
+			return _khoangCachTimRoundDoubleText;
+		}
+		set
+		{
+			if (SetProperty(ref _khoangCachTimRoundDoubleText, value, "KhoangCachTim_RoundDouble_Text") && TryParseFlexible(value, out var value2) && value2 > 0.1)
+			{
+				_khoangCachTimRoundDouble = value2;
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public double OffsetMoiNoi_RoundSingle
+	{
+		get => _offsetMoiNoiRoundSingle;
+		set
+		{
+			if (SetProperty(ref _offsetMoiNoiRoundSingle, value, "OffsetMoiNoi_RoundSingle"))
+			{
+				_offsetMoiNoiRoundSingleText = value.ToString("0.##", CultureInfo.InvariantCulture);
+				OnPropertyChanged("OffsetMoiNoi_RoundSingle_Text");
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public string OffsetMoiNoi_RoundSingle_Text
+	{
+		get => _offsetMoiNoiRoundSingleText;
+		set
+		{
+			if (SetProperty(ref _offsetMoiNoiRoundSingleText, value, "OffsetMoiNoi_RoundSingle_Text") && TryParseFlexible(value, out var v) && v >= 0.0)
+			{
+				_offsetMoiNoiRoundSingle = v;
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public double OffsetMoiNoi_RoundDouble
+	{
+		get => _offsetMoiNoiRoundDouble;
+		set
+		{
+			if (SetProperty(ref _offsetMoiNoiRoundDouble, value, "OffsetMoiNoi_RoundDouble"))
+			{
+				_offsetMoiNoiRoundDoubleText = value.ToString("0.##", CultureInfo.InvariantCulture);
+				OnPropertyChanged("OffsetMoiNoi_RoundDouble_Text");
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public string OffsetMoiNoi_RoundDouble_Text
+	{
+		get => _offsetMoiNoiRoundDoubleText;
+		set
+		{
+			if (SetProperty(ref _offsetMoiNoiRoundDoubleText, value, "OffsetMoiNoi_RoundDouble_Text") && TryParseFlexible(value, out var v) && v >= 0.0)
+			{
+				_offsetMoiNoiRoundDouble = v;
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public bool IsReverseRoundPlacement
+	{
+		get => _isReverseRoundPlacement;
+		set
+		{
+			if (SetProperty(ref _isReverseRoundPlacement, value, "IsReverseRoundPlacement"))
+			{
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public ObservableCollection<FamilySymbolWrapper> AvailableRoundPipeFamilies { get; } = new ObservableCollection<FamilySymbolWrapper>();
+
+	public FamilySymbolWrapper? SelectedRoundSinglePipeSymbol
+	{
+		get
+		{
+			return _selectedRoundSinglePipeSymbol;
+		}
+		set
+		{
+			if (!SetProperty(ref _selectedRoundSinglePipeSymbol, value, "SelectedRoundSinglePipeSymbol"))
+			{
+				return;
+			}
+			if (value != null && RoundSingleBarrelComponents.Count > 0)
+			{
+				CulvertComponentItem culvertComponentItem = RoundSingleBarrelComponents.FirstOrDefault((CulvertComponentItem c) => (c.CategoryType ?? "").Contains("Thân"));
+				if (culvertComponentItem != null && culvertComponentItem.SelectedSymbol != value)
+				{
+					culvertComponentItem.SelectedSymbol = value;
+				}
+			}
+			if (value != null && SelectedCulvertRowForPreview != null)
+			{
+				Match match = Regex.Match(value.TypeName, "D(\\d+)", RegexOptions.IgnoreCase);
+				if (match.Success && ((SelectedCulvertRowForPreview.LoaiCong ?? "").IndexOf("TRON", StringComparison.OrdinalIgnoreCase) >= 0 || (SelectedCulvertRowForPreview.LoaiCong ?? "").IndexOf("TRÒN", StringComparison.OrdinalIgnoreCase) >= 0) && SelectedCulvertRowForPreview.SoCua <= 1)
+				{
+					SelectedCulvertRowForPreview.KhauDo = match.Value;
+				}
+			}
+			UpdatePreviewGeometry();
+		}
+	}
+
+	public FamilySymbolWrapper? SelectedRoundDoublePipeSymbol
+	{
+		get
+		{
+			return _selectedRoundDoublePipeSymbol;
+		}
+		set
+		{
+			if (!SetProperty(ref _selectedRoundDoublePipeSymbol, value, "SelectedRoundDoublePipeSymbol"))
+			{
+				return;
+			}
+			if (value != null && RoundDoubleBarrelComponents.Count > 0)
+			{
+				CulvertComponentItem culvertComponentItem = RoundDoubleBarrelComponents.FirstOrDefault((CulvertComponentItem c) => (c.CategoryType ?? "").Contains("Thân"));
+				if (culvertComponentItem != null && culvertComponentItem.SelectedSymbol != value)
+				{
+					culvertComponentItem.SelectedSymbol = value;
+				}
+			}
+			if (value != null && SelectedCulvertRowForPreview != null)
+			{
+				Match match = Regex.Match(value.TypeName, "D(\\d+)", RegexOptions.IgnoreCase);
+				if (match.Success && ((SelectedCulvertRowForPreview.LoaiCong ?? "").IndexOf("TRON", StringComparison.OrdinalIgnoreCase) >= 0 || (SelectedCulvertRowForPreview.LoaiCong ?? "").IndexOf("TRÒN", StringComparison.OrdinalIgnoreCase) >= 0) && SelectedCulvertRowForPreview.SoCua >= 2)
+				{
+					SelectedCulvertRowForPreview.KhauDo = "2x" + match.Value;
+				}
+			}
+			UpdatePreviewGeometry();
+		}
+	}
+
+	public ObservableCollection<FamilySymbolWrapper> AvailableRoundConnectionFamilies { get; } = new ObservableCollection<FamilySymbolWrapper>();
+
+	public FamilySymbolWrapper? SelectedRoundSingleConnectionSymbol
+	{
+		get
+		{
+			return _selectedRoundSingleConnectionSymbol;
+		}
+		set
+		{
+			if (SetProperty(ref _selectedRoundSingleConnectionSymbol, value, "SelectedRoundSingleConnectionSymbol"))
+			{
+				if (value != null && RoundSingleBarrelComponents.Count > 0)
+				{
+					CulvertComponentItem comp = RoundSingleBarrelComponents.FirstOrDefault((CulvertComponentItem c) => (c.CategoryType ?? "").Contains("Mối nối"));
+					if (comp != null && comp.SelectedSymbol != value)
+					{
+						comp.SelectedSymbol = value;
+					}
+				}
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
+	public FamilySymbolWrapper? SelectedRoundDoubleConnectionSymbol
+	{
+		get
+		{
+			return _selectedRoundDoubleConnectionSymbol;
+		}
+		set
+		{
+			if (SetProperty(ref _selectedRoundDoubleConnectionSymbol, value, "SelectedRoundDoubleConnectionSymbol"))
+			{
+				if (value != null && RoundDoubleBarrelComponents.Count > 0)
+				{
+					CulvertComponentItem comp = RoundDoubleBarrelComponents.FirstOrDefault((CulvertComponentItem c) => (c.CategoryType ?? "").Contains("Mối nối"));
+					if (comp != null && comp.SelectedSymbol != value)
+					{
+						comp.SelectedSymbol = value;
+					}
+				}
+				UpdatePreviewGeometry();
+			}
+		}
+	}
+
 	public double L_Std
 	{
 		get
@@ -876,16 +1439,18 @@ public class MainViewModel : ViewModelBase
 
 	public string SelectedTab02GroupName => _selectedTab02GroupFilter switch
 	{
-		"Precast" => "\ud83e\uddf1 Cống đúc sẵn", 
-		"CastInPlace" => "\ud83c\udfd7\ufe0f Tất cả Cống đổ tại chỗ", 
-		"Barrel" => "\ud83e\uddf1 Thân cống", 
-		"Outlet" => "\ud83c\udf0a Cửa xả", 
-		"Apron" => "\ud83d\udee1\ufe0f Sân gia cố", 
-		"Manhole" => "\ud83d\udd73\ufe0f Hố ga (Hộp nối)", 
-		"TechManhole" => "\ud83d\udd73\ufe0f Hố kỹ thuật", 
-		"JunctionBox" => "\ud83d\udce6 Hộp nối cống", 
-		"All" => "\ud83d\udcc1 Tất cả", 
-		null => "\ud83d\udcc1 Tất cả", 
+		"Precast" => "🧱 Cống đúc sẵn", 
+		"CastInPlace" => "🏗️ Tất cả Cống đổ tại chỗ", 
+		"RoundSingle" => "🔵 Cống tròn đơn", 
+		"RoundDouble" => "👥 Cống tròn đôi", 
+		"Barrel" => "🧱 Thân cống", 
+		"Outlet" => "🌊 Cửa xả", 
+		"Apron" => "🛡️ Sân gia cố", 
+		"Manhole" => "🕳️ Hố ga (Hộp nối)", 
+		"TechManhole" => "🕳️ Hố kỹ thuật", 
+		"JunctionBox" => "📦 Hộp nối cống", 
+		"All" => "📁 Tất cả", 
+		null => "📁 Tất cả", 
 		_ => CastInPlaceProfiles.FirstOrDefault((CulvertTypeProfile p) => p.TypeName == _selectedTab02GroupFilter)?.TypeName ?? _selectedTab02GroupFilter, 
 	};
 
@@ -903,14 +1468,10 @@ public class MainViewModel : ViewModelBase
 			{
 				_selectedComponentForTab02 = value;
 				OnPropertyChanged("SelectedComponentForTab02");
-				return;
 			}
-			if (SetProperty(ref _selectedComponentForTab02, value, "SelectedComponentForTab02"))
+			else if (SetProperty(ref _selectedComponentForTab02, value, "SelectedComponentForTab02") && !_isInitializing)
 			{
-				if (!_isInitializing)
-				{
-					OnSelectedFamilyForTab02Changed();
-				}
+				OnSelectedFamilyForTab02Changed();
 			}
 		}
 	}
@@ -1066,19 +1627,19 @@ public class MainViewModel : ViewModelBase
 
 	public BimInfoConfig BimConfig { get; } = new BimInfoConfig();
 
-	private readonly Dictionary<string, List<CulvertRowOverrideSaveDto>> _overridesBySheet = new(StringComparer.OrdinalIgnoreCase);
-
 	public ObservableCollection<CustomBimParameterItem> CustomBimParameters { get; } = new ObservableCollection<CustomBimParameterItem>();
 
 	public ObservableCollection<CustomBimParameterItem> DisplayedCustomBimParameters { get; } = new ObservableCollection<CustomBimParameterItem>();
 
-	private string _selectedTargetScopeForTab04 = "Tất cả cấu kiện";
 	public string SelectedTargetScopeForTab04
 	{
-		get => _selectedTargetScopeForTab04;
+		get
+		{
+			return _selectedTargetScopeForTab04;
+		}
 		set
 		{
-			if (SetProperty(ref _selectedTargetScopeForTab04, value, nameof(SelectedTargetScopeForTab04)))
+			if (SetProperty(ref _selectedTargetScopeForTab04, value, "SelectedTargetScopeForTab04"))
 			{
 				RefreshDisplayedCustomBimParameters();
 			}
@@ -1483,6 +2044,8 @@ public class MainViewModel : ViewModelBase
 
 	public RelayCommand CloseCommand { get; }
 
+	public RelayCommand ReverseRoundCulvertDirectionCommand { get; }
+
 	public RelayCommand AddComponentCommand { get; }
 
 	public RelayCommand RemoveComponentCommand { get; }
@@ -1549,7 +2112,6 @@ public class MainViewModel : ViewModelBase
 
 	public RelayCommand CopyBimParametersToScopeCommand { get; }
 
-	// Persistence Commands (LÆ°u & KhÃ´i phá»¥c cáº¥u hÃ¬nh dá»± Ã¡n)
 	public RelayCommand SaveProjectConfigCommand { get; }
 
 	public RelayCommand ExportPresetCommand { get; }
@@ -1591,24 +2153,38 @@ public class MainViewModel : ViewModelBase
 		RefreshInspectorParameterMappings();
 	});
 
-	
 	private void UpdateModeFromSheetName(string sheetName)
 	{
 		string text = sheetName.Trim().ToLowerInvariant();
-		if (text.Contains("kythuat") || text.Contains("kỹ thuật") || text.Contains("ky_thuat") || text.Contains("ckt"))
+		if (text.Contains("tròn") || text.Contains("tron") || text.Contains("cống_tròn") || text.Contains("cong_tron"))
 		{
+			IsRoundCulvertMode = true;
+			IsTechnicalCulvertMode = false;
+			ApplyAssemblyTemplate("CỐNG TRÒN ĐƠN");
+			SelectedCulvertTypeForTab03 = "CỐNG TRÒN ĐƠN";
+			SelectedCulvertTypeForTab04 = "CỐNG TRÒN ĐƠN";
+			SelectedTab02GroupFilter = "RoundSingle";
+		}
+		else if (text.Contains("kythuat") || text.Contains("kỹ thuật") || text.Contains("ky_thuat") || text.Contains("ckt"))
+		{
+			IsRoundCulvertMode = false;
 			IsTechnicalCulvertMode = true;
 			ApplyAssemblyTemplate("CỐNG KỸ THUẬT");
 			SelectedCulvertTypeForTab03 = "CỐNG KỸ THUẬT";
 			SelectedCulvertTypeForTab04 = "CỐNG KỸ THUẬT";
+			SelectedTab02GroupFilter = "Precast";
 		}
 		else
 		{
+			IsRoundCulvertMode = false;
 			IsTechnicalCulvertMode = false;
 			ApplyAssemblyTemplate("CỐNG HỘP ĐÚC SẴN");
 			SelectedCulvertTypeForTab03 = "CỐNG ĐÚC SẴN";
 			SelectedCulvertTypeForTab04 = "CỐNG ĐÚC SẴN";
+			SelectedTab02GroupFilter = "Precast";
 		}
+		RefreshActiveAssignedFamiliesForTab02();
+		ApplyTab02FamilyFilter();
 		SyncMaterialsFromAssemblyComponents();
 		ApplyMaterialGroupFilter();
 		UpdateAvailableTargetScopesForTab04();
@@ -1617,8 +2193,7 @@ public class MainViewModel : ViewModelBase
 
 	private void OnCastInPlaceProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		if (_isInitializing) return;
-		if (sender is CulvertTypeProfile culvertTypeProfile && (e.PropertyName == "L_Std" || e.PropertyName == "L_Std_Text" || e.PropertyName == "Khe_Ho" || e.PropertyName == "Khe_Ho_Text" || e.PropertyName == "SelectedArrayModeIndex"))
+		if (!_isInitializing && sender is CulvertTypeProfile culvertTypeProfile && (e.PropertyName == "L_Std" || e.PropertyName == "L_Std_Text" || e.PropertyName == "Khe_Ho" || e.PropertyName == "Khe_Ho_Text" || e.PropertyName == "SelectedArrayModeIndex"))
 		{
 			_lStdCastInPlace = culvertTypeProfile.L_Std;
 			_kheHoCastInPlace = culvertTypeProfile.Khe_Ho;
@@ -1655,33 +2230,37 @@ public class MainViewModel : ViewModelBase
 
 	private void SaveCurrentSheetOverrides()
 	{
-		if (string.IsNullOrEmpty(SelectedSheetName) || AllCulvertRows == null || AllCulvertRows.Count == 0) return;
-		var currentOverrides = AllCulvertRows
-			.Where(r => r.ParameterOverrides != null && r.ParameterOverrides.Count > 0)
-			.Select(r => new CulvertRowOverrideSaveDto
-			{
-				SheetName = SelectedSheetName,
-				LyTrinh = r.LyTrinh ?? string.Empty,
-				STT = r.STT,
-				Overrides = new Dictionary<string, string>(r.ParameterOverrides, StringComparer.OrdinalIgnoreCase)
-			}).ToList();
-		_overridesBySheet[SelectedSheetName] = currentOverrides;
+		if (!string.IsNullOrEmpty(SelectedSheetName) && AllCulvertRows != null && AllCulvertRows.Count != 0)
+		{
+			List<CulvertRowOverrideSaveDto> value = (from r in AllCulvertRows
+				where r.ParameterOverrides != null && r.ParameterOverrides.Count > 0
+				select new CulvertRowOverrideSaveDto
+				{
+					SheetName = SelectedSheetName,
+					LyTrinh = (r.LyTrinh ?? string.Empty),
+					STT = r.STT,
+					Overrides = new Dictionary<string, string>(r.ParameterOverrides, StringComparer.OrdinalIgnoreCase)
+				}).ToList();
+			_overridesBySheet[SelectedSheetName] = value;
+		}
 	}
 
 	private void RestoreCurrentSheetOverrides()
 	{
-		if (string.IsNullOrEmpty(SelectedSheetName) || !_overridesBySheet.TryGetValue(SelectedSheetName, out var savedList) || savedList == null) return;
-		foreach (var ov in savedList)
+		if (string.IsNullOrEmpty(SelectedSheetName) || !_overridesBySheet.TryGetValue(SelectedSheetName, out List<CulvertRowOverrideSaveDto> value) || value == null)
 		{
-			var row = AllCulvertRows.FirstOrDefault(r =>
-				(!string.IsNullOrEmpty(ov.LyTrinh) && string.Equals(r.LyTrinh?.Trim(), ov.LyTrinh.Trim(), StringComparison.OrdinalIgnoreCase))
-				|| r.STT == ov.STT);
-			if (row != null && ov.Overrides != null)
+			return;
+		}
+		foreach (CulvertRowOverrideSaveDto ov in value)
+		{
+			CulvertRowData culvertRowData = AllCulvertRows.FirstOrDefault((CulvertRowData r) => (!string.IsNullOrEmpty(ov.LyTrinh) && string.Equals(r.LyTrinh?.Trim(), ov.LyTrinh.Trim(), StringComparison.OrdinalIgnoreCase)) || r.STT == ov.STT);
+			if (culvertRowData == null || ov.Overrides == null)
 			{
-				foreach (var kvp in ov.Overrides)
-				{
-					row.ParameterOverrides[kvp.Key] = kvp.Value;
-				}
+				continue;
+			}
+			foreach (KeyValuePair<string, string> @override in ov.Overrides)
+			{
+				culvertRowData.ParameterOverrides[@override.Key] = @override.Value;
 			}
 		}
 	}
@@ -1690,168 +2269,246 @@ public class MainViewModel : ViewModelBase
 	{
 		AvailableTargetScopesForTab04.Clear();
 		string type = SelectedCulvertTypeForTab04 ?? "TẤT CẢ";
-
 		if (IsTechnicalCulvertMode)
 		{
 			if (type == "CỐNG KỸ THUẬT")
 			{
 				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống kỹ thuật");
-				foreach (var comp in TechnicalBarrelComponents)
+				foreach (CulvertComponentItem technicalBarrelComponent in TechnicalBarrelComponents)
 				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					if (!string.IsNullOrWhiteSpace(technicalBarrelComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(technicalBarrelComponent.CategoryType))
 					{
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+						AvailableTargetScopesForTab04.Add(technicalBarrelComponent.CategoryType);
 					}
 				}
 			}
 			else if (type == "HỐ KỸ THUẬT & HỘP NỐI" || type == "HỐ GA (HỘP NỐI)")
 			{
 				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện hố kỹ thuật & hộp nối");
-				foreach (var comp in TechnicalManholeComponents)
+				foreach (CulvertComponentItem technicalManholeComponent in TechnicalManholeComponents)
 				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					if (!string.IsNullOrWhiteSpace(technicalManholeComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(technicalManholeComponent.CategoryType))
 					{
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+						AvailableTargetScopesForTab04.Add(technicalManholeComponent.CategoryType);
 					}
 				}
 			}
-			else // "TẤT CẢ"
+			else
 			{
 				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện");
-				foreach (var comp in TechnicalBarrelComponents)
+				foreach (CulvertComponentItem technicalBarrelComponent2 in TechnicalBarrelComponents)
 				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					if (!string.IsNullOrWhiteSpace(technicalBarrelComponent2.CategoryType) && !AvailableTargetScopesForTab04.Contains(technicalBarrelComponent2.CategoryType))
 					{
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+						AvailableTargetScopesForTab04.Add(technicalBarrelComponent2.CategoryType);
 					}
 				}
-				foreach (var comp in TechnicalManholeComponents)
+				foreach (CulvertComponentItem technicalManholeComponent2 in TechnicalManholeComponents)
 				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					if (!string.IsNullOrWhiteSpace(technicalManholeComponent2.CategoryType) && !AvailableTargetScopesForTab04.Contains(technicalManholeComponent2.CategoryType))
 					{
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+						AvailableTargetScopesForTab04.Add(technicalManholeComponent2.CategoryType);
 					}
+				}
+			}
+		}
+		else if (type == "CỐNG ĐÚC SẴN")
+		{
+			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống đúc sẵn");
+			foreach (CulvertComponentItem precastBarrelComponent in PrecastBarrelComponents)
+			{
+				if (!string.IsNullOrWhiteSpace(precastBarrelComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(precastBarrelComponent.CategoryType))
+				{
+					AvailableTargetScopesForTab04.Add(precastBarrelComponent.CategoryType);
+				}
+			}
+		}
+		else if (type == "CỐNG TRÒN")
+		{
+			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống tròn");
+			foreach (CulvertComponentItem item in RoundSingleBarrelComponents)
+			{
+				if (!string.IsNullOrWhiteSpace(item.CategoryType) && !AvailableTargetScopesForTab04.Contains(item.CategoryType))
+				{
+					AvailableTargetScopesForTab04.Add(item.CategoryType);
+				}
+			}
+			foreach (CulvertComponentItem item in RoundDoubleBarrelComponents)
+			{
+				if (!string.IsNullOrWhiteSpace(item.CategoryType) && !AvailableTargetScopesForTab04.Contains(item.CategoryType))
+				{
+					AvailableTargetScopesForTab04.Add(item.CategoryType);
+				}
+			}
+		}
+		else if (type == "CỐNG TRÒN ĐƠN")
+		{
+			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống tròn đơn");
+			foreach (CulvertComponentItem roundSingleBarrelComponent in RoundSingleBarrelComponents)
+			{
+				if (!string.IsNullOrWhiteSpace(roundSingleBarrelComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(roundSingleBarrelComponent.CategoryType))
+				{
+					AvailableTargetScopesForTab04.Add(roundSingleBarrelComponent.CategoryType);
+				}
+			}
+		}
+		else if (type == "CỐNG TRÒN ĐÔI")
+		{
+			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống tròn đôi");
+			foreach (CulvertComponentItem roundDoubleBarrelComponent in RoundDoubleBarrelComponents)
+			{
+				if (!string.IsNullOrWhiteSpace(roundDoubleBarrelComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(roundDoubleBarrelComponent.CategoryType))
+				{
+					AvailableTargetScopesForTab04.Add(roundDoubleBarrelComponent.CategoryType);
+				}
+			}
+		}
+		else if (type == "CỐNG ĐỔ TẠI CHỖ" || CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.TypeName == type))
+		{
+			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống đổ tại chỗ");
+			List<CulvertTypeProfile> list = CastInPlaceProfiles.Where((CulvertTypeProfile p) => type == "CỐNG ĐỔ TẠI CHỖ" || p.TypeName == type).ToList();
+			if (list.Count == 0 && SelectedCastInPlaceProfileForTab04 != null)
+			{
+				list.Add(SelectedCastInPlaceProfileForTab04);
+			}
+			if (list.Count == 0 && CastInPlaceProfiles.Count > 0)
+			{
+				list.AddRange(CastInPlaceProfiles);
+			}
+			foreach (CulvertTypeProfile item in list)
+			{
+				foreach (CulvertComponentItem component in item.Components)
+				{
+					if (!string.IsNullOrWhiteSpace(component.CategoryType) && !AvailableTargetScopesForTab04.Contains(component.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(component.CategoryType);
+					}
+				}
+			}
+			if (AvailableTargetScopesForTab04.Count == 1)
+			{
+				foreach (CulvertComponentItem castInPlaceBarrelComponent in CastInPlaceBarrelComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(castInPlaceBarrelComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(castInPlaceBarrelComponent.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(castInPlaceBarrelComponent.CategoryType);
+					}
+				}
+			}
+		}
+		else if (type == "CỬA XẢ")
+		{
+			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cửa xả");
+			foreach (CulvertComponentItem outletComponent in OutletComponents)
+			{
+				if (!string.IsNullOrWhiteSpace(outletComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(outletComponent.CategoryType))
+				{
+					AvailableTargetScopesForTab04.Add(outletComponent.CategoryType);
+				}
+			}
+		}
+		else if (type == "SÂN GIA CỐ")
+		{
+			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện sân gia cố");
+			foreach (CulvertComponentItem apronComponent in ApronComponents)
+			{
+				if (!string.IsNullOrWhiteSpace(apronComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(apronComponent.CategoryType))
+				{
+					AvailableTargetScopesForTab04.Add(apronComponent.CategoryType);
+				}
+			}
+		}
+		else if (type == "HỐ GA (HỘP NỐI)")
+		{
+			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện hố ga");
+			foreach (CulvertComponentItem manholeComponent in ManholeComponents)
+			{
+				if (!string.IsNullOrWhiteSpace(manholeComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(manholeComponent.CategoryType))
+				{
+					AvailableTargetScopesForTab04.Add(manholeComponent.CategoryType);
 				}
 			}
 		}
 		else
 		{
-			// Chế độ Cống ngang
-			if (type == "CỐNG ĐÚC SẴN")
+			AvailableTargetScopesForTab04.Add("Tất cả cấu kiện");
+			if (IsRoundCulvertMode)
 			{
-				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống đúc sẵn");
-				foreach (var comp in PrecastBarrelComponents)
+				foreach (CulvertComponentItem roundSingleBarrelComponent in RoundSingleBarrelComponents)
 				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					if (!string.IsNullOrWhiteSpace(roundSingleBarrelComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(roundSingleBarrelComponent.CategoryType))
 					{
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+						AvailableTargetScopesForTab04.Add(roundSingleBarrelComponent.CategoryType);
+					}
+				}
+				foreach (CulvertComponentItem roundDoubleBarrelComponent in RoundDoubleBarrelComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(roundDoubleBarrelComponent.CategoryType) && !AvailableTargetScopesForTab04.Contains(roundDoubleBarrelComponent.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(roundDoubleBarrelComponent.CategoryType);
+					}
+				}
+				foreach (CulvertComponentItem outletComponent2 in OutletComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(outletComponent2.CategoryType) && !AvailableTargetScopesForTab04.Contains(outletComponent2.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(outletComponent2.CategoryType);
+					}
+				}
+				foreach (CulvertComponentItem apronComponent2 in ApronComponents)
+				{
+					if (!string.IsNullOrWhiteSpace(apronComponent2.CategoryType) && !AvailableTargetScopesForTab04.Contains(apronComponent2.CategoryType))
+					{
+						AvailableTargetScopesForTab04.Add(apronComponent2.CategoryType);
 					}
 				}
 			}
-			else if (type == "CỐNG ĐỔ TẠI CHỖ" || CastInPlaceProfiles.Any(p => p.TypeName == type))
+			else
 			{
-				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cống đổ tại chỗ");
-				var activeProfiles = CastInPlaceProfiles.Where(p => type == "CỐNG ĐỔ TẠI CHỖ" || p.TypeName == type).ToList();
-				if (activeProfiles.Count == 0 && SelectedCastInPlaceProfileForTab04 != null)
+				foreach (CulvertComponentItem precastBarrelComponent2 in PrecastBarrelComponents)
 				{
-					activeProfiles.Add(SelectedCastInPlaceProfileForTab04);
-				}
-				if (activeProfiles.Count == 0 && CastInPlaceProfiles.Count > 0)
-				{
-					activeProfiles.AddRange(CastInPlaceProfiles);
-				}
-				foreach (var prof in activeProfiles)
-				{
-					foreach (var comp in prof.Components)
+					if (!string.IsNullOrWhiteSpace(precastBarrelComponent2.CategoryType) && !AvailableTargetScopesForTab04.Contains(precastBarrelComponent2.CategoryType))
 					{
-						if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+						AvailableTargetScopesForTab04.Add(precastBarrelComponent2.CategoryType);
+					}
+				}
+				foreach (CulvertTypeProfile castInPlaceProfile in CastInPlaceProfiles)
+				{
+					foreach (CulvertComponentItem component2 in castInPlaceProfile.Components)
+					{
+						if (!string.IsNullOrWhiteSpace(component2.CategoryType) && !AvailableTargetScopesForTab04.Contains(component2.CategoryType))
 						{
-							AvailableTargetScopesForTab04.Add(comp.CategoryType);
+							AvailableTargetScopesForTab04.Add(component2.CategoryType);
 						}
 					}
 				}
-				if (AvailableTargetScopesForTab04.Count == 1)
+				foreach (CulvertComponentItem outletComponent2 in OutletComponents)
 				{
-					foreach (var comp in CastInPlaceBarrelComponents)
+					if (!string.IsNullOrWhiteSpace(outletComponent2.CategoryType) && !AvailableTargetScopesForTab04.Contains(outletComponent2.CategoryType))
 					{
-						if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
-						{
-							AvailableTargetScopesForTab04.Add(comp.CategoryType);
-						}
+						AvailableTargetScopesForTab04.Add(outletComponent2.CategoryType);
 					}
 				}
-			}
-			else if (type == "CỬA XẢ")
-			{
-				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện cửa xả");
-				foreach (var comp in OutletComponents)
+				foreach (CulvertComponentItem apronComponent2 in ApronComponents)
 				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					if (!string.IsNullOrWhiteSpace(apronComponent2.CategoryType) && !AvailableTargetScopesForTab04.Contains(apronComponent2.CategoryType))
 					{
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+						AvailableTargetScopesForTab04.Add(apronComponent2.CategoryType);
 					}
 				}
-			}
-			else if (type == "SÂN GIA CỐ")
-			{
-				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện sân gia cố");
-				foreach (var comp in ApronComponents)
+				foreach (CulvertComponentItem manholeComponent2 in ManholeComponents)
 				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
+					if (!string.IsNullOrWhiteSpace(manholeComponent2.CategoryType) && !AvailableTargetScopesForTab04.Contains(manholeComponent2.CategoryType))
 					{
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
+						AvailableTargetScopesForTab04.Add(manholeComponent2.CategoryType);
 					}
-				}
-			}
-			else if (type == "HỐ GA (HỘP NỐI)")
-			{
-				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện hố ga");
-				foreach (var comp in ManholeComponents)
-				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
-					{
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
-					}
-				}
-			}
-			else // "TẤT CẢ"
-			{
-				AvailableTargetScopesForTab04.Add("Tất cả cấu kiện");
-				foreach (var comp in PrecastBarrelComponents)
-				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
-				}
-				foreach (var prof in CastInPlaceProfiles)
-				{
-					foreach (var comp in prof.Components)
-					{
-						if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
-							AvailableTargetScopesForTab04.Add(comp.CategoryType);
-					}
-				}
-				foreach (var comp in OutletComponents)
-				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
-				}
-				foreach (var comp in ApronComponents)
-				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
-				}
-				foreach (var comp in ManholeComponents)
-				{
-					if (!string.IsNullOrWhiteSpace(comp.CategoryType) && !AvailableTargetScopesForTab04.Contains(comp.CategoryType))
-						AvailableTargetScopesForTab04.Add(comp.CategoryType);
 				}
 			}
 		}
-
-		string defaultScope = AvailableTargetScopesForTab04.FirstOrDefault() ?? "Tất cả cấu kiện";
+		string selectedTargetScopeForTab = AvailableTargetScopesForTab04.FirstOrDefault() ?? "Tất cả cấu kiện";
 		if (string.IsNullOrEmpty(_selectedTargetScopeForTab04) || !AvailableTargetScopesForTab04.Contains(_selectedTargetScopeForTab04))
 		{
-			SelectedTargetScopeForTab04 = defaultScope;
+			SelectedTargetScopeForTab04 = selectedTargetScopeForTab;
 		}
 		else
 		{
@@ -1863,18 +2520,11 @@ public class MainViewModel : ViewModelBase
 	{
 		DisplayedCustomBimParameters.Clear();
 		string currentScope = SelectedTargetScopeForTab04 ?? "Tất cả cấu kiện";
-
 		EnsureDefaultParametersForScope(currentScope);
-
-		var matched = CustomBimParameters.Where(p =>
-			string.Equals(p.TargetScope, currentScope, StringComparison.OrdinalIgnoreCase)
-		).ToList();
-
-		foreach (var item in matched)
+		foreach (CustomBimParameterItem item in CustomBimParameters.Where((CustomBimParameterItem p) => string.Equals(p.TargetScope, currentScope, StringComparison.OrdinalIgnoreCase)).ToList())
 		{
 			DisplayedCustomBimParameters.Add(item);
 		}
-
 		if (SelectedCustomBimParameter == null || !DisplayedCustomBimParameters.Contains(SelectedCustomBimParameter))
 		{
 			SelectedCustomBimParameter = DisplayedCustomBimParameters.FirstOrDefault();
@@ -1884,69 +2534,69 @@ public class MainViewModel : ViewModelBase
 
 	private void EnsureDefaultParametersForScope(string scope)
 	{
-		if (string.IsNullOrWhiteSpace(scope)) return;
-		if (CustomBimParameters.Any(p => string.Equals(p.TargetScope, scope, StringComparison.OrdinalIgnoreCase))) return;
-
-		if (scope.StartsWith("Tất cả", StringComparison.OrdinalIgnoreCase))
+		if (!string.IsNullOrWhiteSpace(scope) && !CustomBimParameters.Any((CustomBimParameterItem p) => string.Equals(p.TargetScope, scope, StringComparison.OrdinalIgnoreCase)))
 		{
-			AddDefaultBimParam(scope, "Loại công trình", "Constraints", "Giao thông", "Loại công trình hạ tầng / giao thông");
-			AddDefaultBimParam(scope, "Tên công trình", "Constraints", "Đường ven biển Đắk Lắk", "Tên dự án công trình");
-			AddDefaultBimParam(scope, "Hạng mục", "Constraints", "cụm Lý trình Km", "Hạng mục cống thoát nước");
-			AddDefaultBimParam(scope, "Lý trình", "Constraints", "{LyTrinh}", "Lý trình thiết kế cống");
-			AddDefaultBimParam(scope, "Phân nhóm cấu kiện", "Constraints", "{LoaiCong} {KhauDo}", "Phân nhóm chủng loại và khẩu độ");
-			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "TCDS.{STT_DOT}", "Tên mã hiệu cấu kiện");
-			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Đốt cống {STT_DOT}", "Mô tả chi tiết cấu kiện");
-			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
-		}
-		else if (scope == "Tường đầu")
-		{
-			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Tường đầu cống {LyTrinh}", "Tên mã hiệu tường đầu");
-			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Tường đầu {LoaiCong} ({KhauDo})", "Mô tả tường đầu");
-			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
-		}
-		else if (scope == "Tường cánh")
-		{
-			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Tường cánh cống {LyTrinh}", "Tên mã hiệu tường cánh");
-			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Tường cánh {LoaiCong} ({KhauDo})", "Mô tả tường cánh");
-			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
-		}
-		else if (scope == "Sân cống")
-		{
-			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Sân cống {LyTrinh}", "Tên mã hiệu sân cống");
-			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Sân cống {LoaiCong} ({KhauDo})", "Mô tả sân cống");
-			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
-		}
-		else if (scope == "Sân gia cố")
-		{
-			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Sân gia cố {LyTrinh}", "Tên mã hiệu sân gia cố");
-			AddDefaultBimParam(scope, "Mô tả", "Constraints", "Sân gia cố {LoaiCong} ({KhauDo})", "Mô tả sân gia cố");
-			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
-		}
-		else if (scope == "Bê tông lót")
-		{
-			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "BTL cống {LyTrinh}", "Bê tông lót móng cống");
-			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu bê tông lót");
-		}
-		else if (scope == "Đá dăm đệm")
-		{
-			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Đá dăm cống {LyTrinh}", "Lớp đá dăm đệm móng");
-			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đá dăm");
-		}
-		else if (scope.IndexOf("hố ga", StringComparison.OrdinalIgnoreCase) >= 0 || scope.IndexOf("Hố", StringComparison.OrdinalIgnoreCase) >= 0 || scope.IndexOf("Hộp", StringComparison.OrdinalIgnoreCase) >= 0)
-		{
-			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", scope + " cống {LyTrinh}", "Tên mã hiệu " + scope);
-			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
-		}
-		else
-		{
-			AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", scope + ".{STT_DOT}", "Tên mã hiệu " + scope);
-			AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu cấu kiện");
+			if (scope.StartsWith("Tất cả", StringComparison.OrdinalIgnoreCase))
+			{
+				AddDefaultBimParam(scope, "Loại công trình", "Constraints", "Giao thông", "Loại công trình hạ tầng / giao thông");
+				AddDefaultBimParam(scope, "Tên công trình", "Constraints", "Đường ven biển Đắk Lắk", "Tên dự án công trình");
+				AddDefaultBimParam(scope, "Hạng mục", "Constraints", "cụm Lý trình Km", "Hạng mục cống thoát nước");
+				AddDefaultBimParam(scope, "Lý trình", "Constraints", "{LyTrinh}", "Lý trình thiết kế cống");
+				AddDefaultBimParam(scope, "Phân nhóm cấu kiện", "Constraints", "{LoaiCong} {KhauDo}", "Phân nhóm chủng loại và khẩu độ");
+				AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "TCDS.{STT_DOT}", "Tên mã hiệu cấu kiện");
+				AddDefaultBimParam(scope, "Mô tả", "Constraints", "Đốt cống {STT_DOT}", "Mô tả chi tiết cấu kiện");
+				AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+			}
+			else if (scope == "Tường đầu")
+			{
+				AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Tường đầu cống {LyTrinh}", "Tên mã hiệu tường đầu");
+				AddDefaultBimParam(scope, "Mô tả", "Constraints", "Tường đầu {LoaiCong} ({KhauDo})", "Mô tả tường đầu");
+				AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+			}
+			else if (scope == "Tường cánh")
+			{
+				AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Tường cánh cống {LyTrinh}", "Tên mã hiệu tường cánh");
+				AddDefaultBimParam(scope, "Mô tả", "Constraints", "Tường cánh {LoaiCong} ({KhauDo})", "Mô tả tường cánh");
+				AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+			}
+			else if (scope == "Sân cống")
+			{
+				AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Sân cống {LyTrinh}", "Tên mã hiệu sân cống");
+				AddDefaultBimParam(scope, "Mô tả", "Constraints", "Sân cống {LoaiCong} ({KhauDo})", "Mô tả sân cống");
+				AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+			}
+			else if (scope == "Sân gia cố")
+			{
+				AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Sân gia cố {LyTrinh}", "Tên mã hiệu sân gia cố");
+				AddDefaultBimParam(scope, "Mô tả", "Constraints", "Sân gia cố {LoaiCong} ({KhauDo})", "Mô tả sân gia cố");
+				AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+			}
+			else if (scope == "Bê tông lót")
+			{
+				AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "BTL cống {LyTrinh}", "Bê tông lót móng cống");
+				AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu bê tông lót");
+			}
+			else if (scope == "Đá dăm đệm")
+			{
+				AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", "Đá dăm cống {LyTrinh}", "Lớp đá dăm đệm móng");
+				AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đá dăm");
+			}
+			else if (scope.IndexOf("hố ga", StringComparison.OrdinalIgnoreCase) >= 0 || scope.IndexOf("Hố", StringComparison.OrdinalIgnoreCase) >= 0 || scope.IndexOf("Hộp", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", scope + " cống {LyTrinh}", "Tên mã hiệu " + scope);
+				AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu đồng bộ từ Tab 03");
+			}
+			else
+			{
+				AddDefaultBimParam(scope, "Tên cấu kiện", "Constraints", scope + ".{STT_DOT}", "Tên mã hiệu " + scope);
+				AddDefaultBimParam(scope, "Vật liệu", "Constraints", "{VatLieu}", "Vật liệu cấu kiện");
+			}
 		}
 	}
 
 	private void AddDefaultBimParam(string scope, string name, string group, string valTemplate, string desc, bool isActive = true)
 	{
-		var item = new CustomBimParameterItem
+		CustomBimParameterItem customBimParameterItem = new CustomBimParameterItem
 		{
 			IsActive = isActive,
 			ParamName = name,
@@ -1955,8 +2605,8 @@ public class MainViewModel : ViewModelBase
 			ValueTemplate = valTemplate,
 			Description = desc
 		};
-		item.PropertyChanged += OnCustomBimParameterPropertyChanged;
-		CustomBimParameters.Add(item);
+		customBimParameterItem.PropertyChanged += OnCustomBimParameterPropertyChanged;
+		CustomBimParameters.Add(customBimParameterItem);
 	}
 
 	public void UpdateFilteredCulvertRowsForTab04()
@@ -2025,6 +2675,18 @@ public class MainViewModel : ViewModelBase
 			{
 				FilteredCulvertRowsForTab04.Add(filteredCulvertRow);
 			}
+			else if (type == "CỐNG TRÒN" && RoundCulvertService.IsRoundCulvert(filteredCulvertRow))
+			{
+				FilteredCulvertRowsForTab04.Add(filteredCulvertRow);
+			}
+			else if (type == "CỐNG TRÒN ĐƠN" && RoundCulvertService.IsRoundCulvert(filteredCulvertRow) && filteredCulvertRow.SoCua <= 1)
+			{
+				FilteredCulvertRowsForTab04.Add(filteredCulvertRow);
+			}
+			else if (type == "CỐNG TRÒN ĐÔI" && RoundCulvertService.IsRoundCulvert(filteredCulvertRow) && filteredCulvertRow.SoCua > 1)
+			{
+				FilteredCulvertRowsForTab04.Add(filteredCulvertRow);
+			}
 			else if (type == "HỐ GA (HỘP NỐI)" && filteredCulvertRow.SoHopNoi > 0)
 			{
 				FilteredCulvertRowsForTab04.Add(filteredCulvertRow);
@@ -2073,6 +2735,11 @@ public class MainViewModel : ViewModelBase
 		StartupLogger.Log("[VM] MainViewModel constructor START");
 		_isInitializing = true;
 		_uiApp = uiApp;
+		try
+		{
+			_cachedDoc = uiApp?.ActiveUIDocument?.Document;
+		}
+		catch { }
 		_externalEvent = externalEvent;
 		_eventHandler = eventHandler;
 		StartupLogger.Log("[VM] Basic fields assigned, initializing commands...");
@@ -2097,11 +2764,14 @@ public class MainViewModel : ViewModelBase
 			{
 				ProjectConfigStorageService.SaveToLastSession(ExportCurrentState());
 			}
-			catch { }
+			catch
+			{
+			}
 			RequestClose?.Invoke();
 		});
 		AddComponentCommand = new RelayCommand(AddNewComponent);
 		RemoveComponentCommand = new RelayCommand(RemoveSelectedComponent);
+		ReverseRoundCulvertDirectionCommand = new RelayCommand(ReverseRoundCulvertDirection);
 		ApplyAssemblyTemplateCommand = new RelayCommand<string>(ApplyAssemblyTemplate);
 		AddCastInPlaceProfileCommand = new RelayCommand(AddCastInPlaceProfile);
 		RemoveCastInPlaceProfileCommand = new RelayCommand(RemoveCastInPlaceProfile);
@@ -2201,55 +2871,44 @@ public class MainViewModel : ViewModelBase
 			StartupLogger.Log("[VM] Step 1: LoadAvailableFamilies START");
 			LoadAvailableFamilies();
 			StartupLogger.Log("[VM] Step 1: LoadAvailableFamilies DONE");
-
 			StartupLogger.Log("[VM] Step 2: ApplyAssemblyTemplate START");
 			ApplyAssemblyTemplate("CỐNG HỘP ĐƠN");
 			StartupLogger.Log("[VM] Step 2: ApplyAssemblyTemplate DONE");
-
 			StartupLogger.Log("[VM] Step 3: ScanRevitMaterials START");
 			ScanRevitMaterials();
 			StartupLogger.Log("[VM] Step 3: ScanRevitMaterials DONE");
-
 			StartupLogger.Log("[VM] Step 4: SyncMaterialsFromAssemblyComponents START");
 			SyncMaterialsFromAssemblyComponents();
 			StartupLogger.Log("[VM] Step 4: SyncMaterialsFromAssemblyComponents DONE");
-
 			StartupLogger.Log("[VM] Step 5: InitializeAllDefaultBimParameters START");
 			InitializeAllDefaultBimParameters();
 			StartupLogger.Log("[VM] Step 5: InitializeAllDefaultBimParameters DONE");
-
 			StartupLogger.Log("[VM] Step 6: UpdateAvailableTargetScopesForTab04 START");
 			UpdateAvailableTargetScopesForTab04();
 			RefreshDisplayedCustomBimParameters();
 			StartupLogger.Log("[VM] Step 6: UpdateAvailableTargetScopesForTab04 DONE");
-
 			StartupLogger.Log("[VM] Step 7: UpdateFilteredCulvertRowsForTab04 START");
 			UpdateFilteredCulvertRowsForTab04();
 			StartupLogger.Log("[VM] Step 7: UpdateFilteredCulvertRowsForTab04 DONE");
-
 			StartupLogger.Log("[VM] Step 8: UpdateInspectorCulvertRows START");
 			UpdateInspectorCulvertRows();
 			StartupLogger.Log("[VM] Step 8: UpdateInspectorCulvertRows DONE");
-
-			// Persistence Commands
 			SaveProjectConfigCommand = new RelayCommand(ExecuteSaveProjectConfig);
 			ExportPresetCommand = new RelayCommand(ExecuteExportPreset);
 			ImportPresetCommand = new RelayCommand(ExecuteImportPreset);
 			RestoreConfigCommand = new RelayCommand(TryAutoLoadConfiguration);
-
 			StartupLogger.Log("[VM] Step 9: TryAutoLoadConfiguration START");
 			TryAutoLoadConfiguration();
 			StartupLogger.Log("[VM] Step 9: TryAutoLoadConfiguration DONE");
 		}
-		catch (Exception ex)
+		catch (Exception value)
 		{
-			StartupLogger.Log($"[VM] Constructor EXCEPTION: {ex}");
+			StartupLogger.Log($"[VM] Constructor EXCEPTION: {value}");
 		}
 		finally
 		{
 			_isInitializing = false;
 		}
-
 		StartupLogger.Log("[VM] Post-init: RefreshActiveAssignedFamiliesForTab02 START");
 		RefreshActiveAssignedFamiliesForTab02();
 		StartupLogger.Log("[VM] Post-init: ApplyTab02FamilyFilter START");
@@ -2560,6 +3219,7 @@ public class MainViewModel : ViewModelBase
 
 	private void LoadAvailableFamilies()
 	{
+		//IL_0025: Unknown result type (might be due to invalid IL or missing references)
 		StartupLogger.Log("[VM] LoadAvailableFamilies: START");
 		AllAvailableFamilies.Clear();
 		StartupLogger.Log("[VM] LoadAvailableFamilies: Collector START");
@@ -2572,12 +3232,30 @@ public class MainViewModel : ViewModelBase
 			}
 		}
 		StartupLogger.Log($"[VM] LoadAvailableFamilies: Collector DONE. Found {AllAvailableFamilies.Count} symbols.");
+		AvailableRoundPipeFamilies.Clear();
+		AvailableRoundConnectionFamilies.Clear();
+		foreach (FamilySymbolWrapper allAvailableFamily in AllAvailableFamilies)
+		{
+			if (allAvailableFamily.FamilyName.IndexOf("TNN_CT_THAN", StringComparison.OrdinalIgnoreCase) >= 0 || allAvailableFamily.FamilyName.IndexOf("CT_THAN", StringComparison.OrdinalIgnoreCase) >= 0 || allAvailableFamily.TypeName.IndexOf("TNN_CT_THAN", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				AvailableRoundPipeFamilies.Add(allAvailableFamily);
+			}
+			if (allAvailableFamily.FamilyName.IndexOf("MOI NOI", StringComparison.OrdinalIgnoreCase) >= 0 ||
+			    allAvailableFamily.FamilyName.IndexOf("MOI_NOI", StringComparison.OrdinalIgnoreCase) >= 0 ||
+			    allAvailableFamily.TypeName.IndexOf("MOI NOI", StringComparison.OrdinalIgnoreCase) >= 0 ||
+			    allAvailableFamily.TypeName.IndexOf("MOI_NOI", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				AvailableRoundConnectionFamilies.Add(allAvailableFamily);
+			}
+		}
 		StartupLogger.Log("[VM] LoadAvailableFamilies: InitPrecastBarrelComponents...");
 		InitPrecastBarrelComponents(forceRefresh: true);
 		StartupLogger.Log("[VM] LoadAvailableFamilies: InitCastInPlaceProfiles...");
 		InitCastInPlaceProfiles(forceRefresh: true);
 		StartupLogger.Log("[VM] LoadAvailableFamilies: InitTechnicalBarrelComponents...");
 		InitTechnicalBarrelComponents(forceRefresh: true);
+		StartupLogger.Log("[VM] LoadAvailableFamilies: InitRoundCulvertComponents...");
+		InitRoundCulvertComponents(forceRefresh: true);
 		StartupLogger.Log("[VM] LoadAvailableFamilies: InitOutletComponents...");
 		InitOutletComponents(forceRefresh: true);
 		StartupLogger.Log("[VM] LoadAvailableFamilies: InitApronComponents...");
@@ -2635,6 +3313,116 @@ public class MainViewModel : ViewModelBase
 		foreach (CulvertComponentItem precastBarrelComponent2 in PrecastBarrelComponents)
 		{
 			precastBarrelComponent2.PropertyChanged += OnAssemblyComponentPropertyChanged;
+		}
+	}
+
+	private void InitRoundCulvertComponents(bool forceRefresh = false)
+	{
+		if (!forceRefresh && RoundSingleBarrelComponents.Count > 0 && RoundDoubleBarrelComponents.Count > 0)
+		{
+			return;
+		}
+		FamilySymbolWrapper selectedSymbol = (SelectedRoundSinglePipeSymbol = AvailableRoundPipeFamilies.FirstOrDefault((FamilySymbolWrapper s) => s.TypeName.Contains("D1500")) ?? AvailableRoundPipeFamilies.FirstOrDefault() ?? FindSymbol("TNN_CT_THAN CONG", "D1500") ?? FindSymbol("TNN_CT_THAN CONG"));
+		FamilySymbolWrapper selectedSymbol2 = (SelectedRoundDoublePipeSymbol = AvailableRoundPipeFamilies.FirstOrDefault((FamilySymbolWrapper s) => s.TypeName.Contains("D1500")) ?? AvailableRoundPipeFamilies.FirstOrDefault() ?? FindSymbol("TNN_CT_THAN CONG", "D1500") ?? FindSymbol("TNN_CT_THAN CONG"));
+		FamilySymbolWrapper defaultSingleConn = (SelectedRoundSingleConnectionSymbol = AvailableRoundConnectionFamilies.FirstOrDefault((FamilySymbolWrapper s) => s.FamilyName.Contains("LOAI 1") || s.TypeName.Contains("LOAI 1")) ?? AvailableRoundConnectionFamilies.FirstOrDefault() ?? FindSymbol("TNN_CT_CX_MOI NOI_LOAI 1") ?? FindSymbol("TNN_CT_CX_MOI NOI"));
+		FamilySymbolWrapper defaultDoubleConn = (SelectedRoundDoubleConnectionSymbol = AvailableRoundConnectionFamilies.FirstOrDefault((FamilySymbolWrapper s) => s.FamilyName.Contains("LOAI 2") || s.TypeName.Contains("LOAI 2")) ?? AvailableRoundConnectionFamilies.FirstOrDefault() ?? FindSymbol("TNN_CT_CX_MOI NOI_LOAI 2") ?? defaultSingleConn);
+		foreach (CulvertComponentItem roundSingleBarrelComponent in RoundSingleBarrelComponents)
+		{
+			roundSingleBarrelComponent.PropertyChanged -= OnAssemblyComponentPropertyChanged;
+		}
+		RoundSingleBarrelComponents.Clear();
+		RoundSingleBarrelComponents.Add(new CulvertComponentItem
+		{
+			IsActive = true,
+			GroupType = "Cống tròn đơn",
+			ProfileName = "Cống tròn đơn",
+			CategoryType = "Thân cống tròn",
+			SelectedSymbol = selectedSymbol,
+			OffsetZ = 0.0,
+			Note = "Đốt thân cống tròn đúc sẵn (tâm ống)"
+		});
+		RoundSingleBarrelComponents.Add(new CulvertComponentItem
+		{
+			IsActive = true,
+			GroupType = "Cống tròn đơn",
+			ProfileName = "Cống tròn đơn",
+			CategoryType = "Bê tông lót cống tròn",
+			SelectedSymbol = (FindSymbol("TNN_CT_BE TONG LOT") ?? FindSymbol("TNN_CT_BE TONG") ?? FindSymbol("TNN_CH_BE TONG LOT")),
+			OffsetZ = -0.1,
+			Note = "Bệ móng bê tông lót cống tròn"
+		});
+		RoundSingleBarrelComponents.Add(new CulvertComponentItem
+		{
+			IsActive = true,
+			GroupType = "Cống tròn đơn",
+			ProfileName = "Cống tròn đơn",
+			CategoryType = "Đá dăm đệm cống tròn",
+			SelectedSymbol = (FindSymbol("TNN_CT_DA DAM DEM") ?? FindSymbol("TNN_CH_DA DAM DEM")),
+			OffsetZ = -0.2,
+			Note = "Lớp đá dăm đệm dưới đáy móng cống tròn"
+		});
+		RoundSingleBarrelComponents.Add(new CulvertComponentItem
+		{
+			IsActive = true,
+			GroupType = "Cống tròn đơn",
+			ProfileName = "Cống tròn đơn",
+			CategoryType = "Mối nối cống hiện trạng",
+			SelectedSymbol = defaultSingleConn,
+			OffsetZ = 0.0,
+			Note = "Family mối nối đấu nối cống hiện trạng (khi Ghi chú có 'Mối nối P1' hoặc 'Mối nối P2')"
+		});
+		foreach (CulvertComponentItem roundSingleBarrelComponent2 in RoundSingleBarrelComponents)
+		{
+			roundSingleBarrelComponent2.PropertyChanged += OnAssemblyComponentPropertyChanged;
+		}
+		foreach (CulvertComponentItem roundDoubleBarrelComponent in RoundDoubleBarrelComponents)
+		{
+			roundDoubleBarrelComponent.PropertyChanged -= OnAssemblyComponentPropertyChanged;
+		}
+		RoundDoubleBarrelComponents.Clear();
+		RoundDoubleBarrelComponents.Add(new CulvertComponentItem
+		{
+			IsActive = true,
+			GroupType = "Cống tròn đôi",
+			ProfileName = "Cống tròn đôi",
+			CategoryType = "Thân cống tròn đôi",
+			SelectedSymbol = selectedSymbol2,
+			OffsetZ = 0.0,
+			Note = "Đốt thân cống tròn đôi (2 ống song song cách tim S)"
+		});
+		RoundDoubleBarrelComponents.Add(new CulvertComponentItem
+		{
+			IsActive = true,
+			GroupType = "Cống tròn đôi",
+			ProfileName = "Cống tròn đôi",
+			CategoryType = "Bê tông lót cống tròn đôi",
+			SelectedSymbol = (FindSymbol("TNN_CT_BE TONG LOT") ?? FindSymbol("TNN_CT_BE TONG") ?? FindSymbol("TNN_CH_BE TONG LOT")),
+			OffsetZ = -0.1,
+			Note = "Bệ móng bê tông lót ôm 2 cống tròn"
+		});
+		RoundDoubleBarrelComponents.Add(new CulvertComponentItem
+		{
+			IsActive = true,
+			GroupType = "Cống tròn đôi",
+			ProfileName = "Cống tròn đôi",
+			CategoryType = "Đá dăm đệm cống tròn đôi",
+			SelectedSymbol = (FindSymbol("TNN_CT_DA DAM DEM") ?? FindSymbol("TNN_CH_DA DAM DEM")),
+			OffsetZ = -0.2,
+			Note = "Lớp đá dăm đệm dưới móng cống tròn đôi"
+		});
+		RoundDoubleBarrelComponents.Add(new CulvertComponentItem
+		{
+			IsActive = true,
+			GroupType = "Cống tròn đôi",
+			ProfileName = "Cống tròn đôi",
+			CategoryType = "Mối nối cống hiện trạng",
+			SelectedSymbol = defaultDoubleConn,
+			OffsetZ = 0.0,
+			Note = "Family mối nối cống tròn đôi hiện trạng (khi Ghi chú có 'Mối nối P1' hoặc 'Mối nối P2')"
+		});
+		foreach (CulvertComponentItem roundDoubleBarrelComponent2 in RoundDoubleBarrelComponents)
+		{
+			roundDoubleBarrelComponent2.PropertyChanged += OnAssemblyComponentPropertyChanged;
 		}
 	}
 
@@ -3075,12 +3863,41 @@ public class MainViewModel : ViewModelBase
 	{
 	}
 
+	public void ReverseRoundCulvertDirection()
+	{
+		IsReverseRoundPlacement = !IsReverseRoundPlacement;
+
+		// YÊU CẦU 2 (Người dùng đã chốt): Giữ nguyên 100% chuỗi quy cách rải đốt (KHÔNG đảo chuỗi quy cách)
+		// Chỉ đảo lại đầu âm / đầu dương của các đốt cống tròn (Điểm 1 = Đầu âm <-> Điểm 1 = Đầu dương)
+		foreach (var r in AllCulvertRows)
+		{
+			if (RoundCulvertService.IsRoundCulvert(r))
+			{
+				r.IsReversedPlacement = IsReverseRoundPlacement;
+			}
+		}
+
+		lock (_cachedRealMeshes)
+		{
+			_cachedRealMeshes.Clear();
+		}
+
+		if (SelectedCulvertRowForPreview != null)
+		{
+			SelectedCulvertRowForPreview.IsReversedPlacement = IsReverseRoundPlacement;
+			ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
+		}
+		UpdatePreviewGeometry();
+		ExecutionStatus = IsReverseRoundPlacement
+			? "🔄 Đã đảo đầu cống tròn (Đầu dương rải từ Điểm 1 ➔ Điểm 2)."
+			: "🔄 Đã chuyển đầu cống tròn mặc định (Đầu âm rải từ Điểm 1 ➔ Điểm 2).";
+	}
+
 	public void ApplyAssemblyTemplate(string? templateType)
 	{
-		StartupLogger.Log($"[VM] ApplyAssemblyTemplate START: {templateType}");
-		string obj = templateType?.ToUpperInvariant() ?? "CỐNG HỘP ĐÚC SẴN";
-		string text = obj;
-		SelectedCulvertTemplateType = obj;
+		StartupLogger.Log("[VM] ApplyAssemblyTemplate START: " + templateType);
+		string text = templateType?.ToUpperInvariant() ?? "CỐNG HỘP ĐÚC SẴN";
+		SelectedCulvertTemplateType = text;
 		string text2 = text;
 		foreach (CulvertComponentItem barrelComponent in BarrelComponents)
 		{
@@ -3122,6 +3939,23 @@ public class MainViewModel : ViewModelBase
 			foreach (CulvertComponentItem castInPlaceBarrelComponent in CastInPlaceBarrelComponents)
 			{
 				BarrelComponents.Add(castInPlaceBarrelComponent);
+			}
+		}
+		else if (text2.Contains("TRÒN") || text2.Contains("TRON"))
+		{
+			IsTechnicalCulvertMode = false;
+			IsCastInPlaceMode = false;
+			IsDoubleCulvertMode = text2.Contains("ĐÔI") || text2.Contains("DOI");
+			L_Std = 2.5;
+			Khe_Ho = 0.02;
+			if (RoundSingleBarrelComponents.Count == 0 || RoundDoubleBarrelComponents.Count == 0)
+			{
+				InitRoundCulvertComponents(forceRefresh: true);
+			}
+			var source = IsDoubleCulvertMode ? RoundDoubleBarrelComponents : RoundSingleBarrelComponents;
+			foreach (CulvertComponentItem roundComp in source)
+			{
+				BarrelComponents.Add(roundComp);
 			}
 		}
 		else
@@ -3166,6 +4000,25 @@ public class MainViewModel : ViewModelBase
 				AssemblyComponents.Add(technicalManholeComponent);
 			}
 		}
+		else if (IsRoundCulvertMode)
+		{
+			foreach (CulvertComponentItem item in RoundSingleBarrelComponents)
+			{
+				AssemblyComponents.Add(item);
+			}
+			foreach (CulvertComponentItem item in RoundDoubleBarrelComponents)
+			{
+				AssemblyComponents.Add(item);
+			}
+			foreach (CulvertComponentItem outletComponent in OutletComponents)
+			{
+				AssemblyComponents.Add(outletComponent);
+			}
+			foreach (CulvertComponentItem apronComponent in ApronComponents)
+			{
+				AssemblyComponents.Add(apronComponent);
+			}
+		}
 		else
 		{
 			foreach (CulvertComponentItem barrelComponent in BarrelComponents)
@@ -3195,24 +4048,53 @@ public class MainViewModel : ViewModelBase
 
 	private void OnAssemblyComponentPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		if (_isInitializing) return;
-		if (!(e.PropertyName == "CategoryType") && !(e.PropertyName == "SelectedSymbol") && !(e.PropertyName == "IsActive"))
+		if (_isInitializing || (!(e.PropertyName == "CategoryType") && !(e.PropertyName == "SelectedSymbol") && !(e.PropertyName == "IsActive")))
 		{
 			return;
 		}
 		RefreshActiveAssignedFamiliesForTab02();
 		SyncMaterialsFromAssemblyComponents();
-		if (sender is CulvertComponentItem culvertComponentItem)
+		if (!(sender is CulvertComponentItem culvertComponentItem))
 		{
-			if (SelectedComponentForTab02 == culvertComponentItem)
+			return;
+		}
+		if (e.PropertyName == "SelectedSymbol")
+		{
+			if (culvertComponentItem.GroupType == "Cống tròn đơn" && (culvertComponentItem.CategoryType ?? "").Contains("Thân"))
 			{
-				EnsureComponentParametersScanned(culvertComponentItem);
-				FilterParameterMappings();
+				if (_selectedRoundSinglePipeSymbol != culvertComponentItem.SelectedSymbol)
+				{
+					_selectedRoundSinglePipeSymbol = culvertComponentItem.SelectedSymbol;
+					OnPropertyChanged("SelectedRoundSinglePipeSymbol");
+				}
 			}
-			else
+			else if (culvertComponentItem.GroupType == "Cống tròn đơn" && (culvertComponentItem.CategoryType ?? "").Contains("Mối nối"))
 			{
-				EnsureComponentParametersScanned(culvertComponentItem);
+				if (_selectedRoundSingleConnectionSymbol != culvertComponentItem.SelectedSymbol)
+				{
+					_selectedRoundSingleConnectionSymbol = culvertComponentItem.SelectedSymbol;
+					OnPropertyChanged("SelectedRoundSingleConnectionSymbol");
+				}
 			}
+			else if (culvertComponentItem.GroupType == "Cống tròn đôi" && (culvertComponentItem.CategoryType ?? "").Contains("Thân") && _selectedRoundDoublePipeSymbol != culvertComponentItem.SelectedSymbol)
+			{
+				_selectedRoundDoublePipeSymbol = culvertComponentItem.SelectedSymbol;
+				OnPropertyChanged("SelectedRoundDoublePipeSymbol");
+			}
+			else if (culvertComponentItem.GroupType == "Cống tròn đôi" && (culvertComponentItem.CategoryType ?? "").Contains("Mối nối") && _selectedRoundDoubleConnectionSymbol != culvertComponentItem.SelectedSymbol)
+			{
+				_selectedRoundDoubleConnectionSymbol = culvertComponentItem.SelectedSymbol;
+				OnPropertyChanged("SelectedRoundDoubleConnectionSymbol");
+			}
+		}
+		if (SelectedComponentForTab02 == culvertComponentItem)
+		{
+			EnsureComponentParametersScanned(culvertComponentItem, forceRescan: e.PropertyName == "SelectedSymbol");
+			FilterParameterMappings();
+		}
+		else
+		{
+			EnsureComponentParametersScanned(culvertComponentItem, forceRescan: e.PropertyName == "SelectedSymbol");
 		}
 	}
 
@@ -3232,132 +4114,103 @@ public class MainViewModel : ViewModelBase
 
 	public void ApplyTab02FamilyFilter()
 	{
-		if (_isFilteringTab02) return;
+		if (_isFilteringTab02)
+		{
+			return;
+		}
 		_isFilteringTab02 = true;
 		try
 		{
-		CulvertComponentItem? selectedComponentForTab = SelectedComponentForTab02;
-		FilteredAssignedFamiliesForTab02.Clear();
-		string text = SelectedTab02GroupFilter ?? "All";
-		foreach (CulvertComponentItem comp in ActiveAssignedFamiliesForTab02)
-		{
-			bool flag = comp.GroupType == "Cống đúc sẵn" || comp.CategoryType.Contains("đúc sẵn") || PrecastBarrelComponents.Contains(comp) || TechnicalBarrelComponents.Contains(comp);
-			bool flag2 = comp.GroupType == "Cống đổ tại chỗ" || comp.CategoryType.Contains("đổ tại chỗ") || CastInPlaceBarrelComponents.Contains(comp) || (!string.IsNullOrEmpty(comp.ProfileName) && CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.TypeName == comp.ProfileName));
-			int num;
-			if (!(comp.GroupType == "Cửa xả"))
+			CulvertComponentItem selectedComponentForTab = SelectedComponentForTab02;
+			FilteredAssignedFamiliesForTab02.Clear();
+			string text = SelectedTab02GroupFilter ?? "All";
+			foreach (CulvertComponentItem comp in ActiveAssignedFamiliesForTab02)
 			{
-				string groupType = comp.GroupType;
-				if (groupType == null || !groupType.Contains("Cửa"))
+				bool isPrecast = comp.GroupType == "Cống đúc sẵn" || comp.CategoryType.Contains("đúc sẵn") || PrecastBarrelComponents.Contains(comp) || TechnicalBarrelComponents.Contains(comp);
+				bool isCastInPlace = comp.GroupType == "Cống đổ tại chỗ" || comp.CategoryType.Contains("đổ tại chỗ") || CastInPlaceBarrelComponents.Contains(comp) || (!string.IsNullOrEmpty(comp.ProfileName) && CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.TypeName == comp.ProfileName));
+				bool isRoundSingle = comp.GroupType == "Cống tròn đơn" || (comp.ProfileName != null && comp.ProfileName.Contains("tròn đơn")) || RoundSingleBarrelComponents.Contains(comp);
+				bool isRoundDouble = comp.GroupType == "Cống tròn đôi" || (comp.ProfileName != null && comp.ProfileName.Contains("tròn đôi")) || RoundDoubleBarrelComponents.Contains(comp);
+				bool isOutlet = comp.GroupType == "Cửa xả" || (comp.GroupType != null && comp.GroupType.Contains("Cửa")) || OutletComponents.Contains(comp);
+				bool isApron = comp.GroupType == "Sân gia cố" || (comp.GroupType != null && (comp.GroupType.Contains("Gia cố") || comp.GroupType.Contains("Sân"))) || ApronComponents.Contains(comp);
+				bool isTechManhole = comp.GroupType == "Hố kỹ thuật" || comp.CategoryType.Contains("Hố kỹ thuật");
+				bool isJunctionBox = comp.GroupType == "Hộp nối cống" || comp.GroupType == "Hộp nối" || comp.CategoryType.Contains("Hộp nối");
+				bool isManhole = comp.GroupType == "Hố ga (Hộp nối)" || (comp.GroupType != null && (comp.GroupType.Contains("Hố") || comp.GroupType.Contains("Hộp"))) || ManholeComponents.Contains(comp) || isTechManhole || isJunctionBox;
+
+				bool match = false;
+				if (text == "All")
 				{
-					num = (OutletComponents.Contains(comp) ? 1 : 0);
-					goto IL_015f;
+					match = true;
+				}
+				else if (text == "Precast" && isPrecast)
+				{
+					match = true;
+				}
+				else if (text == "CastInPlace" && isCastInPlace)
+				{
+					match = true;
+				}
+				else if (text == "RoundSingle" && isRoundSingle)
+				{
+					match = true;
+				}
+				else if (text == "RoundDouble" && isRoundDouble)
+				{
+					match = true;
+				}
+				else if (text == "Barrel" && (isPrecast || isCastInPlace || isRoundSingle || isRoundDouble))
+				{
+					match = true;
+				}
+				else if (text == "Outlet" && isOutlet)
+				{
+					match = true;
+				}
+				else if (text == "Apron" && isApron)
+				{
+					match = true;
+				}
+				else if (text == "TechManhole" && isTechManhole)
+				{
+					match = true;
+				}
+				else if (text == "JunctionBox" && isJunctionBox)
+				{
+					match = true;
+				}
+				else if (text == "Manhole" && isManhole)
+				{
+					match = true;
+				}
+				else if (!string.IsNullOrEmpty(comp.ProfileName) && string.Equals(comp.ProfileName, text, StringComparison.OrdinalIgnoreCase))
+				{
+					match = true;
+				}
+
+				if (match)
+				{
+					FilteredAssignedFamiliesForTab02.Add(comp);
 				}
 			}
-			num = 1;
-			goto IL_015f;
-			IL_015f:
-			bool flag3 = (byte)num != 0;
-			int num2;
-			if (!(comp.GroupType == "Sân gia cố"))
+			if (FilteredAssignedFamiliesForTab02.Count == 0 && ActiveAssignedFamiliesForTab02.Count > 0)
 			{
-				string groupType2 = comp.GroupType;
-				if (groupType2 == null || !groupType2.Contains("Gia cố"))
+				foreach (CulvertComponentItem activeComp in ActiveAssignedFamiliesForTab02)
 				{
-					string groupType3 = comp.GroupType;
-					if (groupType3 == null || !groupType3.Contains("Sân"))
-					{
-						num2 = (ApronComponents.Contains(comp) ? 1 : 0);
-						goto IL_0306;
-					}
+					FilteredAssignedFamiliesForTab02.Add(activeComp);
 				}
 			}
-			num2 = 1;
-			goto IL_0306;
-			IL_01df:
-			int num3;
-			bool flag5;
-			bool flag6;
-			bool flag4 = (byte)((int)((uint)num3 | (flag5 ? 1u : 0u)) | (flag6 ? 1 : 0)) != 0;
-			bool flag7 = false;
-			bool flag8;
-			if (text == "All")
+			if (selectedComponentForTab != null && FilteredAssignedFamiliesForTab02.Contains(selectedComponentForTab))
 			{
-				flag7 = true;
+				_selectedComponentForTab02 = selectedComponentForTab;
 			}
-			else if ((text == "Precast") & flag)
+			else
 			{
-				flag7 = true;
+				_selectedComponentForTab02 = FilteredAssignedFamiliesForTab02.FirstOrDefault();
 			}
-			else if ((text == "CastInPlace") & flag2)
+			OnPropertyChanged("SelectedComponentForTab02");
+			if (!_isInitializing)
 			{
-				flag7 = true;
+				OnSelectedFamilyForTab02Changed();
 			}
-			else if (text == "Barrel" && (flag | flag2))
-			{
-				flag7 = true;
-			}
-			else if ((text == "Outlet") & flag3)
-			{
-				flag7 = true;
-			}
-			else if ((text == "Apron") & flag8)
-			{
-				flag7 = true;
-			}
-			else if ((text == "TechManhole") & flag5)
-			{
-				flag7 = true;
-			}
-			else if ((text == "JunctionBox") & flag6)
-			{
-				flag7 = true;
-			}
-			else if ((text == "Manhole") & flag4)
-			{
-				flag7 = true;
-			}
-			else if (!string.IsNullOrEmpty(comp.ProfileName) && string.Equals(comp.ProfileName, text, StringComparison.OrdinalIgnoreCase))
-			{
-				flag7 = true;
-			}
-			if (flag7)
-			{
-				FilteredAssignedFamiliesForTab02.Add(comp);
-			}
-			continue;
-			IL_0306:
-			flag8 = (byte)num2 != 0;
-			flag5 = comp.GroupType == "Hố kỹ thuật" || comp.CategoryType.Contains("Hố kỹ thuật");
-			flag6 = comp.GroupType == "Hộp nối cống" || comp.GroupType == "Hộp nối" || comp.CategoryType.Contains("Hộp nối");
-			if (!(comp.GroupType == "Hố ga (Hộp nối)"))
-			{
-				string groupType4 = comp.GroupType;
-				if (groupType4 == null || !groupType4.Contains("Hố"))
-				{
-					string groupType5 = comp.GroupType;
-					if (groupType5 == null || !groupType5.Contains("Hộp"))
-					{
-						num3 = (ManholeComponents.Contains(comp) ? 1 : 0);
-						goto IL_01df;
-					}
-				}
-			}
-			num3 = 1;
-			goto IL_01df;
-		}
-		if (selectedComponentForTab != null && FilteredAssignedFamiliesForTab02.Contains(selectedComponentForTab))
-		{
-			_selectedComponentForTab02 = selectedComponentForTab;
-		}
-		else
-		{
-			_selectedComponentForTab02 = FilteredAssignedFamiliesForTab02.FirstOrDefault();
-		}
-		OnPropertyChanged("SelectedComponentForTab02");
-		if (!_isInitializing)
-		{
-			OnSelectedFamilyForTab02Changed();
-		}
 		}
 		finally
 		{
@@ -3375,6 +4228,13 @@ public class MainViewModel : ViewModelBase
 			list.AddRange(TechnicalBarrelComponents);
 			list.AddRange(TechnicalManholeComponents);
 		}
+		else if (IsRoundCulvertMode)
+		{
+			list.AddRange(RoundSingleBarrelComponents);
+			list.AddRange(RoundDoubleBarrelComponents);
+			list.AddRange(OutletComponents);
+			list.AddRange(ApronComponents);
+		}
 		else
 		{
 			list.AddRange(PrecastBarrelComponents);
@@ -3388,10 +4248,32 @@ public class MainViewModel : ViewModelBase
 		}
 		foreach (CulvertComponentItem item2 in list)
 		{
-			if (item2.IsActive && item2.SelectedSymbol != null)
+			if (item2.IsActive)
 			{
-				FamilySymbol symbol = item2.SelectedSymbol.Symbol;
-				string value = ((symbol != null) ? ((ElementType)symbol).FamilyName : null) ?? item2.CategoryType;
+				if (item2.SelectedSymbol == null)
+				{
+					string cName = (item2.CategoryType ?? "").ToLowerInvariant();
+					string gName = (item2.GroupType ?? "").ToLowerInvariant();
+					if (cName.Contains("thân") && gName.Contains("tròn"))
+					{
+						item2.SelectedSymbol = AvailableRoundPipeFamilies.FirstOrDefault() ?? FindSymbol("TNN_CT_THAN CONG");
+					}
+					else if (cName.Contains("bê tông lót") && gName.Contains("tròn"))
+					{
+						item2.SelectedSymbol = FindSymbol("TNN_CT_BE TONG LOT") ?? FindSymbol("TNN_CH_BE TONG LOT");
+					}
+					else if (cName.Contains("đá dăm") && gName.Contains("tròn"))
+					{
+						item2.SelectedSymbol = FindSymbol("TNN_CT_DA DAM DEM") ?? FindSymbol("TNN_CH_DA DAM DEM");
+					}
+					else if (cName.Contains("mối nối"))
+					{
+						item2.SelectedSymbol = AvailableRoundConnectionFamilies.FirstOrDefault() ?? FindSymbol("TNN_CT_CX_MOI NOI_LOAI 2") ?? FindSymbol("TNN_CT_CX_MOI NOI_LOAI 1");
+					}
+				}
+
+				FamilySymbol? symbol = item2.SelectedSymbol?.Symbol ?? item2.SelectedSymbol?.GetFreshSymbol(Doc);
+				string value = ((symbol != null) ? ((ElementType)symbol).FamilyName : null) ?? item2.SelectedSymbol?.FamilyName ?? item2.CategoryType;
 				string value2 = item2.ProfileName ?? "";
 				string item = $"{item2.GroupType}_{value2}_{value}_{item2.CategoryType}";
 				if (!hashSet.Contains(item))
@@ -3608,11 +4490,32 @@ public class MainViewModel : ViewModelBase
 		{
 			jointGapM = (IsTechnicalCulvertMode ? 0.0 : Khe_Ho);
 		}
-		CulvertArrayMode arrayMode = ((!flag) ? ((SelectedArrayModeIndex != 0) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut) : (((culvertTypeProfile == null) ? (SelectedArrayModeIndex != 0) : (culvertTypeProfile.SelectedArrayModeIndex != 0)) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut));
+		CulvertArrayMode arrayMode = (flag ? (((culvertTypeProfile == null) ? (SelectedArrayModeIndex != 0) : (culvertTypeProfile.SelectedArrayModeIndex != 0)) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut) : ((SelectedArrayModeIndex != 0) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut));
 		string text = (target.LoaiCong ?? "").ToUpperInvariant();
 		bool flag2 = text.Contains("TRON") || text.Contains("TRÒN") || text.Contains("CT") || SelectedCulvertTemplateType.Contains("TRÒN");
-		bool isDouble = IsDoubleCulvertMode || ((target.SoCua >= 2) & flag2);
-		CurrentPreviewGeometry = CulvertPreviewService.ComputePreview(target, lStd, jointGapM, B_Box, arrayMode, flag, flag2, isDouble, offsetZ_BTL, offsetZ_Cat, hasBtlDot);
+		bool flag3 = IsDoubleCulvertMode || ((target.SoCua >= 2) & flag2);
+		if (flag2)
+		{
+			if (flag3)
+			{
+				lStd = L_Std_RoundDouble;
+				jointGapM = Khe_Ho_RoundDouble;
+				arrayMode = ((SelectedArrayModeIndex_RoundDouble != 0) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut);
+			}
+			else
+			{
+				lStd = L_Std_RoundSingle;
+				jointGapM = Khe_Ho_RoundSingle;
+				arrayMode = ((SelectedArrayModeIndex_RoundSingle != 0) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut);
+			}
+		}
+		target.OffsetMoiNoi = flag3 ? OffsetMoiNoi_RoundDouble : OffsetMoiNoi_RoundSingle;
+		target.IsReversedPlacement = IsReverseRoundPlacement;
+		if (string.IsNullOrEmpty(target.CustomPattern) && !string.IsNullOrEmpty(RoundCulvertCustomPatternText))
+		{
+			target.CustomPattern = RoundCulvertCustomPatternText;
+		}
+		CurrentPreviewGeometry = CulvertPreviewService.ComputePreview(target, lStd, jointGapM, B_Box, arrayMode, flag, flag2, flag3, offsetZ_BTL, offsetZ_Cat, hasBtlDot, hasBtlSan: false, hasBtlHn: false, -0.1, -0.3, KhoangCachTim_RoundDouble);
 		if (CurrentPreviewGeometry == null)
 		{
 			return;
@@ -3622,6 +4525,10 @@ public class MainViewModel : ViewModelBase
 			if (_cachedRealMeshes.TryGetValue(target.STT, out List<(MeshGeometry3D, System.Windows.Media.Brush)> value) && value != null && value.Count > 0)
 			{
 				CurrentPreviewGeometry.RealRevitMeshes = value;
+			}
+			else if (!_isInitializing)
+			{
+				ExtractRealFamilyGeometryForPreview(target);
 			}
 		}
 	}
@@ -3638,20 +4545,30 @@ public class MainViewModel : ViewModelBase
 		{
 			UIDocument activeUIDocument = app.ActiveUIDocument;
 			Document val = ((activeUIDocument != null) ? activeUIDocument.Document : null);
-			if (val != null && RevitCulvertMeshExtractor.TryExtractPreviewGeometry(val, row, this, out List<(MeshGeometry3D Mesh, System.Windows.Media.Brush Brush)> realMeshes) && realMeshes.Count > 0)
+			if (val != null)
 			{
-				lock (_cachedRealMeshes)
+				bool useSurveyPoint = SelectedCoordSysIndex == 0;
+				// Ưu tiên trích xuất hình học ảo 3D theo đúng 100% parameter người dùng khai báo trong Tab 2
+				bool flag = RevitCulvertMeshExtractor.TryExtractPreviewGeometry(val, row, this, out List<(MeshGeometry3D Mesh, System.Windows.Media.Brush Brush)> realMeshes);
+				if (!flag || realMeshes == null || realMeshes.Count == 0)
 				{
-					_cachedRealMeshes[row.STT] = realMeshes;
+					flag = RevitCulvertMeshExtractor.TryExtractRevitGeometry(val, row, useSurveyPoint, out realMeshes);
 				}
-				((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
+				if (flag && realMeshes != null && realMeshes.Count > 0)
 				{
-					if ((SelectedCulvertRowForPreview == row || SelectedCulvertRowForPreview?.STT == row.STT) && CurrentPreviewGeometry != null)
+					lock (_cachedRealMeshes)
 					{
-						CurrentPreviewGeometry.RealRevitMeshes = realMeshes;
-						OnPropertyChanged("CurrentPreviewGeometry");
+						_cachedRealMeshes[row.STT] = realMeshes;
 					}
-				}));
+					((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
+					{
+						if ((SelectedCulvertRowForPreview == row || SelectedCulvertRowForPreview?.STT == row.STT) && CurrentPreviewGeometry != null)
+						{
+							CurrentPreviewGeometry.RealRevitMeshes = realMeshes;
+							OnPropertyChanged("CurrentPreviewGeometry");
+						}
+					}));
+				}
 			}
 		});
 		_externalEvent.Raise();
@@ -3660,85 +4577,129 @@ public class MainViewModel : ViewModelBase
 	public void ApplyMaterialGroupFilter()
 	{
 		FilteredComponentMaterials.Clear();
-		string groupFilter = _selectedMaterialGroupFilter ?? "All";
+		string text = _selectedMaterialGroupFilter ?? "All";
 		string culvertType = _selectedCulvertTypeForTab03 ?? "TẤT CẢ";
-
 		foreach (CulvertMaterialItem item in ComponentMaterials)
 		{
-			// 1. Phân biệt rõ chế độ Cống Kỹ Thuật vs Cống Ngang
-			bool isItemTechnical = item.CulvertType == "CỐNG KỸ THUẬT" || 
-			                        item.CulvertType == "HỐ KỸ THUẬT & HỘP NỐI" ||
-			                        (item.GroupType != null && (item.GroupType.Contains("kỹ thuật") || item.GroupType.Contains("Hộp nối")));
-			
-			if (IsTechnicalCulvertMode && !isItemTechnical) continue;
-			if (!IsTechnicalCulvertMode && isItemTechnical) continue;
-
-			// 2. Lọc theo Cụm cấu kiện đang chọn trên thanh nút bấm (culvertType)
+			bool flag = item.CulvertType == "CỐNG KỸ THUẬT" || item.CulvertType == "HỐ KỸ THUẬT & HỘP NỐI" || (item.GroupType != null && (item.GroupType.Contains("kỹ thuật") || item.GroupType.Contains("Hộp nối")));
+			if ((IsTechnicalCulvertMode && !flag) || (!IsTechnicalCulvertMode & flag))
+			{
+				continue;
+			}
+			bool isRound = item.CulvertType == "CỐNG TRÒN" || item.CulvertType == "CỐNG TRÒN ĐƠN" || item.CulvertType == "CỐNG TRÒN ĐÔI" || (item.GroupType != null && (item.GroupType.Contains("tròn") || item.GroupType.Contains("Mối nối")));
+			if (IsRoundCulvertMode && !isRound && item.CulvertType != "CỬA XẢ" && item.CulvertType != "SÂN GIA CỐ" && (item.GroupType == null || (!item.GroupType.Contains("Cửa xả") && !item.GroupType.Contains("Sân gia cố"))))
+			{
+				continue;
+			}
+			if (IsNormalCulvertMode && isRound)
+			{
+				continue;
+			}
 			if (culvertType != "TẤT CẢ")
 			{
 				if (culvertType == "CỐNG KỸ THUẬT")
 				{
-					if (item.CulvertType != "CỐNG KỸ THUẬT" && (item.GroupType == null || !item.GroupType.Contains("Cống kỹ thuật"))) continue;
+					if (item.CulvertType != "CỐNG KỸ THUẬT" && (item.GroupType == null || !item.GroupType.Contains("Cống kỹ thuật")))
+					{
+						continue;
+					}
 				}
 				else if (culvertType == "HỐ KỸ THUẬT & HỘP NỐI")
 				{
-					if (item.CulvertType != "HỐ KỸ THUẬT & HỘP NỐI" && (item.GroupType == null || (!item.GroupType.Contains("Hố kỹ thuật") && !item.GroupType.Contains("Hộp nối")))) continue;
+					if (item.CulvertType != "HỐ KỸ THUẬT & HỘP NỐI" && (item.GroupType == null || (!item.GroupType.Contains("Hố kỹ thuật") && !item.GroupType.Contains("Hộp nối"))))
+					{
+						continue;
+					}
+				}
+				else if (culvertType == "CỐNG TRÒN")
+				{
+					if (!isRound)
+					{
+						continue;
+					}
+				}
+				else if (culvertType == "CỐNG TRÒN ĐƠN")
+				{
+					if (item.CulvertType != "CỐNG TRÒN ĐƠN" && (item.GroupType == null || !item.GroupType.Contains("tròn đơn")))
+					{
+						continue;
+					}
+				}
+				else if (culvertType == "CỐNG TRÒN ĐÔI")
+				{
+					if (item.CulvertType != "CỐNG TRÒN ĐÔI" && (item.GroupType == null || !item.GroupType.Contains("tròn đôi")))
+					{
+						continue;
+					}
 				}
 				else if (culvertType == "CỐNG ĐÚC SẴN")
 				{
-					if (item.CulvertType != "CỐNG ĐÚC SẴN") continue;
+					if (item.CulvertType != "CỐNG ĐÚC SẴN")
+					{
+						continue;
+					}
 				}
 				else if (culvertType == "CỐNG ĐỔ TẠI CHỖ")
 				{
-					bool isCip = item.CulvertType == "CỐNG ĐỔ TẠI CHỖ" || 
-					             CastInPlaceProfiles.Any(p => p.TypeName == item.CulvertType);
-					if (!isCip) continue;
+					if (!(item.CulvertType == "CỐNG ĐỔ TẠI CHỖ") && !CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.TypeName == item.CulvertType))
+					{
+						continue;
+					}
 				}
-				else if (CastInPlaceProfiles.Any(p => p.TypeName == culvertType))
+				else if (CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.TypeName == culvertType))
 				{
-					if (item.CulvertType != culvertType) continue;
+					if (item.CulvertType != culvertType)
+					{
+						continue;
+					}
 				}
 				else if (culvertType == "CỬA XẢ")
 				{
-					if (item.CulvertType != "CỬA XẢ" && (item.GroupType == null || !item.GroupType.Contains("Cửa xả"))) continue;
+					if (item.CulvertType != "CỬA XẢ" && (item.GroupType == null || !item.GroupType.Contains("Cửa xả")))
+					{
+						continue;
+					}
 				}
 				else if (culvertType == "SÂN GIA CỐ")
 				{
-					if (item.CulvertType != "SÂN GIA CỐ" && (item.GroupType == null || !item.GroupType.Contains("Sân gia cố"))) continue;
+					if (item.CulvertType != "SÂN GIA CỐ" && (item.GroupType == null || !item.GroupType.Contains("Sân gia cố")))
+					{
+						continue;
+					}
 				}
 				else if (culvertType == "HỐ GA (HỘP NỐI)")
 				{
-					if (item.CulvertType != "HỐ GA (HỘP NỐI)" && (item.GroupType == null || (!item.GroupType.Contains("Hố ga") && !item.GroupType.Contains("Hộp nối")))) continue;
+					if (item.CulvertType != "HỐ GA (HỘP NỐI)" && (item.GroupType == null || (!item.GroupType.Contains("Hố ga") && !item.GroupType.Contains("Hộp nối"))))
+					{
+						continue;
+					}
 				}
-				else
+				else if (item.CulvertType != culvertType)
 				{
-					if (item.CulvertType != culvertType) continue;
+					continue;
 				}
 			}
-
-			// 3. Lọc theo nhóm vật liệu phụ trợ (nếu có chọn)
-			if (groupFilter == "All")
+			if (text == "All")
 			{
 				FilteredComponentMaterials.Add(item);
 			}
-			else if (groupFilter == "Barrel" && item.GroupType != null && (item.GroupType.Contains("Thân") || item.GroupType.Contains("Cống")))
+			else if (text == "Barrel" && item.GroupType != null && (item.GroupType.Contains("Thân") || item.GroupType.Contains("Cống")))
 			{
 				FilteredComponentMaterials.Add(item);
 			}
-			else if (groupFilter == "Outlet" && item.GroupType != null && item.GroupType.Contains("Cửa xả"))
+			else if (text == "Outlet" && item.GroupType != null && item.GroupType.Contains("Cửa xả"))
 			{
 				FilteredComponentMaterials.Add(item);
 			}
-			else if (groupFilter == "Apron" && item.GroupType != null && item.GroupType.Contains("Sân"))
+			else if (text == "Apron" && item.GroupType != null && item.GroupType.Contains("Sân"))
 			{
 				FilteredComponentMaterials.Add(item);
 			}
-			else if (groupFilter == "Manhole" && item.GroupType != null && (item.GroupType.Contains("Hố") || item.GroupType.Contains("Hộp")))
+			else if (text == "Manhole" && item.GroupType != null && (item.GroupType.Contains("Hố") || item.GroupType.Contains("Hộp")))
 			{
 				FilteredComponentMaterials.Add(item);
 			}
 		}
-
 		if (SelectedMaterialItem == null || !FilteredComponentMaterials.Contains(SelectedMaterialItem))
 		{
 			SelectedMaterialItem = FilteredComponentMaterials.FirstOrDefault();
@@ -3776,10 +4737,13 @@ public class MainViewModel : ViewModelBase
 			InitTechnicalManholeComponents();
 		}
 		Dictionary<string, CulvertMaterialItem> dictionary = new Dictionary<string, CulvertMaterialItem>(StringComparer.OrdinalIgnoreCase);
-		foreach (CulvertMaterialItem m in ComponentMaterials)
+		foreach (CulvertMaterialItem componentMaterial in ComponentMaterials)
 		{
-			string key = m.CulvertType + "::" + m.CategoryType;
-			if (!dictionary.ContainsKey(key)) dictionary[key] = m;
+			string key = componentMaterial.CulvertType + "::" + componentMaterial.CategoryType;
+			if (!dictionary.ContainsKey(key))
+			{
+				dictionary[key] = componentMaterial;
+			}
 		}
 		ComponentMaterials.Clear();
 		List<(CulvertComponentItem, string)> list = new List<(CulvertComponentItem, string)>();
@@ -3803,6 +4767,14 @@ public class MainViewModel : ViewModelBase
 		foreach (CulvertComponentItem precastBarrelComponent in PrecastBarrelComponents)
 		{
 			list.Add((precastBarrelComponent, "CỐNG ĐÚC SẴN"));
+		}
+		foreach (CulvertComponentItem roundSingleBarrelComponent in RoundSingleBarrelComponents)
+		{
+			list.Add((roundSingleBarrelComponent, "CỐNG TRÒN ĐƠN"));
+		}
+		foreach (CulvertComponentItem roundDoubleBarrelComponent in RoundDoubleBarrelComponents)
+		{
+			list.Add((roundDoubleBarrelComponent, "CỐNG TRÒN ĐÔI"));
 		}
 		foreach (CulvertComponentItem outletComponent in OutletComponents)
 		{
@@ -3828,8 +4800,8 @@ public class MainViewModel : ViewModelBase
 		{
 			if (!string.IsNullOrWhiteSpace(culvertComponentItem.CategoryType))
 			{
-				string key = text + "::" + culvertComponentItem.CategoryType;
-				if (dictionary.TryGetValue(key, out var value))
+				string key2 = text + "::" + culvertComponentItem.CategoryType;
+				if (dictionary.TryGetValue(key2, out var value))
 				{
 					value.CulvertType = text;
 					value.GroupType = culvertComponentItem.GroupType;
@@ -4050,13 +5022,13 @@ public class MainViewModel : ViewModelBase
 			return;
 		}
 		List<CulvertMaterialItem> list;
-		if (SelectedMaterialItems.Count <= 0)
+		if (SelectedMaterialItems.Count > 0)
 		{
-			list = ((SelectedMaterialItem != null) ? new List<CulvertMaterialItem> { SelectedMaterialItem } : new List<CulvertMaterialItem>());
+			list = SelectedMaterialItems.ToList();
 		}
 		else
 		{
-			list = SelectedMaterialItems.ToList();
+			list = ((SelectedMaterialItem != null) ? new List<CulvertMaterialItem> { SelectedMaterialItem } : new List<CulvertMaterialItem>());
 		}
 		foreach (CulvertMaterialItem item in list)
 		{
@@ -4093,13 +5065,13 @@ public class MainViewModel : ViewModelBase
 	{
 		//IL_00b8: Unknown result type (might be due to invalid IL or missing references)
 		List<CulvertMaterialItem> source;
-		if (SelectedMaterialItems.Count <= 0)
+		if (SelectedMaterialItems.Count > 0)
 		{
-			source = ((SelectedMaterialItem != null) ? new List<CulvertMaterialItem> { SelectedMaterialItem } : new List<CulvertMaterialItem>());
+			source = SelectedMaterialItems.ToList();
 		}
 		else
 		{
-			source = SelectedMaterialItems.ToList();
+			source = ((SelectedMaterialItem != null) ? new List<CulvertMaterialItem> { SelectedMaterialItem } : new List<CulvertMaterialItem>());
 		}
 		List<CulvertMaterialItem> validTargets = source.Where((CulvertMaterialItem t) => !string.IsNullOrWhiteSpace(t.MaterialName)).ToList();
 		if (validTargets.Count == 0)
@@ -4221,41 +5193,66 @@ public class MainViewModel : ViewModelBase
 		}
 	}
 
-	private void EnsureComponentParametersScanned(CulvertComponentItem comp)
+	private void EnsureComponentParametersScanned(CulvertComponentItem comp, bool forceRescan = false)
 	{
-		FamilySymbol val = comp?.SelectedSymbol?.GetFreshSymbol(Doc);
-		if (val == null || Doc == null)
-		{
-			return;
-		}
-		string cat = comp.CategoryType;
-		string famName = ((ElementType)val).FamilyName;
+		if (comp == null) return;
+		FamilySymbol val = comp.SelectedSymbol?.GetFreshSymbol(Doc);
+		string cat = comp.CategoryType ?? "";
+		string famName = val != null ? ((ElementType)val).FamilyName : (comp.SelectedSymbol?.FamilyName ?? "");
 		string prof = comp.ProfileName ?? "";
-		if (ParameterMappings.Any((ParameterMappingItem m) => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) && string.Equals(m.ProfileName, prof, StringComparison.OrdinalIgnoreCase) && string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase)))
+
+		if (string.IsNullOrEmpty(famName)) return;
+
+		// Kiểm tra nếu danh sách tham số hiện có của cấu kiện bị chứa tham số rác hoặc biến ngoại lai
+		bool hasJunk = ParameterMappings.Any(m => 
+			string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) &&
+			string.Equals(m.ProfileName ?? "", prof, StringComparison.OrdinalIgnoreCase) &&
+			string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase) &&
+			(FamilyParameterScannerService.IsSystemJunkParameterName(m.InternalName) || !FamilyParameterScannerService.IsParameterApplicableToFamily(famName, m.InternalName)));
+
+		if (!forceRescan && !hasJunk && ParameterMappings.Any((ParameterMappingItem m) => 
+			string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) && 
+			string.Equals(m.ProfileName ?? "", prof, StringComparison.OrdinalIgnoreCase) && 
+			string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase)))
 		{
 			return;
 		}
-		var existingList = ParameterMappings.Where((ParameterMappingItem m) => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) && string.Equals(m.ProfileName, prof, StringComparison.OrdinalIgnoreCase)).ToList();
-		foreach (ParameterMappingItem item in existingList)
+
+		// Lọc và chỉ xóa tham số của ĐÚNG cấu kiện này (khóa theo Category, Profile và Family), TUYỆT ĐỐI không xóa chéo cấu kiện khác
+		List<ParameterMappingItem> list = ParameterMappings.Where((ParameterMappingItem m) => 
+			string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) &&
+			string.Equals(m.ProfileName ?? "", prof, StringComparison.OrdinalIgnoreCase) &&
+			string.Equals(m.FamilyName, famName, StringComparison.OrdinalIgnoreCase)).ToList();
+		foreach (ParameterMappingItem item3 in list)
 		{
-			item.PropertyChanged -= OnParameterMappingItemPropertyChanged;
-			ParameterMappings.Remove(item);
+			item3.PropertyChanged -= OnParameterMappingItemPropertyChanged;
+			ParameterMappings.Remove(item3);
 		}
-		foreach (ParameterMappingItem item2 in FamilyParameterScannerService.ScanParametersForFamily(Doc, val, cat, prof))
+
+		if (val != null && Doc != null)
 		{
-			var prev = existingList.FirstOrDefault(p => string.Equals(p.InternalName, item2.InternalName, StringComparison.OrdinalIgnoreCase));
-			if (prev != null)
+			foreach (ParameterMappingItem item2 in FamilyParameterScannerService.ScanParametersForFamily(Doc, val, cat, prof))
 			{
-				if (!string.IsNullOrEmpty(prev.CustomValue)) item2.CustomValue = prev.CustomValue;
-				if (!string.IsNullOrEmpty(prev.MappedField)) item2.MappedField = prev.MappedField;
-				item2.IsSelected = prev.IsSelected;
+				ParameterMappingItem parameterMappingItem = list.FirstOrDefault((ParameterMappingItem p) => string.Equals(p.InternalName, item2.InternalName, StringComparison.OrdinalIgnoreCase));
+				if (parameterMappingItem != null)
+				{
+					if (!string.IsNullOrEmpty(parameterMappingItem.CustomValue))
+					{
+						item2.CustomValue = parameterMappingItem.CustomValue;
+					}
+					if (!string.IsNullOrEmpty(parameterMappingItem.MappedField))
+					{
+						item2.MappedField = parameterMappingItem.MappedField;
+					}
+					item2.IsSelected = parameterMappingItem.IsSelected;
+				}
+				else
+				{
+					item2.IsSelected = true;
+				}
+				item2.PropertyChanged += OnParameterMappingItemPropertyChanged;
+				ParameterMappings.Add(item2);
 			}
-			else
-			{
-				item2.IsSelected = true;
-			}
-			item2.PropertyChanged += OnParameterMappingItemPropertyChanged;
-			ParameterMappings.Add(item2);
 		}
 	}
 
@@ -4263,51 +5260,81 @@ public class MainViewModel : ViewModelBase
 	{
 		if (e.PropertyName == "CustomValue" || e.PropertyName == "IsSelected" || e.PropertyName == "MappedField")
 		{
-			lock (_cachedRealMeshes)
+			// Tối ưu hóa UI: Không gọi xóa cache nặng và không gọi ExtractRealFamilyGeometryForPreview khi đang gõ số liệu
+			// Tránh tuyệt đối hiện tượng quay trỏ chuột và đơ giao diện
+			if (_activeReviewWindow != null && _activeReviewWindow.IsLoaded)
 			{
-				_cachedRealMeshes.Clear();
-			}
-			UpdatePreviewGeometry();
-			if (SelectedCulvertRowForPreview != null && _activeReviewWindow != null && _activeReviewWindow.IsLoaded)
-			{
-				ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview);
+				UpdatePreviewGeometry();
 			}
 		}
 	}
 
 	private void OnSelectedFamilyForTab02Changed()
 	{
-		if (SelectedComponentForTab02?.SelectedSymbol?.GetFreshSymbol(Doc) == null)
+		CulvertComponentItem comp = SelectedComponentForTab02;
+		if (comp != null)
 		{
-			FilterParameterMappings();
-			return;
+			EnsureComponentParametersScanned(comp);
 		}
-		EnsureComponentParametersScanned(SelectedComponentForTab02);
 		FilterParameterMappings();
 	}
 
 	private void FilterParameterMappings()
 	{
 		FilteredParameterMappings.Clear();
-		FamilySymbol val = SelectedComponentForTab02?.SelectedSymbol?.GetFreshSymbol(Doc);
-		if (val == null)
+		CulvertComponentItem comp = SelectedComponentForTab02;
+		if (comp == null)
 		{
+			SelectedParamForBatch = null;
+			UpdateBatchTableForSelectedParam();
+			RefreshInspectorParameterMappings();
 			return;
 		}
-		string categoryType = SelectedComponentForTab02.CategoryType;
-		string familyName = ((ElementType)val).FamilyName;
-		string b = SelectedComponentForTab02.ProfileName ?? "";
-		foreach (ParameterMappingItem parameterMapping in ParameterMappings)
+
+		FamilySymbol val = comp.SelectedSymbol?.GetFreshSymbol(Doc);
+		string familyName = val != null ? ((ElementType)val).FamilyName : (comp.SelectedSymbol?.FamilyName ?? "");
+		string categoryType = comp.CategoryType ?? "";
+		string b = comp.ProfileName ?? "";
+
+		if (!string.IsNullOrEmpty(familyName) && !ParameterMappings.Any(m => 
+			string.Equals(m.CategoryName, categoryType, StringComparison.OrdinalIgnoreCase) &&
+			string.Equals(m.ProfileName ?? "", b, StringComparison.OrdinalIgnoreCase) &&
+			string.Equals(m.FamilyName, familyName, StringComparison.OrdinalIgnoreCase)))
 		{
-			bool flag = string.Equals(parameterMapping.CategoryName, categoryType, StringComparison.OrdinalIgnoreCase) && string.Equals(parameterMapping.ProfileName, b, StringComparison.OrdinalIgnoreCase) && string.Equals(parameterMapping.FamilyName, familyName, StringComparison.OrdinalIgnoreCase);
-			if (!flag && string.IsNullOrEmpty(parameterMapping.CategoryName) && string.Equals(parameterMapping.ProfileName, b, StringComparison.OrdinalIgnoreCase) && string.Equals(parameterMapping.FamilyName, familyName, StringComparison.OrdinalIgnoreCase))
-			{
-				flag = true;
-			}
-			if (!flag)
-			{
-				continue;
-			}
+			EnsureComponentParametersScanned(comp, forceRescan: true);
+		}
+
+		// Khớp danh sách theo đúng CategoryName, ProfileName và FamilyName của cấu kiện đang chọn
+		var matchingList = ParameterMappings.Where(m => 
+			string.Equals(m.CategoryName, categoryType, StringComparison.OrdinalIgnoreCase) &&
+			string.Equals(m.ProfileName ?? "", b, StringComparison.OrdinalIgnoreCase) &&
+			string.Equals(m.FamilyName, familyName, StringComparison.OrdinalIgnoreCase)).ToList();
+
+		// Nếu không tìm thấy theo bộ 3 khóa, thử tìm theo CategoryName và FamilyName
+		if (matchingList.Count == 0)
+		{
+			matchingList = ParameterMappings.Where(m => 
+				string.Equals(m.CategoryName, categoryType, StringComparison.OrdinalIgnoreCase) &&
+				string.Equals(m.FamilyName, familyName, StringComparison.OrdinalIgnoreCase)).ToList();
+		}
+
+		// Fallback cuối cùng nếu vẫn chưa có thì lấy theo FamilyName
+		if (matchingList.Count == 0)
+		{
+			matchingList = ParameterMappings.Where(m => string.Equals(m.FamilyName, familyName, StringComparison.OrdinalIgnoreCase)).ToList();
+		}
+
+		// Đảm bảo Dimensions luôn lên đầu tiên, sau đó mới tới Other, loại bỏ tham số rác và sắp xếp theo đúng thứ tự family chuẩn
+		var sortedMatchingList = matchingList
+			.Where(p => !FamilyParameterScannerService.IsSystemJunkParameterName(p.InternalName) &&
+			            FamilyParameterScannerService.IsParameterApplicableToFamily(familyName, p.InternalName))
+			.OrderBy(p => p.IsDimension ? 0 : (p.IsOther ? 1 : 2))
+			.ThenBy(p => FamilyParameterScannerService.GetStandardParameterOrder(familyName, p.InternalName))
+			.ToList();
+
+		int stt = 1;
+		foreach (ParameterMappingItem parameterMapping in sortedMatchingList)
+		{
 			if (string.Equals(Tab02ParamCategoryFilter, "Dimensions", StringComparison.OrdinalIgnoreCase))
 			{
 				if (!parameterMapping.IsDimension)
@@ -4317,14 +5344,10 @@ public class MainViewModel : ViewModelBase
 			}
 			else if (string.Equals(Tab02ParamCategoryFilter, "Other", StringComparison.OrdinalIgnoreCase))
 			{
-				if (!parameterMapping.IsOther || (!parameterMapping.DataType.Contains("Length") && !parameterMapping.DataType.Contains("Yes/No")))
+				if (!parameterMapping.IsOther)
 				{
 					continue;
 				}
-			}
-			else if ((!parameterMapping.IsDimension && !parameterMapping.IsOther) || (parameterMapping.IsOther && !parameterMapping.DataType.Contains("Length") && !parameterMapping.DataType.Contains("Yes/No")))
-			{
-				continue;
 			}
 			if ((ShowTypeParams && !ShowInstanceParams && parameterMapping.IsInstance) || (!ShowTypeParams && ShowInstanceParams && !parameterMapping.IsInstance))
 			{
@@ -4333,11 +5356,14 @@ public class MainViewModel : ViewModelBase
 			if (!string.IsNullOrWhiteSpace(ParamSearchFilter))
 			{
 				string value = ParamSearchFilter.Trim().ToLowerInvariant();
-				if (!parameterMapping.InternalName.ToLowerInvariant().Contains(value) && !parameterMapping.GroupName.ToLowerInvariant().Contains(value) && !parameterMapping.MappedField.ToLowerInvariant().Contains(value))
+				if (!parameterMapping.InternalName.ToLowerInvariant().Contains(value) && 
+				    !parameterMapping.GroupName.ToLowerInvariant().Contains(value) && 
+				    !parameterMapping.MappedField.ToLowerInvariant().Contains(value))
 				{
 					continue;
 				}
 			}
+			parameterMapping.STT = stt++;
 			FilteredParameterMappings.Add(parameterMapping);
 		}
 		SelectedParamForBatch = FilteredParameterMappings.FirstOrDefault();
@@ -4393,15 +5419,7 @@ public class MainViewModel : ViewModelBase
 			string profileName = SelectedComponentForTab02?.ProfileName ?? string.Empty;
 			foreach (ParameterMappingItem filteredParameterMapping in FilteredParameterMappings)
 			{
-				string text;
-				if (culvertRowData != null && culvertRowData.HasParamOverride(profileName, categoryName, filteredParameterMapping.InternalName))
-				{
-					text = culvertRowData.GetParamOverride(profileName, categoryName, filteredParameterMapping.InternalName, "");
-				}
-				else
-				{
-					text = filteredParameterMapping.DefaultValue;
-				}
+				string text = ((culvertRowData == null || !culvertRowData.HasParamOverride(profileName, categoryName, filteredParameterMapping.InternalName)) ? filteredParameterMapping.DefaultValue : culvertRowData.GetParamOverride(profileName, categoryName, filteredParameterMapping.InternalName, ""));
 				if (string.IsNullOrEmpty(text))
 				{
 					text = filteredParameterMapping.DefaultValue;
@@ -4481,20 +5499,26 @@ public class MainViewModel : ViewModelBase
 			List<ParameterMappingItem> scanned = FamilyParameterScannerService.ScanParametersForFamily(document, sym, cat, prof);
 			((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
 			{
-				var existingList = ParameterMappings.Where((ParameterMappingItem m) => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) && string.Equals(m.ProfileName, prof, StringComparison.OrdinalIgnoreCase)).ToList();
-				foreach (ParameterMappingItem item in existingList)
+				List<ParameterMappingItem> list = ParameterMappings.Where((ParameterMappingItem m) => string.Equals(m.CategoryName, cat, StringComparison.OrdinalIgnoreCase) && string.Equals(m.ProfileName, prof, StringComparison.OrdinalIgnoreCase)).ToList();
+				foreach (ParameterMappingItem item3 in list)
 				{
-					item.PropertyChanged -= OnParameterMappingItemPropertyChanged;
-					ParameterMappings.Remove(item);
+					item3.PropertyChanged -= OnParameterMappingItemPropertyChanged;
+					ParameterMappings.Remove(item3);
 				}
 				foreach (ParameterMappingItem item2 in scanned)
 				{
-					var prev = existingList.FirstOrDefault(p => string.Equals(p.InternalName, item2.InternalName, StringComparison.OrdinalIgnoreCase));
-					if (prev != null)
+					ParameterMappingItem parameterMappingItem = list.FirstOrDefault((ParameterMappingItem p) => string.Equals(p.InternalName, item2.InternalName, StringComparison.OrdinalIgnoreCase));
+					if (parameterMappingItem != null)
 					{
-						if (!string.IsNullOrEmpty(prev.CustomValue)) item2.CustomValue = prev.CustomValue;
-						if (!string.IsNullOrEmpty(prev.MappedField)) item2.MappedField = prev.MappedField;
-						item2.IsSelected = prev.IsSelected;
+						if (!string.IsNullOrEmpty(parameterMappingItem.CustomValue))
+						{
+							item2.CustomValue = parameterMappingItem.CustomValue;
+						}
+						if (!string.IsNullOrEmpty(parameterMappingItem.MappedField))
+						{
+							item2.MappedField = parameterMappingItem.MappedField;
+						}
+						item2.IsSelected = parameterMappingItem.IsSelected;
 					}
 					else
 					{
@@ -4542,70 +5566,20 @@ public class MainViewModel : ViewModelBase
 		}
 		SelectedParamForBatch.CustomValue = text;
 		string internalName = SelectedParamForBatch.InternalName;
-		CulvertComponentItem? selectedComponentForTab = SelectedComponentForTab02;
+		CulvertComponentItem selectedComponentForTab = SelectedComponentForTab02;
 		string categoryName = selectedComponentForTab?.CategoryType ?? string.Empty;
 		string text2 = selectedComponentForTab?.ProfileName ?? string.Empty;
-
-		bool isTechnicalComp = selectedComponentForTab != null && (
-			TechnicalBarrelComponents.Contains(selectedComponentForTab) ||
-			TechnicalManholeComponents.Contains(selectedComponentForTab) ||
-			string.Equals(selectedComponentForTab.GroupType, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(selectedComponentForTab.GroupType, "Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(selectedComponentForTab.GroupType, "Hộp nối cống", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(selectedComponentForTab.ProfileName, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
-			IsTechnicalCulvertMode
-		);
-
-		bool isPrecastComp = !isTechnicalComp && selectedComponentForTab != null && (
-			PrecastBarrelComponents.Contains(selectedComponentForTab) ||
-			string.Equals(selectedComponentForTab.GroupType, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(selectedComponentForTab.ProfileName, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) ||
-			(selectedComponentForTab.CategoryType != null && selectedComponentForTab.CategoryType.Contains("đúc sẵn"))
-		);
-
-		bool isCastInPlaceComp = !isTechnicalComp && !isPrecastComp && selectedComponentForTab != null && (
-			CastInPlaceBarrelComponents.Contains(selectedComponentForTab) ||
-			string.Equals(selectedComponentForTab.GroupType, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) ||
-			(selectedComponentForTab.GroupType != null && selectedComponentForTab.GroupType.Contains("đổ tại chỗ")) ||
-			CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.Components.Contains(selectedComponentForTab) || (!string.IsNullOrEmpty(selectedComponentForTab.ProfileName) && string.Equals(p.TypeName, selectedComponentForTab.ProfileName, StringComparison.OrdinalIgnoreCase)))
-		);
-
+		bool flag = selectedComponentForTab != null && (TechnicalBarrelComponents.Contains(selectedComponentForTab) || TechnicalManholeComponents.Contains(selectedComponentForTab) || string.Equals(selectedComponentForTab.GroupType, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) || string.Equals(selectedComponentForTab.GroupType, "Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) || string.Equals(selectedComponentForTab.GroupType, "Hộp nối cống", StringComparison.OrdinalIgnoreCase) || string.Equals(selectedComponentForTab.ProfileName, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) || IsTechnicalCulvertMode);
+		bool flag2 = !flag && selectedComponentForTab != null && (PrecastBarrelComponents.Contains(selectedComponentForTab) || string.Equals(selectedComponentForTab.GroupType, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) || string.Equals(selectedComponentForTab.ProfileName, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) || (selectedComponentForTab.CategoryType != null && selectedComponentForTab.CategoryType.Contains("đúc sẵn")));
+		bool flag3 = !flag && !flag2 && selectedComponentForTab != null && (CastInPlaceBarrelComponents.Contains(selectedComponentForTab) || string.Equals(selectedComponentForTab.GroupType, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) || (selectedComponentForTab.GroupType != null && selectedComponentForTab.GroupType.Contains("đổ tại chỗ")) || CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.Components.Contains(selectedComponentForTab) || (!string.IsNullOrEmpty(selectedComponentForTab.ProfileName) && string.Equals(p.TypeName, selectedComponentForTab.ProfileName, StringComparison.OrdinalIgnoreCase))));
 		int num = 0;
 		foreach (CulvertRowData allCulvertRow in AllCulvertRows)
 		{
-			if (allCulvertRow.STT < BatchFromSTT || allCulvertRow.STT > BatchToSTT)
+			if (allCulvertRow.STT >= BatchFromSTT && allCulvertRow.STT <= BatchToSTT && (!flag || allCulvertRow.IsTechnical) && (flag || !allCulvertRow.IsTechnical) && (!flag2 || (!allCulvertRow.IsCastInPlace && !allCulvertRow.IsTechnical)) && (!flag3 || (allCulvertRow.IsCastInPlace && !allCulvertRow.IsTechnical && (string.IsNullOrEmpty(text2) || string.IsNullOrEmpty(allCulvertRow.AssignedProfileName) || string.Equals(text2, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) || string.Equals(text2, allCulvertRow.AssignedProfileName, StringComparison.OrdinalIgnoreCase)))))
 			{
-				continue;
+				allCulvertRow.SetParamOverride(text2, categoryName, internalName, text);
+				num++;
 			}
-			if (isTechnicalComp && !allCulvertRow.IsTechnical)
-			{
-				continue;
-			}
-			if (!isTechnicalComp && allCulvertRow.IsTechnical)
-			{
-				continue;
-			}
-			if (isPrecastComp && (allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical))
-			{
-				continue;
-			}
-			if (isCastInPlaceComp)
-			{
-				if (!allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical)
-				{
-					continue;
-				}
-				if (!string.IsNullOrEmpty(text2) && 
-				    !string.IsNullOrEmpty(allCulvertRow.AssignedProfileName) && 
-				    !string.Equals(text2, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) && 
-				    !string.Equals(text2, allCulvertRow.AssignedProfileName, StringComparison.OrdinalIgnoreCase))
-				{
-					continue;
-				}
-			}
-
-			allCulvertRow.SetParamOverride(text2, categoryName, internalName, text);
-			num++;
 		}
 		UpdateBatchTableForSelectedParam();
 		lock (_cachedRealMeshes)
@@ -4658,67 +5632,18 @@ public class MainViewModel : ViewModelBase
 			System.Windows.MessageBox.Show("Không có tham số nào có giá trị tùy chỉnh để gán cho các lý trình.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			return;
 		}
-		CulvertComponentItem? selectedComponentForTab = SelectedComponentForTab02;
+		CulvertComponentItem selectedComponentForTab = SelectedComponentForTab02;
 		string text = selectedComponentForTab?.ProfileName ?? string.Empty;
-
-		bool isTechnicalComp = selectedComponentForTab != null && (
-			TechnicalBarrelComponents.Contains(selectedComponentForTab) ||
-			TechnicalManholeComponents.Contains(selectedComponentForTab) ||
-			string.Equals(selectedComponentForTab.GroupType, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(selectedComponentForTab.GroupType, "Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(selectedComponentForTab.GroupType, "Hộp nối cống", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(selectedComponentForTab.ProfileName, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) ||
-			IsTechnicalCulvertMode
-		);
-
-		bool isPrecastComp = !isTechnicalComp && selectedComponentForTab != null && (
-			PrecastBarrelComponents.Contains(selectedComponentForTab) ||
-			string.Equals(selectedComponentForTab.GroupType, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(selectedComponentForTab.ProfileName, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) ||
-			(selectedComponentForTab.CategoryType != null && selectedComponentForTab.CategoryType.Contains("đúc sẵn"))
-		);
-
-		bool isCastInPlaceComp = !isTechnicalComp && !isPrecastComp && selectedComponentForTab != null && (
-			CastInPlaceBarrelComponents.Contains(selectedComponentForTab) ||
-			string.Equals(selectedComponentForTab.GroupType, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) ||
-			(selectedComponentForTab.GroupType != null && selectedComponentForTab.GroupType.Contains("đổ tại chỗ")) ||
-			CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.Components.Contains(selectedComponentForTab) || (!string.IsNullOrEmpty(selectedComponentForTab.ProfileName) && string.Equals(p.TypeName, selectedComponentForTab.ProfileName, StringComparison.OrdinalIgnoreCase)))
-		);
-
+		bool flag = selectedComponentForTab != null && (TechnicalBarrelComponents.Contains(selectedComponentForTab) || TechnicalManholeComponents.Contains(selectedComponentForTab) || string.Equals(selectedComponentForTab.GroupType, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) || string.Equals(selectedComponentForTab.GroupType, "Hố kỹ thuật", StringComparison.OrdinalIgnoreCase) || string.Equals(selectedComponentForTab.GroupType, "Hộp nối cống", StringComparison.OrdinalIgnoreCase) || string.Equals(selectedComponentForTab.ProfileName, "Cống kỹ thuật", StringComparison.OrdinalIgnoreCase) || IsTechnicalCulvertMode);
+		bool flag2 = !flag && selectedComponentForTab != null && (PrecastBarrelComponents.Contains(selectedComponentForTab) || string.Equals(selectedComponentForTab.GroupType, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) || string.Equals(selectedComponentForTab.ProfileName, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) || (selectedComponentForTab.CategoryType != null && selectedComponentForTab.CategoryType.Contains("đúc sẵn")));
+		bool flag3 = !flag && !flag2 && selectedComponentForTab != null && (CastInPlaceBarrelComponents.Contains(selectedComponentForTab) || string.Equals(selectedComponentForTab.GroupType, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) || (selectedComponentForTab.GroupType != null && selectedComponentForTab.GroupType.Contains("đổ tại chỗ")) || CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.Components.Contains(selectedComponentForTab) || (!string.IsNullOrEmpty(selectedComponentForTab.ProfileName) && string.Equals(p.TypeName, selectedComponentForTab.ProfileName, StringComparison.OrdinalIgnoreCase))));
 		int num = 0;
 		foreach (CulvertRowData allCulvertRow in AllCulvertRows)
 		{
-			if (allCulvertRow.STT < BatchFromSTT || allCulvertRow.STT > BatchToSTT)
+			if (allCulvertRow.STT < BatchFromSTT || allCulvertRow.STT > BatchToSTT || (flag && !allCulvertRow.IsTechnical) || (!flag && allCulvertRow.IsTechnical) || (flag2 && (allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical)) || (flag3 && (!allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical || (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(allCulvertRow.AssignedProfileName) && !string.Equals(text, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) && !string.Equals(text, allCulvertRow.AssignedProfileName, StringComparison.OrdinalIgnoreCase)))))
 			{
 				continue;
 			}
-			if (isTechnicalComp && !allCulvertRow.IsTechnical)
-			{
-				continue;
-			}
-			if (!isTechnicalComp && allCulvertRow.IsTechnical)
-			{
-				continue;
-			}
-			if (isPrecastComp && (allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical))
-			{
-				continue;
-			}
-			if (isCastInPlaceComp)
-			{
-				if (!allCulvertRow.IsCastInPlace || allCulvertRow.IsTechnical)
-				{
-					continue;
-				}
-				if (!string.IsNullOrEmpty(text) && 
-				    !string.IsNullOrEmpty(allCulvertRow.AssignedProfileName) && 
-				    !string.Equals(text, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) && 
-				    !string.Equals(text, allCulvertRow.AssignedProfileName, StringComparison.OrdinalIgnoreCase))
-				{
-					continue;
-				}
-			}
-
 			foreach (var (categoryName, paramName, val) in list)
 			{
 				allCulvertRow.SetParamOverride(text, categoryName, paramName, val);
@@ -4787,17 +5712,12 @@ public class MainViewModel : ViewModelBase
 			list = ApronComponents.Where((CulvertComponentItem c) => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
 			srcGroup = "Sân gia cố";
 		}
-		else if (PrecastBarrelComponents.Contains(srcComp) || 
-		         string.Equals(srcGroup, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) || 
-		         string.Equals(srcComp.ProfileName, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase))
+		else if (PrecastBarrelComponents.Contains(srcComp) || string.Equals(srcGroup, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase) || string.Equals(srcComp.ProfileName, "Cống đúc sẵn", StringComparison.OrdinalIgnoreCase))
 		{
 			list = PrecastBarrelComponents.Where((CulvertComponentItem c) => c != srcComp && c.IsActive && c.SelectedSymbol != null).ToList();
 			srcGroup = "Cống đúc sẵn";
 		}
-		else if (CastInPlaceBarrelComponents.Contains(srcComp) || 
-		         string.Equals(srcGroup, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) || 
-		         (srcGroup != null && srcGroup.Contains("đổ tại chỗ")) ||
-		         CastInPlaceProfiles.Any(p => p.Components.Contains(srcComp) || (!string.IsNullOrEmpty(srcComp.ProfileName) && string.Equals(p.TypeName, srcComp.ProfileName, StringComparison.OrdinalIgnoreCase))))
+		else if (CastInPlaceBarrelComponents.Contains(srcComp) || string.Equals(srcGroup, "Cống đổ tại chỗ", StringComparison.OrdinalIgnoreCase) || (srcGroup != null && srcGroup.Contains("đổ tại chỗ")) || CastInPlaceProfiles.Any((CulvertTypeProfile p) => p.Components.Contains(srcComp) || (!string.IsNullOrEmpty(srcComp.ProfileName) && string.Equals(p.TypeName, srcComp.ProfileName, StringComparison.OrdinalIgnoreCase))))
 		{
 			CulvertTypeProfile culvertTypeProfile = CastInPlaceProfiles.FirstOrDefault((CulvertTypeProfile p) => p.Components.Contains(srcComp) || (!string.IsNullOrEmpty(srcComp.ProfileName) && p.TypeName == srcComp.ProfileName));
 			if (culvertTypeProfile != null)
@@ -4891,7 +5811,7 @@ public class MainViewModel : ViewModelBase
 
 	private void OnCustomBimParameterPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		if (e.PropertyName != nameof(CustomBimParameterItem.PreviewValue))
+		if (e.PropertyName != "PreviewValue")
 		{
 			UpdateCustomBimParameterPreviews();
 		}
@@ -4901,9 +5821,9 @@ public class MainViewModel : ViewModelBase
 	{
 		if (SelectedCustomBimParameter != null)
 		{
-			var item = SelectedCustomBimParameter;
-			CustomBimParameters.Remove(item);
-			DisplayedCustomBimParameters.Remove(item);
+			CustomBimParameterItem selectedCustomBimParameter = SelectedCustomBimParameter;
+			CustomBimParameters.Remove(selectedCustomBimParameter);
+			DisplayedCustomBimParameters.Remove(selectedCustomBimParameter);
 			SelectedCustomBimParameter = DisplayedCustomBimParameters.FirstOrDefault();
 			UpdateCustomBimParameterPreviews();
 		}
@@ -4912,11 +5832,10 @@ public class MainViewModel : ViewModelBase
 	public void ResetDefaultCustomBimParameters()
 	{
 		string currentScope = SelectedTargetScopeForTab04 ?? "Tất cả cấu kiện";
-		var existing = CustomBimParameters.Where(p => string.Equals(p.TargetScope, currentScope, StringComparison.OrdinalIgnoreCase)).ToList();
-		foreach (var old in existing)
+		foreach (CustomBimParameterItem item in CustomBimParameters.Where((CustomBimParameterItem p) => string.Equals(p.TargetScope, currentScope, StringComparison.OrdinalIgnoreCase)).ToList())
 		{
-			old.PropertyChanged -= OnCustomBimParameterPropertyChanged;
-			CustomBimParameters.Remove(old);
+			item.PropertyChanged -= OnCustomBimParameterPropertyChanged;
+			CustomBimParameters.Remove(item);
 		}
 		EnsureDefaultParametersForScope(currentScope);
 		RefreshDisplayedCustomBimParameters();
@@ -5026,31 +5945,32 @@ public class MainViewModel : ViewModelBase
 		UpdateCustomBimParameterPreviews();
 	}
 
-	private bool _isUpdatingCustomBimPreviews = false;
-
 	public void UpdateCustomBimParameterPreviews()
 	{
-		if (_isUpdatingCustomBimPreviews) return;
+		if (_isUpdatingCustomBimPreviews)
+		{
+			return;
+		}
 		try
 		{
 			_isUpdatingCustomBimPreviews = true;
 			CulvertRowData row = FilteredCulvertRowsForTab04.FirstOrDefault() ?? AllCulvertRows.FirstOrDefault() ?? new CulvertRowData
-		{
-			STT = 1,
-			LyTrinh = "Km0+100",
-			LoaiCong = "CỐNG HỘP ĐÚC SẴN",
-			KhauDo = "1.5x1.5",
-			SoCua = 1,
-			ChieuDai = 12.0,
-			DoDoc = 2.5,
-			Z1 = 10.5,
-			Z2 = 9.8
-		};
-		string materialName = ComponentMaterials.FirstOrDefault()?.MaterialName ?? "Bê tông C25";
-		foreach (CustomBimParameterItem customBimParameter in CustomBimParameters)
-		{
-			customBimParameter.PreviewValue = BimParameterService.ResolveValueTemplate(customBimParameter.ValueTemplate, row, 1, "TL", materialName);
-		}
+			{
+				STT = 1,
+				LyTrinh = "Km0+100",
+				LoaiCong = "CỐNG HỘP ĐÚC SẴN",
+				KhauDo = "1.5x1.5",
+				SoCua = 1,
+				ChieuDai = 12.0,
+				DoDoc = 2.5,
+				Z1 = 10.5,
+				Z2 = 9.8
+			};
+			string materialName = ComponentMaterials.FirstOrDefault()?.MaterialName ?? "Bê tông C25";
+			foreach (CustomBimParameterItem customBimParameter in CustomBimParameters)
+			{
+				customBimParameter.PreviewValue = BimParameterService.ResolveValueTemplate(customBimParameter.ValueTemplate, row, 1, "TL", materialName);
+			}
 		}
 		finally
 		{
@@ -5188,15 +6108,15 @@ public class MainViewModel : ViewModelBase
 
 	private void ExecutePlacement()
 	{
-		//IL_0238: Unknown result type (might be due to invalid IL or missing references)
+		//IL_02cc: Unknown result type (might be due to invalid IL or missing references)
 		if (AllCulvertRows.Count == 0)
 		{
 			System.Windows.MessageBox.Show("Vui lòng nạp file Excel trước khi thực hiện.", "Chưa có dữ liệu", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			return;
 		}
-		if (!PrecastBarrelComponents.Any((CulvertComponentItem c) => c.IsActive && c.SelectedSymbol != null) && !CastInPlaceBarrelComponents.Any((CulvertComponentItem c) => c.IsActive && c.SelectedSymbol != null) && (!IsTechnicalCulvertMode || !TechnicalBarrelComponents.Any((CulvertComponentItem c) => c.IsActive && c.SelectedSymbol != null)))
+		if (!PrecastBarrelComponents.Any((CulvertComponentItem c) => c.IsActive && c.SelectedSymbol != null) && !CastInPlaceBarrelComponents.Any((CulvertComponentItem c) => c.IsActive && c.SelectedSymbol != null) && !RoundSingleBarrelComponents.Any((CulvertComponentItem c) => c.IsActive && c.SelectedSymbol != null) && !RoundDoubleBarrelComponents.Any((CulvertComponentItem c) => c.IsActive && c.SelectedSymbol != null) && (!IsTechnicalCulvertMode || !TechnicalBarrelComponents.Any((CulvertComponentItem c) => c.IsActive && c.SelectedSymbol != null)))
 		{
-			System.Windows.MessageBox.Show("Vui lòng kích hoạt và chọn Family cho Cống đúc sẵn hoặc Cống đổ tại chỗ ở Khung 2.", "Chưa chọn Family", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+			System.Windows.MessageBox.Show("Vui lòng kích hoạt và chọn Family cho Cống đúc sẵn, Cống đổ tại chỗ hoặc Cống tròn ở Khung 2.", "Chưa chọn Family", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			return;
 		}
 		RunValidation();
@@ -5206,8 +6126,23 @@ public class MainViewModel : ViewModelBase
 		}
 		ExecutionStatus = "Đang dựng mô hình trong Revit...";
 		List<CulvertRowData> rowsToBuild = AllCulvertRows.Where((CulvertRowData r) => r.IsSelected && !r.HasError).ToList();
+		foreach (var r in rowsToBuild)
+		{
+			if (RoundCulvertService.IsRoundCulvert(r))
+			{
+				r.OffsetMoiNoi = RoundCulvertService.IsDoublePipe(r) ? OffsetMoiNoi_RoundDouble : OffsetMoiNoi_RoundSingle;
+				r.IsReversedPlacement = IsReverseRoundPlacement;
+				if (string.IsNullOrEmpty(r.CustomPattern) && !string.IsNullOrEmpty(RoundCulvertCustomPatternText))
+				{
+					r.CustomPattern = RoundCulvertCustomPatternText;
+				}
+			}
+		}
 		CulvertArrayMode modePrecast = ((SelectedArrayModeIndex_Precast != 0) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut);
 		CulvertArrayMode modeCastInPlace = ((SelectedArrayModeIndex_CastInPlace != 0) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut);
+		CulvertArrayMode modeRoundSingle = ((SelectedArrayModeIndex_RoundSingle != 0) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut);
+		CulvertArrayMode modeRoundDouble = ((SelectedArrayModeIndex_RoundDouble != 0) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut);
+		CulvertArrayMode modeTechnical = ((SelectedArrayModeIndex_Technical != 0) ? CulvertArrayMode.OneWay : CulvertArrayMode.CenterOut);
 		bool useSurveyPoint = SelectedCoordSysIndex == 0;
 		List<CulvertComponentItem> targetPrecast = (IsTechnicalCulvertMode ? TechnicalBarrelComponents.ToList() : PrecastBarrelComponents.ToList());
 		List<CulvertComponentItem> targetManhole = (IsTechnicalCulvertMode ? TechnicalManholeComponents.ToList() : ManholeComponents.ToList());
@@ -5216,12 +6151,14 @@ public class MainViewModel : ViewModelBase
 		_eventHandler.SetAction((UIApplication app) =>
 		{
 			Document document = app.ActiveUIDocument.Document;
-			(int SuccessCount, int ErrorCount, List<string> Logs) result = CulvertCoreEngine.BuildAllCulvertsV2(document, rowsToBuild, BimConfig, CustomBimParameters, ParameterMappings, targetPrecast, CastInPlaceBarrelComponents.ToList(), OutletComponents.ToList(), ApronComponents.ToList(), targetManhole, curLStdPrecast, curKheHoPrecast, modePrecast, L_Std_CastInPlace, Khe_Ho_CastInPlace, modeCastInPlace, B_Box, KhoangCachTimDefault, useSurveyPoint, ComponentMaterials, SelectedDuplicateOptionIndex, CastInPlaceProfiles.ToList());
+			(int SuccessCount, int ErrorCount, List<string> Logs) result = CulvertCoreEngine.BuildAllCulvertsV2(document, rowsToBuild, BimConfig, CustomBimParameters, ParameterMappings, targetPrecast, CastInPlaceBarrelComponents.ToList(), OutletComponents.ToList(), ApronComponents.ToList(), targetManhole, curLStdPrecast, curKheHoPrecast, modePrecast, L_Std_CastInPlace, Khe_Ho_CastInPlace, modeCastInPlace, B_Box, KhoangCachTimDefault, useSurveyPoint, ComponentMaterials, SelectedDuplicateOptionIndex, CastInPlaceProfiles.ToList(), TechnicalBarrelComponents.ToList(), TechnicalManholeComponents.ToList(), L_Std_Technical, Khe_Ho_Technical, modeTechnical, RoundSingleBarrelComponents.ToList(), RoundDoubleBarrelComponents.ToList(), L_Std_RoundSingle, Khe_Ho_RoundSingle, modeRoundSingle, L_Std_RoundDouble, Khe_Ho_RoundDouble, modeRoundDouble, KhoangCachTim_RoundDouble);
 			try
 			{
 				ProjectConfigStorageService.SaveToDocument(document, ExportCurrentState());
 			}
-			catch { }
+			catch
+			{
+			}
 			((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
 			{
 				ExecutionStatus = $"Hoàn tất: Thực hiện thành công {result.SuccessCount}/{rowsToBuild.Count} cống.";
@@ -5273,7 +6210,9 @@ public class MainViewModel : ViewModelBase
 			{
 				ProjectConfigStorageService.SaveToDocument(document, ExportCurrentState());
 			}
-			catch { }
+			catch
+			{
+			}
 			((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
 			{
 				ExecutionStatus = $"Hoàn tất cập nhật: {result.SuccessCount}/{rowsToUpdate.Count} cống ({result.TotalElementsUpdated} cấu kiện).";
@@ -5293,25 +6232,26 @@ public class MainViewModel : ViewModelBase
 					RefreshInspectorParameterMappings();
 					UpdatePreviewGeometry();
 				}
-				catch { }
+				catch
+				{
+				}
 			}));
 		});
 		_externalEvent.Raise();
 	}
 
-	#region Project State Persistence (LÆ°u & KhÃ´i phá»¥c cáº¥u hÃ¬nh dá»± Ã¡n)
 	private List<CulvertRowOverrideSaveDto> GetAllSheetOverridesForExport()
 	{
 		SaveCurrentSheetOverrides();
-		var list = _overridesBySheet.Values.SelectMany(x => x).ToList();
+		List<CulvertRowOverrideSaveDto> list = _overridesBySheet.Values.SelectMany((List<CulvertRowOverrideSaveDto> x) => x).ToList();
 		if (!list.Any() && AllCulvertRows != null && AllCulvertRows.Count > 0)
 		{
-			list = AllCulvertRows
-				.Where(r => r.ParameterOverrides != null && r.ParameterOverrides.Count > 0)
-				.Select(r => new CulvertRowOverrideSaveDto
+			list = (from r in AllCulvertRows
+				where r.ParameterOverrides != null && r.ParameterOverrides.Count > 0
+				select new CulvertRowOverrideSaveDto
 				{
-					SheetName = SelectedSheetName ?? string.Empty,
-					LyTrinh = r.LyTrinh ?? string.Empty,
+					SheetName = (SelectedSheetName ?? string.Empty),
+					LyTrinh = (r.LyTrinh ?? string.Empty),
 					STT = r.STT,
 					Overrides = new Dictionary<string, string>(r.ParameterOverrides, StringComparer.OrdinalIgnoreCase)
 				}).ToList();
@@ -5325,11 +6265,11 @@ public class MainViewModel : ViewModelBase
 		{
 			Version = "1.0",
 			SavedAt = DateTime.Now,
-			ExcelFilePath = ExcelFilePath ?? string.Empty,
-			SelectedSheetName = SelectedSheetName ?? string.Empty,
+			ExcelFilePath = (ExcelFilePath ?? string.Empty),
+			SelectedSheetName = (SelectedSheetName ?? string.Empty),
 			SelectedCoordSysIndex = SelectedCoordSysIndex,
 			DuplicateOption = SelectedDuplicateOptionIndex,
-			SelectedCulvertTemplateType = SelectedCulvertTemplateType ?? "Cá»NG Há»˜P ÄÃšC Sáº´N",
+			SelectedCulvertTemplateType = (SelectedCulvertTemplateType ?? "Cá»\u0090NG Há»\u02dcP Ä\u0090ÃšC Sáº\u00b4N"),
 			IsTechnicalCulvertMode = IsTechnicalCulvertMode,
 			L_Std_Precast = L_Std_Precast,
 			Khe_Ho_Precast = Khe_Ho_Precast,
@@ -5344,7 +6284,24 @@ public class MainViewModel : ViewModelBase
 			Khe_Ho = Khe_Ho,
 			B_Box = B_Box,
 			DefaultKhoangCachTim = KhoangCachTimDefault,
+			L_Std_RoundSingle = L_Std_RoundSingle,
+			Khe_Ho_RoundSingle = Khe_Ho_RoundSingle,
+			SelectedArrayModeIndex_RoundSingle = SelectedArrayModeIndex_RoundSingle,
+			SelectedRoundSinglePipeTypeName = SelectedRoundSinglePipeSymbol?.TypeName,
+			SelectedRoundSingleConnectionSymbolName = SelectedRoundSingleConnectionSymbol?.TypeName,
+			L_Std_RoundDouble = L_Std_RoundDouble,
+			Khe_Ho_RoundDouble = Khe_Ho_RoundDouble,
+			SelectedArrayModeIndex_RoundDouble = SelectedArrayModeIndex_RoundDouble,
+			KhoangCachTim_RoundDouble = KhoangCachTim_RoundDouble,
+			SelectedRoundDoublePipeTypeName = SelectedRoundDoublePipeSymbol?.TypeName,
+			SelectedRoundDoubleConnectionSymbolName = SelectedRoundDoubleConnectionSymbol?.TypeName,
+			OffsetMoiNoi_RoundSingle = OffsetMoiNoi_RoundSingle,
+			OffsetMoiNoi_RoundDouble = OffsetMoiNoi_RoundDouble,
+			IsReverseRoundPlacement = IsReverseRoundPlacement,
+			RoundCulvertCustomPatternText = RoundCulvertCustomPatternText,
 			PrecastBarrels = PrecastBarrelComponents.Select(ToComponentDto).ToList(),
+			RoundSingleBarrels = RoundSingleBarrelComponents.Select(ToComponentDto).ToList(),
+			RoundDoubleBarrels = RoundDoubleBarrelComponents.Select(ToComponentDto).ToList(),
 			CastInPlaceBarrels = CastInPlaceBarrelComponents.Select(ToComponentDto).ToList(),
 			Outlets = OutletComponents.Select(ToComponentDto).ToList(),
 			Aprons = ApronComponents.Select(ToComponentDto).ToList(),
@@ -5413,23 +6370,57 @@ public class MainViewModel : ViewModelBase
 
 	private ComponentSaveDto ToComponentDto(CulvertComponentItem c)
 	{
-		return new ComponentSaveDto
+		ComponentSaveDto componentSaveDto = new ComponentSaveDto
 		{
 			GroupType = c.GroupType,
 			ProfileName = c.ProfileName,
-			CategoryType = c.CategoryType,
-			FamilyName = c.SelectedSymbol?.Symbol?.FamilyName ?? c.SelectedSymbol?.FamilyName ?? string.Empty,
-			TypeName = c.SelectedSymbol?.Symbol?.Name ?? c.SelectedSymbol?.TypeName ?? string.Empty,
-			OffsetZ = c.OffsetZ,
-			IsActive = c.IsActive,
-			Note = c.Note
+			CategoryType = c.CategoryType
 		};
+		FamilySymbolWrapper? selectedSymbol = c.SelectedSymbol;
+		object obj;
+		if (selectedSymbol == null)
+		{
+			obj = null;
+		}
+		else
+		{
+			FamilySymbol? symbol = selectedSymbol.Symbol;
+			obj = ((symbol != null) ? ((ElementType)symbol).FamilyName : null);
+		}
+		if (obj == null)
+		{
+			obj = c.SelectedSymbol?.FamilyName ?? string.Empty;
+		}
+		componentSaveDto.FamilyName = (string)obj;
+		FamilySymbolWrapper? selectedSymbol2 = c.SelectedSymbol;
+		object obj2;
+		if (selectedSymbol2 == null)
+		{
+			obj2 = null;
+		}
+		else
+		{
+			FamilySymbol? symbol2 = selectedSymbol2.Symbol;
+			obj2 = ((symbol2 != null) ? ((Element)symbol2).Name : null);
+		}
+		if (obj2 == null)
+		{
+			obj2 = c.SelectedSymbol?.TypeName ?? string.Empty;
+		}
+		componentSaveDto.TypeName = (string)obj2;
+		componentSaveDto.OffsetZ = c.OffsetZ;
+		componentSaveDto.IsActive = c.IsActive;
+		componentSaveDto.Note = c.Note;
+		return componentSaveDto;
 	}
 
 	public void ApplyState(ProjectStateConfig state)
 	{
-		if (state == null) return;
-		bool prevInit = _isInitializing;
+		if (state == null)
+		{
+			return;
+		}
+		bool isInitializing = _isInitializing;
 		_isInitializing = true;
 		try
 		{
@@ -5448,92 +6439,125 @@ public class MainViewModel : ViewModelBase
 			Khe_Ho = state.Khe_Ho;
 			B_Box = state.B_Box;
 			KhoangCachTimDefault = state.DefaultKhoangCachTim;
+			L_Std_RoundSingle = ((state.L_Std_RoundSingle > 0.0) ? state.L_Std_RoundSingle : 2.5);
+			Khe_Ho_RoundSingle = ((state.Khe_Ho_RoundSingle >= 0.0) ? state.Khe_Ho_RoundSingle : 0.02);
+			SelectedArrayModeIndex_RoundSingle = state.SelectedArrayModeIndex_RoundSingle;
+			L_Std_RoundDouble = ((state.L_Std_RoundDouble > 0.0) ? state.L_Std_RoundDouble : 2.5);
+			Khe_Ho_RoundDouble = ((state.Khe_Ho_RoundDouble >= 0.0) ? state.Khe_Ho_RoundDouble : 0.02);
+			SelectedArrayModeIndex_RoundDouble = state.SelectedArrayModeIndex_RoundDouble;
+			KhoangCachTim_RoundDouble = ((state.KhoangCachTim_RoundDouble > 0.1) ? state.KhoangCachTim_RoundDouble : 2.12);
+			OffsetMoiNoi_RoundSingle = ((state.OffsetMoiNoi_RoundSingle > 0.0) ? state.OffsetMoiNoi_RoundSingle : 0.40);
+			OffsetMoiNoi_RoundDouble = ((state.OffsetMoiNoi_RoundDouble > 0.0) ? state.OffsetMoiNoi_RoundDouble : 0.40);
+			IsReverseRoundPlacement = state.IsReverseRoundPlacement;
+			if (!string.IsNullOrEmpty(state.RoundCulvertCustomPatternText))
+			{
+				RoundCulvertCustomPatternText = state.RoundCulvertCustomPatternText;
+			}
 			if (!string.IsNullOrEmpty(state.SelectedCulvertTemplateType))
 			{
 				SelectedCulvertTemplateType = state.SelectedCulvertTemplateType;
 			}
 			IsTechnicalCulvertMode = state.IsTechnicalCulvertMode;
-
 			ApplyComponentDtos(PrecastBarrelComponents, state.PrecastBarrels);
+			ApplyComponentDtos(RoundSingleBarrelComponents, state.RoundSingleBarrels);
+			ApplyComponentDtos(RoundDoubleBarrelComponents, state.RoundDoubleBarrels);
+			if (!string.IsNullOrEmpty(state.SelectedRoundSinglePipeTypeName))
+			{
+				SelectedRoundSinglePipeSymbol = AvailableRoundPipeFamilies.FirstOrDefault((FamilySymbolWrapper f) => f.TypeName == state.SelectedRoundSinglePipeTypeName) ?? FindSymbol("TNN_CT_THAN CONG", state.SelectedRoundSinglePipeTypeName);
+			}
+			if (!string.IsNullOrEmpty(state.SelectedRoundSingleConnectionSymbolName))
+			{
+				SelectedRoundSingleConnectionSymbol = AvailableRoundConnectionFamilies.FirstOrDefault((FamilySymbolWrapper f) => f.TypeName == state.SelectedRoundSingleConnectionSymbolName || f.FamilyName == state.SelectedRoundSingleConnectionSymbolName) ?? FindSymbol(state.SelectedRoundSingleConnectionSymbolName);
+			}
+			if (!string.IsNullOrEmpty(state.SelectedRoundDoublePipeTypeName))
+			{
+				SelectedRoundDoublePipeSymbol = AvailableRoundPipeFamilies.FirstOrDefault((FamilySymbolWrapper f) => f.TypeName == state.SelectedRoundDoublePipeTypeName) ?? FindSymbol("TNN_CT_THAN CONG", state.SelectedRoundDoublePipeTypeName);
+			}
+			if (!string.IsNullOrEmpty(state.SelectedRoundDoubleConnectionSymbolName))
+			{
+				SelectedRoundDoubleConnectionSymbol = AvailableRoundConnectionFamilies.FirstOrDefault((FamilySymbolWrapper f) => f.TypeName == state.SelectedRoundDoubleConnectionSymbolName || f.FamilyName == state.SelectedRoundDoubleConnectionSymbolName) ?? FindSymbol(state.SelectedRoundDoubleConnectionSymbolName);
+			}
 			ApplyComponentDtos(OutletComponents, state.Outlets);
 			ApplyComponentDtos(ApronComponents, state.Aprons);
 			ApplyComponentDtos(ManholeComponents, state.Manholes);
 			ApplyComponentDtos(TechnicalBarrelComponents, state.TechnicalBarrels);
 			ApplyComponentDtos(TechnicalManholeComponents, state.TechnicalManholes);
-
 			if (state.CastInPlaceProfiles != null && state.CastInPlaceProfiles.Count > 0)
 			{
-				foreach (var p in CastInPlaceProfiles)
+				foreach (CulvertTypeProfile castInPlaceProfile in CastInPlaceProfiles)
 				{
-					p.PropertyChanged -= OnCastInPlaceProfilePropertyChanged;
-					foreach (var c in p.Components) c.PropertyChanged -= OnAssemblyComponentPropertyChanged;
+					castInPlaceProfile.PropertyChanged -= OnCastInPlaceProfilePropertyChanged;
+					foreach (CulvertComponentItem component in castInPlaceProfile.Components)
+					{
+						component.PropertyChanged -= OnAssemblyComponentPropertyChanged;
+					}
 				}
 				CastInPlaceProfiles.Clear();
-				foreach (var pDto in state.CastInPlaceProfiles)
+				foreach (ProfileSaveDto castInPlaceProfile2 in state.CastInPlaceProfiles)
 				{
-					var prof = new CulvertTypeProfile(pDto.TypeName, pDto.L_Std, pDto.Khe_Ho, pDto.SelectedArrayModeIndex)
+					CulvertTypeProfile culvertTypeProfile = new CulvertTypeProfile(castInPlaceProfile2.TypeName, castInPlaceProfile2.L_Std, castInPlaceProfile2.Khe_Ho, castInPlaceProfile2.SelectedArrayModeIndex)
 					{
-						CulvertKind = pDto.CulvertKind
+						CulvertKind = castInPlaceProfile2.CulvertKind
 					};
-					if (pDto.Components != null && pDto.Components.Count > 0)
+					if (castInPlaceProfile2.Components != null && castInPlaceProfile2.Components.Count > 0)
 					{
-						foreach (var cDto in pDto.Components)
+						foreach (ComponentSaveDto component2 in castInPlaceProfile2.Components)
 						{
-							var comp = new CulvertComponentItem
+							CulvertComponentItem culvertComponentItem = new CulvertComponentItem
 							{
-								GroupType = prof.TypeName,
-								ProfileName = prof.TypeName,
-								CategoryType = cDto.CategoryType,
-								OffsetZ = cDto.OffsetZ,
-								IsActive = cDto.IsActive,
-								Note = cDto.Note,
-								SelectedSymbol = FindSymbol(cDto.FamilyName, cDto.TypeName)
+								GroupType = culvertTypeProfile.TypeName,
+								ProfileName = culvertTypeProfile.TypeName,
+								CategoryType = component2.CategoryType,
+								OffsetZ = component2.OffsetZ,
+								IsActive = component2.IsActive,
+								Note = component2.Note,
+								SelectedSymbol = FindSymbol(component2.FamilyName, component2.TypeName)
 							};
-							comp.PropertyChanged += OnAssemblyComponentPropertyChanged;
-							prof.Components.Add(comp);
+							culvertComponentItem.PropertyChanged += OnAssemblyComponentPropertyChanged;
+							culvertTypeProfile.Components.Add(culvertComponentItem);
 						}
 					}
-					prof.PropertyChanged += OnCastInPlaceProfilePropertyChanged;
-					CastInPlaceProfiles.Add(prof);
+					culvertTypeProfile.PropertyChanged += OnCastInPlaceProfilePropertyChanged;
+					CastInPlaceProfiles.Add(culvertTypeProfile);
 				}
 				SelectedCastInPlaceProfile = CastInPlaceProfiles.FirstOrDefault();
 			}
-
 			if (state.ParameterMappings != null && state.ParameterMappings.Count > 0)
 			{
-				foreach (var savedMap in state.ParameterMappings)
+				foreach (ParameterMappingSaveDto savedMap in state.ParameterMappings)
 				{
-					var target = ParameterMappings.FirstOrDefault(m =>
-						(string.Equals(m.InternalName, savedMap.InternalName, StringComparison.OrdinalIgnoreCase) ||
-						 string.Equals(m.DisplayName, savedMap.DisplayName, StringComparison.OrdinalIgnoreCase)) &&
-						string.Equals(m.CategoryName, savedMap.CategoryName, StringComparison.OrdinalIgnoreCase) &&
-						string.Equals(m.ProfileName, savedMap.ProfileName, StringComparison.OrdinalIgnoreCase));
-					if (target != null)
+					if (FamilyParameterScannerService.IsSystemJunkParameterName(savedMap.InternalName))
 					{
-						if (!string.IsNullOrEmpty(savedMap.MappedField)) target.MappedField = savedMap.MappedField;
-						if (!string.IsNullOrEmpty(savedMap.CustomValue)) target.CustomValue = savedMap.CustomValue;
-						target.IsSelected = savedMap.IsSelected;
+						continue;
+					}
+					ParameterMappingItem parameterMappingItem = ParameterMappings.FirstOrDefault((ParameterMappingItem m) => (string.Equals(m.InternalName, savedMap.InternalName, StringComparison.OrdinalIgnoreCase) || string.Equals(m.DisplayName, savedMap.DisplayName, StringComparison.OrdinalIgnoreCase)) && string.Equals(m.CategoryName, savedMap.CategoryName, StringComparison.OrdinalIgnoreCase) && string.Equals(m.ProfileName, savedMap.ProfileName, StringComparison.OrdinalIgnoreCase));
+					if (parameterMappingItem != null)
+					{
+						if (!string.IsNullOrEmpty(savedMap.MappedField))
+						{
+							parameterMappingItem.MappedField = savedMap.MappedField;
+						}
+						if (!string.IsNullOrEmpty(savedMap.CustomValue))
+						{
+							parameterMappingItem.CustomValue = savedMap.CustomValue;
+						}
+						parameterMappingItem.IsSelected = savedMap.IsSelected;
 					}
 				}
 			}
-
 			if (state.Materials != null && state.Materials.Count > 0)
 			{
-				foreach (var savedMat in state.Materials)
+				foreach (MaterialSaveDto savedMat in state.Materials)
 				{
-					var target = ComponentMaterials.FirstOrDefault(m =>
-						string.Equals(m.GroupType, savedMat.GroupType, StringComparison.OrdinalIgnoreCase) &&
-						string.Equals(m.CategoryType, savedMat.CategoryType, StringComparison.OrdinalIgnoreCase) &&
-						string.Equals(m.CulvertType, savedMat.CulvertType, StringComparison.OrdinalIgnoreCase));
-					if (target != null)
+					CulvertMaterialItem culvertMaterialItem = ComponentMaterials.FirstOrDefault((CulvertMaterialItem m) => string.Equals(m.GroupType, savedMat.GroupType, StringComparison.OrdinalIgnoreCase) && string.Equals(m.CategoryType, savedMat.CategoryType, StringComparison.OrdinalIgnoreCase) && string.Equals(m.CulvertType, savedMat.CulvertType, StringComparison.OrdinalIgnoreCase));
+					if (culvertMaterialItem != null)
 					{
-						target.MaterialName = savedMat.MaterialName;
-						target.ColorHex = savedMat.ColorHex;
-						target.IsActive = savedMat.IsActive;
+						culvertMaterialItem.MaterialName = savedMat.MaterialName;
+						culvertMaterialItem.ColorHex = savedMat.ColorHex;
+						culvertMaterialItem.IsActive = savedMat.IsActive;
 					}
 				}
 			}
-
 			if (state.BimConfig != null)
 			{
 				BimConfig.TenCongTrinh = state.BimConfig.TenCongTrinh;
@@ -5548,28 +6572,26 @@ public class MainViewModel : ViewModelBase
 				BimConfig.AutoSetElevations = state.BimConfig.AutoSetElevations;
 				BimConfig.AutoCreateSharedParameters = state.BimConfig.AutoCreateSharedParameters;
 			}
-
 			if (state.CustomBimParameters != null && state.CustomBimParameters.Count > 0)
 			{
 				CustomBimParameters.Clear();
-				foreach (var p in state.CustomBimParameters)
+				foreach (CustomBimParameterSaveDto customBimParameter in state.CustomBimParameters)
 				{
-					var item = new CustomBimParameterItem
+					CustomBimParameterItem customBimParameterItem = new CustomBimParameterItem
 					{
-						IsActive = p.IsActive,
-						ParamName = p.ParamName,
-						RevitGroup = p.RevitGroup,
-						TargetScope = p.TargetScope,
-						ValueTemplate = p.ValueTemplate,
-						Description = p.Description
+						IsActive = customBimParameter.IsActive,
+						ParamName = customBimParameter.ParamName,
+						RevitGroup = customBimParameter.RevitGroup,
+						TargetScope = customBimParameter.TargetScope,
+						ValueTemplate = customBimParameter.ValueTemplate,
+						Description = customBimParameter.Description
 					};
-					item.PropertyChanged += OnCustomBimParameterPropertyChanged;
-					CustomBimParameters.Add(item);
+					customBimParameterItem.PropertyChanged += OnCustomBimParameterPropertyChanged;
+					CustomBimParameters.Add(customBimParameterItem);
 				}
 				SelectedCustomBimParameter = CustomBimParameters.FirstOrDefault();
 				UpdateCustomBimParameterPreviews();
 			}
-
 			if (!string.IsNullOrEmpty(state.ExcelFilePath) && File.Exists(state.ExcelFilePath))
 			{
 				ExcelFilePath = state.ExcelFilePath;
@@ -5587,16 +6609,17 @@ public class MainViewModel : ViewModelBase
 					SelectedSheetName = SheetNames[0];
 				}
 				LoadExcelData();
-
 				_overridesBySheet.Clear();
 				if (state.CulvertRowOverrides != null && state.CulvertRowOverrides.Count > 0)
 				{
-					foreach (var ov in state.CulvertRowOverrides)
+					foreach (CulvertRowOverrideSaveDto culvertRowOverride in state.CulvertRowOverrides)
 					{
-						string sheet = string.IsNullOrEmpty(ov.SheetName) ? (state.SelectedSheetName ?? "") : ov.SheetName;
-						if (!_overridesBySheet.ContainsKey(sheet))
-							_overridesBySheet[sheet] = new List<CulvertRowOverrideSaveDto>();
-						_overridesBySheet[sheet].Add(ov);
+						string key = (string.IsNullOrEmpty(culvertRowOverride.SheetName) ? (state.SelectedSheetName ?? "") : culvertRowOverride.SheetName);
+						if (!_overridesBySheet.ContainsKey(key))
+						{
+							_overridesBySheet[key] = new List<CulvertRowOverrideSaveDto>();
+						}
+						_overridesBySheet[key].Add(culvertRowOverride);
 					}
 					RestoreCurrentSheetOverrides();
 				}
@@ -5606,13 +6629,12 @@ public class MainViewModel : ViewModelBase
 				RefreshDisplayedCustomBimParameters();
 			}
 		}
-		catch (Exception ex)
+		catch (Exception)
 		{
-			System.Diagnostics.Debug.WriteLine($"Lỗi ApplyState: {ex.Message}");
 		}
 		finally
 		{
-			_isInitializing = prevInit;
+			_isInitializing = isInitializing;
 		}
 		if (!_isInitializing)
 		{
@@ -5620,56 +6642,66 @@ public class MainViewModel : ViewModelBase
 			ApplyTab02FamilyFilter();
 			ApplyMaterialGroupFilter();
 			UpdatePreviewGeometry();
+			ExtractRealFamilyGeometryForPreview(SelectedCulvertRowForPreview ?? FilteredPreviewCulvertRows.FirstOrDefault() ?? FilteredCulvertRows.FirstOrDefault());
 		}
 	}
 
 	private void ApplyComponentDtos(ObservableCollection<CulvertComponentItem> targetList, List<ComponentSaveDto> dtos)
 	{
-		if (dtos == null || dtos.Count == 0) return;
+		if (dtos == null || dtos.Count == 0)
+		{
+			return;
+		}
 		for (int i = 0; i < dtos.Count; i++)
 		{
-			var dto = dtos[i];
+			ComponentSaveDto componentSaveDto = dtos[i];
 			if (i < targetList.Count)
 			{
-				var item = targetList[i];
-				item.IsActive = dto.IsActive;
-				item.OffsetZ = dto.OffsetZ;
-				if (!string.IsNullOrEmpty(dto.Note)) item.Note = dto.Note;
-				var sym = FindSymbol(dto.FamilyName, dto.TypeName);
-				if (sym != null) item.SelectedSymbol = sym;
+				CulvertComponentItem culvertComponentItem = targetList[i];
+				culvertComponentItem.IsActive = componentSaveDto.IsActive;
+				culvertComponentItem.OffsetZ = componentSaveDto.OffsetZ;
+				if (!string.IsNullOrEmpty(componentSaveDto.Note))
+				{
+					culvertComponentItem.Note = componentSaveDto.Note;
+				}
+				FamilySymbolWrapper familySymbolWrapper = FindSymbol(componentSaveDto.FamilyName, componentSaveDto.TypeName);
+				if (familySymbolWrapper != null)
+				{
+					culvertComponentItem.SelectedSymbol = familySymbolWrapper;
+				}
 			}
 			else
 			{
-				var item = new CulvertComponentItem
+				CulvertComponentItem culvertComponentItem2 = new CulvertComponentItem
 				{
-					GroupType = dto.GroupType,
-					ProfileName = dto.ProfileName,
-					CategoryType = dto.CategoryType,
-					IsActive = dto.IsActive,
-					OffsetZ = dto.OffsetZ,
-					Note = dto.Note,
-					SelectedSymbol = FindSymbol(dto.FamilyName, dto.TypeName)
+					GroupType = componentSaveDto.GroupType,
+					ProfileName = componentSaveDto.ProfileName,
+					CategoryType = componentSaveDto.CategoryType,
+					IsActive = componentSaveDto.IsActive,
+					OffsetZ = componentSaveDto.OffsetZ,
+					Note = componentSaveDto.Note,
+					SelectedSymbol = FindSymbol(componentSaveDto.FamilyName, componentSaveDto.TypeName)
 				};
-				item.PropertyChanged += OnAssemblyComponentPropertyChanged;
-				targetList.Add(item);
+				culvertComponentItem2.PropertyChanged += OnAssemblyComponentPropertyChanged;
+				targetList.Add(culvertComponentItem2);
 			}
 		}
 	}
 
 	public bool CheckDocumentHasCulvertFamilies()
 	{
-		if (Doc == null) return false;
+		//IL_0022: Unknown result type (might be due to invalid IL or missing references)
+		if (Doc == null)
+		{
+			return false;
+		}
 		try
 		{
-			var cfg = ProjectConfigStorageService.LoadFromDocument(Doc);
-			if (cfg != null) return true;
-
-			return new FilteredElementCollector(Doc)
-				.OfClass(typeof(Family))
-				.Cast<Family>()
-				.Any(f => (f.Name != null && f.Name.StartsWith("TNN_", StringComparison.OrdinalIgnoreCase))
-					   || (f.Name != null && f.Name.Contains("THAN CONG", StringComparison.OrdinalIgnoreCase))
-					   || (f.Name != null && f.Name.Contains("HO KY THUAT", StringComparison.OrdinalIgnoreCase)));
+			if (ProjectConfigStorageService.LoadFromDocument(Doc) != null)
+			{
+				return true;
+			}
+			return ((IEnumerable)new FilteredElementCollector(Doc).OfClass(typeof(Family))).Cast<Family>().Any((Family f) => (((Element)f).Name != null && ((Element)f).Name.StartsWith("TNN_", StringComparison.OrdinalIgnoreCase)) || (((Element)f).Name != null && ((Element)f).Name.Contains("THAN CONG", StringComparison.OrdinalIgnoreCase)) || (((Element)f).Name != null && ((Element)f).Name.Contains("HO KY THUAT", StringComparison.OrdinalIgnoreCase)));
 		}
 		catch
 		{
@@ -5679,52 +6711,71 @@ public class MainViewModel : ViewModelBase
 
 	public void AutoLoadFamiliesForNewProject()
 	{
-		string folder = FamilyFolderPath;
-		if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+		//IL_0096: Unknown result type (might be due to invalid IL or missing references)
+		string text = FamilyFolderPath;
+		if (string.IsNullOrWhiteSpace(text) || !Directory.Exists(text))
 		{
-			folder = @"C:\Users\ADMIN\Desktop\TEST TOOL\FAMLY REVIT_HTKT";
+			text = "C:\\Users\\ADMIN\\Desktop\\TEST TOOL\\FAMLY REVIT_HTKT";
 		}
-		if (Directory.Exists(folder) && Doc != null && !Doc.IsReadOnly && _eventHandler != null && _externalEvent != null)
+		if (!Directory.Exists(text) || Doc == null || Doc.IsReadOnly || _eventHandler == null || _externalEvent == null)
 		{
-			FamilyFolderPath = folder;
-			string[] rfaFiles = Directory.GetFiles(folder, "*.rfa", SearchOption.AllDirectories);
-			if (rfaFiles.Length > 0)
+			return;
+		}
+		FamilyFolderPath = text;
+		string[] rfaFiles = Directory.GetFiles(text, "*.rfa", SearchOption.AllDirectories);
+		if (rfaFiles.Length == 0)
+		{
+			return;
+		}
+		_eventHandler.SetAction((UIApplication app) =>
+		{
+			//IL_0031: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0037: Expected Obj, but got Unknown
+			//IL_009f: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0038: Unknown result type (might be due to invalid IL or missing references)
+			UIDocument activeUIDocument = app.ActiveUIDocument;
+			Document val = ((activeUIDocument != null) ? activeUIDocument.Document : null);
+			if (val != null)
 			{
-				_eventHandler.SetAction((UIApplication app) =>
+				int loadedCount = 0;
+				Transaction val2 = new Transaction(val, "u0110ồng bộ Family cống mới");
+				try
 				{
-					var doc = app.ActiveUIDocument?.Document;
-					if (doc == null) return;
-					int loadedCount = 0;
-					using (Transaction tx = new Transaction(doc, "u0110\u1ed3ng b\u1ed9 Family c\u1ed1ng m\u1edbi"))
+					val2.Start();
+					CustomFamilyLoadOptions customFamilyLoadOptions = new CustomFamilyLoadOptions();
+					string[] array = rfaFiles;
+					Family val3 = default;
+					foreach (string text2 in array)
 					{
-						tx.Start();
-						CustomFamilyLoadOptions opt = new CustomFamilyLoadOptions();
-						foreach (string file in rfaFiles)
+						try
 						{
-							try
+							if (val.LoadFamily(text2, (IFamilyLoadOptions)(object)customFamilyLoadOptions, out val3))
 							{
-								if (doc.LoadFamily(file, opt, out Family fam))
-								{
-									loadedCount++;
-								}
-								else
-								{
-									loadedCount++;
-								}
+								loadedCount++;
 							}
-							catch { }
+							else
+							{
+								loadedCount++;
+							}
 						}
-						tx.Commit();
+						catch
+						{
+						}
 					}
-					((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
-					{
-						LoadAvailableFamilies();
-						FamilyLoadStatus = $"D\u1ef1 \u00e1n m\u1edbi: \u0110\u00e3 t\u1ef1 \u0111\u1ed9ng n\u1ea1p {loadedCount}/{rfaFiles.Length} Family th\u00e0nh c\u00f4ng!";
-					}));
-				});
-				_externalEvent.Raise();
+					val2.Commit();
+				}
+				finally
+				{
+					((IDisposable)val2)?.Dispose();
+				}
+				((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
+				{
+					LoadAvailableFamilies();
+					FamilyLoadStatus = $"Dự án mới: Đã tự động nạp {loadedCount}/{rfaFiles.Length} Family thành công!";
+				}));
 			}
-		}
+		});
+		_externalEvent.Raise();
 	}
 
 	public void TryAutoLoadConfiguration()
@@ -5732,74 +6783,71 @@ public class MainViewModel : ViewModelBase
 		StartupLogger.Log("[VM] TryAutoLoadConfiguration START");
 		try
 		{
-			ProjectStateConfig? config = null;
-			bool hasCulvertFamilies = CheckDocumentHasCulvertFamilies();
-
+			ProjectStateConfig projectStateConfig = null;
+			bool flag = CheckDocumentHasCulvertFamilies();
 			if (Doc != null && !Doc.IsReadOnly)
 			{
 				StartupLogger.Log("[VM] TryAutoLoadConfiguration: calling LoadFromDocument...");
-				config = ProjectConfigStorageService.LoadFromDocument(Doc);
-				StartupLogger.Log($"[VM] TryAutoLoadConfiguration: LoadFromDocument result: {(config != null ? "CONFIG FOUND" : "NULL")}");
+				projectStateConfig = ProjectConfigStorageService.LoadFromDocument(Doc);
+				StartupLogger.Log("[VM] TryAutoLoadConfiguration: LoadFromDocument result: " + ((projectStateConfig != null) ? "CONFIG FOUND" : "NULL"));
 			}
-			if (config == null && hasCulvertFamilies)
+			if ((projectStateConfig == null) & flag)
 			{
 				StartupLogger.Log("[VM] TryAutoLoadConfiguration: calling LoadFromLastSession...");
-				config = ProjectConfigStorageService.LoadFromLastSession();
-				StartupLogger.Log($"[VM] TryAutoLoadConfiguration: LoadFromLastSession result: {(config != null ? "CONFIG FOUND" : "NULL")}");
+				projectStateConfig = ProjectConfigStorageService.LoadFromLastSession();
+				StartupLogger.Log("[VM] TryAutoLoadConfiguration: LoadFromLastSession result: " + ((projectStateConfig != null) ? "CONFIG FOUND" : "NULL"));
 			}
-			if (config != null)
+			if (projectStateConfig != null)
 			{
 				StartupLogger.Log("[VM] TryAutoLoadConfiguration: calling ApplyState...");
-				ApplyState(config);
+				ApplyState(projectStateConfig);
 				StartupLogger.Log("[VM] TryAutoLoadConfiguration: ApplyState finished.");
-				FamilyLoadStatus = "\u0110\u00e3 nh\u1eadn di\u1ec7n Family c\u00f3 s\u1eb5n trong File Revit (kh\u00f4ng n\u1ea1p l\u1ea1i t\u1eeb \u1ed5 c\u1ee9ng).";
-				ExecutionStatus = $"\u0110\u00e3 t\u1ef1 \u0111\u1ed9ng kh\u00f4i ph\u1ee5c c\u1ea5u h\u00ecnh d\u1ef1 \u00e1n (l\u01b0u l\u00fac: {config.SavedAt:dd/MM/yyyy HH:mm}).";
+				FamilyLoadStatus = "Đã nhận diện Family có sẵn trong File Revit (không nạp lại từ ổ cứng).";
+				ExecutionStatus = $"Đã tự động khôi phục cấu hình dự án (lưu lúc: {projectStateConfig.SavedAt:dd/MM/yyyy HH:mm}).";
+			}
+			else if (!flag)
+			{
+				StartupLogger.Log("[VM] New project detected: auto-loading families from folder...");
+				AutoLoadFamiliesForNewProject();
 			}
 			else
 			{
-				if (!hasCulvertFamilies)
-				{
-					StartupLogger.Log("[VM] New project detected: auto-loading families from folder...");
-					AutoLoadFamiliesForNewProject();
-				}
-				else
-				{
-					FamilyLoadStatus = "\u0110\u00e3 nh\u1eadn di\u1ec7n Family c\u00f3 s\u1eb5n trong File Revit (kh\u00f4ng n\u1ea1p l\u1ea1i t\u1eeb \u1ed5 c\u1ee9ng).";
-				}
+				FamilyLoadStatus = "Đã nhận diện Family có sẵn trong File Revit (không nạp lại từ ổ cứng).";
 			}
 		}
 		catch (Exception ex)
 		{
-			StartupLogger.Log($"[VM] TryAutoLoadConfiguration EXCEPTION: {ex.Message}");
-			System.Diagnostics.Debug.WriteLine($"Lá»—i TryAutoLoadConfiguration: {ex.Message}");
+			StartupLogger.Log("[VM] TryAutoLoadConfiguration EXCEPTION: " + ex.Message);
 		}
 		StartupLogger.Log("[VM] TryAutoLoadConfiguration END");
 	}
 
 	private void ExecuteSaveProjectConfig()
 	{
+		//IL_0046: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			var state = ExportCurrentState();
+			ProjectStateConfig state = ExportCurrentState();
 			if (_eventHandler != null && _externalEvent != null)
 			{
 				_eventHandler.SetAction((UIApplication app) =>
 				{
-					var doc = app.ActiveUIDocument?.Document;
-					if (doc != null)
+					UIDocument activeUIDocument = app.ActiveUIDocument;
+					Document val = ((activeUIDocument != null) ? activeUIDocument.Document : null);
+					if (val != null)
 					{
-						bool ok = ProjectConfigStorageService.SaveToDocument(doc, state);
+						bool ok = ProjectConfigStorageService.SaveToDocument(val, state);
 						((DispatcherObject)System.Windows.Application.Current).Dispatcher.Invoke((Action)(() =>
 						{
 							if (ok)
 							{
-								System.Windows.MessageBox.Show("ÄÃ£ lÆ°u toÃ n bá»™ thÃ´ng sá»‘ vÃ  cáº¥u hÃ¬nh 4 Tab trá»±c tiáº¿p vÃ o file Revit (.rvt) thÃ nh cÃ´ng!\n\nLáº§n sau má»Ÿ file Revit nÃ y lÃªn, toÃ n bá»™ dá»¯ liá»‡u sáº½ tá»± Ä‘á»™ng khÃ´i phá»¥c 100%.", "LÆ°u cáº¥u hÃ¬nh Revit", MessageBoxButton.OK, MessageBoxImage.Asterisk);
-								ExecutionStatus = "ÄÃ£ lÆ°u cáº¥u hÃ¬nh vÃ o Revit Document thÃ nh cÃ´ng.";
+								System.Windows.MessageBox.Show("Ä\u0090Ã£ lÆ°u toÃ\u00a0n bá»™ thÃ\u00b4ng sá»‘ vÃ\u00a0 cáº¥u hÃ¬nh 4 Tab trá»±c tiáº¿p vÃ\u00a0o file Revit (.rvt) thÃ\u00a0nh cÃ\u00b4ng!\n\nLáº§n sau má»Ÿ file Revit nÃ\u00a0y lÃªn, toÃ\u00a0n bá»™ dá»\u00af liá»‡u sáº½ tá»± Ä‘á»™ng khÃ\u00b4i phá»¥c 100%.", "LÆ°u cáº¥u hÃ¬nh Revit", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+								ExecutionStatus = "Ä\u0090Ã£ lÆ°u cáº¥u hÃ¬nh vÃ\u00a0o Revit Document thÃ\u00a0nh cÃ\u00b4ng.";
 							}
 							else
 							{
 								ProjectConfigStorageService.SaveToLastSession(state);
-								System.Windows.MessageBox.Show("KhÃ´ng thá»ƒ ghi vÃ o file Revit (Document Ä‘ang báº­n hoáº·c chá»‰ Ä‘á»c). ÄÃ£ tá»± Ä‘á»™ng lÆ°u cáº¥u hÃ¬nh vÃ o bá»™ nhá»› mÃ¡y tÃ­nh cá»¥c bá»™.", "ThÃ´ng bÃ¡o", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+								System.Windows.MessageBox.Show("KhÃ\u00b4ng thá»ƒ ghi vÃ\u00a0o file Revit (Document Ä‘ang báº\u00adn hoáº·c chá»‰ Ä‘á»\u008dc). Ä\u0090Ã£ tá»± Ä‘á»™ng lÆ°u cáº¥u hÃ¬nh vÃ\u00a0o bá»™ nhá»› mÃ¡y tÃ\u00adnh cá»¥c bá»™.", "ThÃ\u00b4ng bÃ¡o", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 							}
 						}));
 					}
@@ -5808,26 +6856,23 @@ public class MainViewModel : ViewModelBase
 			}
 			else if (Doc != null && !Doc.IsReadOnly)
 			{
-				bool ok = ProjectConfigStorageService.SaveToDocument(Doc, state);
-				if (ok)
+				if (ProjectConfigStorageService.SaveToDocument(Doc, state))
 				{
-					System.Windows.MessageBox.Show("ÄÃ£ lÆ°u toÃ n bá»™ cáº¥u hÃ¬nh 4 Tab vÃ o file Revit thÃ nh cÃ´ng!", "LÆ°u cáº¥u hÃ¬nh", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+					System.Windows.MessageBox.Show("Ä\u0090Ã£ lÆ°u toÃ\u00a0n bá»™ cáº¥u hÃ¬nh 4 Tab vÃ\u00a0o file Revit thÃ\u00a0nh cÃ\u00b4ng!", "LÆ°u cáº¥u hÃ¬nh", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+					return;
 				}
-				else
-				{
-					ProjectConfigStorageService.SaveToLastSession(state);
-					System.Windows.MessageBox.Show("ÄÃ£ lÆ°u cáº¥u hÃ¬nh vÃ o bá»™ nhá»› mÃ¡y tÃ­nh cá»¥c bá»™!", "LÆ°u cáº¥u hÃ¬nh", MessageBoxButton.OK, MessageBoxImage.Asterisk);
-				}
+				ProjectConfigStorageService.SaveToLastSession(state);
+				System.Windows.MessageBox.Show("Ä\u0090Ã£ lÆ°u cáº¥u hÃ¬nh vÃ\u00a0o bá»™ nhá»› mÃ¡y tÃ\u00adnh cá»¥c bá»™!", "LÆ°u cáº¥u hÃ¬nh", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 			}
 			else
 			{
 				ProjectConfigStorageService.SaveToLastSession(state);
-				System.Windows.MessageBox.Show("ÄÃ£ lÆ°u cáº¥u hÃ¬nh vÃ o bá»™ nhá»› mÃ¡y tÃ­nh cá»¥c bá»™!", "LÆ°u cáº¥u hÃ¬nh", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+				System.Windows.MessageBox.Show("Ä\u0090Ã£ lÆ°u cáº¥u hÃ¬nh vÃ\u00a0o bá»™ nhá»› mÃ¡y tÃ\u00adnh cá»¥c bá»™!", "LÆ°u cáº¥u hÃ¬nh", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 			}
 		}
 		catch (Exception ex)
 		{
-			System.Windows.MessageBox.Show($"Lá»—i lÆ°u cáº¥u hÃ¬nh: {ex.Message}", "Lá»—i", MessageBoxButton.OK, MessageBoxImage.Hand);
+			System.Windows.MessageBox.Show("Lá»—i lÆ°u cáº¥u hÃ¬nh: " + ex.Message, "Lá»—i", MessageBoxButton.OK, MessageBoxImage.Hand);
 		}
 	}
 
@@ -5835,29 +6880,28 @@ public class MainViewModel : ViewModelBase
 	{
 		try
 		{
-			var dlg = new Microsoft.Win32.SaveFileDialog
+			Microsoft.Win32.SaveFileDialog saveFileDialog = new Microsoft.Win32.SaveFileDialog
 			{
-				Title = "Xuáº¥t Cáº¥u HÃ¬nh Dá»± Ãn Cá»‘ng Ra File Preset",
+				Title = "Xuáº¥t Cáº¥u HÃ¬nh Dá»± Ã\u0081n Cá»‘ng Ra File Preset",
 				Filter = "Cáº¥u hÃ¬nh Cá»‘ng (*.json)|*.json|Táº¥t cáº£ tá»‡p (*.*)|*.*",
 				FileName = "CauHinhCong_Preset.json"
 			};
-			if (dlg.ShowDialog() == true)
+			if (saveFileDialog.ShowDialog() == true)
 			{
-				var state = ExportCurrentState();
-				bool ok = ProjectConfigStorageService.ExportPresetToFile(dlg.FileName, state);
-				if (ok)
+				ProjectStateConfig config = ExportCurrentState();
+				if (ProjectConfigStorageService.ExportPresetToFile(saveFileDialog.FileName, config))
 				{
-					System.Windows.MessageBox.Show($"ÄÃ£ xuáº¥t file Preset cáº¥u hÃ¬nh thÃ nh cÃ´ng táº¡i:\n{dlg.FileName}\n\nBáº¡n cÃ³ thá»ƒ chia sáº» tá»‡p nÃ y cho Ä‘á»“ng nghiá»‡p hoáº·c dÃ¹ng cho dá»± Ã¡n khÃ¡c.", "Xuáº¥t Preset thÃ nh cÃ´ng", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+					System.Windows.MessageBox.Show("Ä\u0090Ã£ xuáº¥t file Preset cáº¥u hÃ¬nh thÃ\u00a0nh cÃ\u00b4ng táº¡i:\n" + saveFileDialog.FileName + "\n\nBáº¡n cÃ³ thá»ƒ chia sáº» tá»‡p nÃ\u00a0y cho Ä‘á»“ng nghiá»‡p hoáº·c dÃ¹ng cho dá»± Ã¡n khÃ¡c.", "Xuáº¥t Preset thÃ\u00a0nh cÃ\u00b4ng", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 				}
 				else
 				{
-					System.Windows.MessageBox.Show("KhÃ´ng thá»ƒ ghi file Preset.", "Lá»—i xuáº¥t Preset", MessageBoxButton.OK, MessageBoxImage.Hand);
+					System.Windows.MessageBox.Show("KhÃ\u00b4ng thá»ƒ ghi file Preset.", "Lá»—i xuáº¥t Preset", MessageBoxButton.OK, MessageBoxImage.Hand);
 				}
 			}
 		}
 		catch (Exception ex)
 		{
-			System.Windows.MessageBox.Show($"Lá»—i xuáº¥t preset: {ex.Message}", "Lá»—i", MessageBoxButton.OK, MessageBoxImage.Hand);
+			System.Windows.MessageBox.Show("Lá»—i xuáº¥t preset: " + ex.Message, "Lá»—i", MessageBoxButton.OK, MessageBoxImage.Hand);
 		}
 	}
 
@@ -5865,29 +6909,28 @@ public class MainViewModel : ViewModelBase
 	{
 		try
 		{
-			var dlg = new Microsoft.Win32.OpenFileDialog
+			Microsoft.Win32.OpenFileDialog openFileDialog = new Microsoft.Win32.OpenFileDialog
 			{
-				Title = "Náº¡p Cáº¥u HÃ¬nh Dá»± Ãn Cá»‘ng Tá»« File Preset",
+				Title = "Náº¡p Cáº¥u HÃ¬nh Dá»± Ã\u0081n Cá»‘ng Tá»« File Preset",
 				Filter = "Cáº¥u hÃ¬nh Cá»‘ng (*.json)|*.json|Táº¥t cáº£ tá»‡p (*.*)|*.*"
 			};
-			if (dlg.ShowDialog() == true)
+			if (openFileDialog.ShowDialog() == true)
 			{
-				var state = ProjectConfigStorageService.ImportPresetFromFile(dlg.FileName);
-				if (state != null)
+				ProjectStateConfig projectStateConfig = ProjectConfigStorageService.ImportPresetFromFile(openFileDialog.FileName);
+				if (projectStateConfig != null)
 				{
-					ApplyState(state);
-					System.Windows.MessageBox.Show($"ÄÃ£ náº¡p vÃ  Ã¡p dá»¥ng thÃ nh cÃ´ng toÃ n bá»™ cáº¥u hÃ¬nh tá»« file Preset:\n{Path.GetFileName(dlg.FileName)}", "Náº¡p Preset thÃ nh cÃ´ng", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+					ApplyState(projectStateConfig);
+					System.Windows.MessageBox.Show("Ä\u0090Ã£ náº¡p vÃ\u00a0 Ã¡p dá»¥ng thÃ\u00a0nh cÃ\u00b4ng toÃ\u00a0n bá»™ cáº¥u hÃ¬nh tá»« file Preset:\n" + Path.GetFileName(openFileDialog.FileName), "Náº¡p Preset thÃ\u00a0nh cÃ\u00b4ng", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 				}
 				else
 				{
-					System.Windows.MessageBox.Show("Tá»‡p Preset khÃ´ng há»£p lá»‡ hoáº·c bá»‹ lá»—i Ä‘á»‹nh dáº¡ng.", "Lá»—i náº¡p Preset", MessageBoxButton.OK, MessageBoxImage.Hand);
+					System.Windows.MessageBox.Show("Tá»‡p Preset khÃ\u00b4ng há»£p lá»‡ hoáº·c bá»‹ lá»—i Ä‘á»‹nh dáº¡ng.", "Lá»—i náº¡p Preset", MessageBoxButton.OK, MessageBoxImage.Hand);
 				}
 			}
 		}
 		catch (Exception ex)
 		{
-			System.Windows.MessageBox.Show($"Lá»—i náº¡p preset: {ex.Message}", "Lá»—i", MessageBoxButton.OK, MessageBoxImage.Hand);
+			System.Windows.MessageBox.Show("Lá»—i náº¡p preset: " + ex.Message, "Lá»—i", MessageBoxButton.OK, MessageBoxImage.Hand);
 		}
 	}
-	#endregion
 }

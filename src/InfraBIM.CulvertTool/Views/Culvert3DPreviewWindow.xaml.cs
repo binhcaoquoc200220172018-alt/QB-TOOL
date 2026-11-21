@@ -38,6 +38,7 @@ namespace InfraBIM.CulvertTool.Views
         private void SetTop_Click(object sender, RoutedEventArgs e) => Viewport3DControl.SetViewTop();
         private void SetRight_Click(object sender, RoutedEventArgs e) => Viewport3DControl.SetViewRight();
         private void ToggleBedding_Click(object sender, RoutedEventArgs e) => Viewport3DControl.ToggleBedding();
+        private void ToggleDim_Click(object sender, RoutedEventArgs e) => Viewport3DControl.ToggleElevationDims();
 
         private void ZoomIn_Click(object sender, RoutedEventArgs e) => ZoomInInternal();
         private void ZoomOut_Click(object sender, RoutedEventArgs e) => ZoomOutInternal();

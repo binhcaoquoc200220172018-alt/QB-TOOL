@@ -48,6 +48,8 @@ namespace InfraBIM.CulvertTool.Services
                     L_Ngam_San = row.L_Ngam_San,
                     L_SGC_TL = row.L_SGC_TL,
                     L_SGC_HL = row.L_SGC_HL,
+                    Z_SGC_TL = row.Z_SGC_TL,
+                    Z_SGC_HL = row.Z_SGC_HL,
                     SoHopNoi = row.SoHopNoi,
                     Dist_HN1 = row.Dist_HN1,
                     Dist_HN2 = row.Dist_HN2,
@@ -61,6 +63,9 @@ namespace InfraBIM.CulvertTool.Services
                     AssignedProfileName = row.AssignedProfileName,
                     ActiveParamName = row.ActiveParamName,
                     ActiveParamValue = row.ActiveParamValue,
+                    CustomPattern = !string.IsNullOrEmpty(row.CustomPattern) ? row.CustomPattern : (vm.RoundCulvertCustomPatternText ?? ""),
+                    OffsetMoiNoi = row.OffsetMoiNoi > 0 ? row.OffsetMoiNoi : (RoundCulvertService.IsDoublePipe(row) ? vm.OffsetMoiNoi_RoundDouble : vm.OffsetMoiNoi_RoundSingle),
+                    IsReversedPlacement = row.IsReversedPlacement || vm.IsReverseRoundPlacement,
                     ParameterOverrides = row.ParameterOverrides != null ? new Dictionary<string, string>(row.ParameterOverrides, StringComparer.OrdinalIgnoreCase) : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 };
 
@@ -90,6 +95,8 @@ namespace InfraBIM.CulvertTool.Services
                         L_Ngam_San = row.L_Ngam_San,
                         L_SGC_TL = row.L_SGC_TL,
                         L_SGC_HL = row.L_SGC_HL,
+                        Z_SGC_TL = row.Z_SGC_TL,
+                        Z_SGC_HL = row.Z_SGC_HL,
                         SoHopNoi = row.SoHopNoi,
                         Dist_HN1 = row.Dist_HN1,
                         Dist_HN2 = row.Dist_HN2,
@@ -100,6 +107,9 @@ namespace InfraBIM.CulvertTool.Services
                         Y1 = 0,
                         X2 = lenM,
                         Y2 = 0,
+                        CustomPattern = !string.IsNullOrEmpty(row.CustomPattern) ? row.CustomPattern : (vm.RoundCulvertCustomPatternText ?? ""),
+                        OffsetMoiNoi = row.OffsetMoiNoi > 0 ? row.OffsetMoiNoi : (RoundCulvertService.IsDoublePipe(row) ? vm.OffsetMoiNoi_RoundDouble : vm.OffsetMoiNoi_RoundSingle),
+                        IsReversedPlacement = row.IsReversedPlacement || vm.IsReverseRoundPlacement,
                         ParameterOverrides = row.ParameterOverrides
                     };
                     p1 = CoordinateService.ConvertVN2000ToRevitInternal(doc, evalRow.X1, evalRow.Y1, evalRow.Z1, useSurveyPoint);
@@ -124,20 +134,27 @@ namespace InfraBIM.CulvertTool.Services
                     t.Start();
                     try
                     {
-                        bool isRowCastInPlace = vm.IsCastInPlaceMode ||
+                        bool isRowRound = RoundCulvertService.IsRoundCulvert(evalRow);
+                        bool isRowDoubleRound = RoundCulvertService.IsDoublePipe(evalRow);
+
+                        bool isRowCastInPlace = !isRowRound && (vm.IsCastInPlaceMode ||
                             (evalRow.SoCua > 1) ||
                             (evalRow.CauKien?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
                             (evalRow.CauKien?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
                             (evalRow.LoaiCong?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
                             (evalRow.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0) ||
                             (evalRow.GhiChu?.IndexOf("đổ tại chỗ", StringComparison.OrdinalIgnoreCase) >= 0) ||
-                            (evalRow.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0);
+                            (evalRow.GhiChu?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0));
 
-                        var barrelSource = (isRowTechnical && vm.TechnicalBarrelComponents.Count > 0)
-                            ? vm.TechnicalBarrelComponents.ToList()
-                            : (isRowCastInPlace && vm.CastInPlaceBarrelComponents.Count > 0)
-                                ? vm.CastInPlaceBarrelComponents.ToList()
-                                : vm.BarrelComponents.ToList();
+                        var barrelSource = isRowRound
+                            ? ((isRowDoubleRound && vm.RoundDoubleBarrelComponents.Count > 0)
+                                ? vm.RoundDoubleBarrelComponents.ToList()
+                                : vm.RoundSingleBarrelComponents.ToList())
+                            : (isRowTechnical && vm.TechnicalBarrelComponents.Count > 0)
+                                ? vm.TechnicalBarrelComponents.ToList()
+                                : (isRowCastInPlace && vm.CastInPlaceBarrelComponents.Count > 0)
+                                    ? vm.CastInPlaceBarrelComponents.ToList()
+                                    : vm.BarrelComponents.ToList();
                         var manholeSource = (isRowTechnical && vm.TechnicalManholeComponents.Count > 0)
                             ? vm.TechnicalManholeComponents.ToList()
                             : vm.ManholeComponents.ToList();
@@ -156,9 +173,17 @@ namespace InfraBIM.CulvertTool.Services
                         var rowDnOutlets = new List<FamilyInstance>();
                         var rowCipDetails = new CulvertCoreEngine.CastInPlaceDetails();
 
-                        var curArrayMode = (vm.SelectedArrayModeIndex == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay;
-                        double curLStd = isRowCastInPlace ? vm.L_Std_CastInPlace : vm.L_Std;
-                        double curKheHo = isRowCastInPlace ? vm.Khe_Ho_CastInPlace : vm.Khe_Ho;
+                        var curArrayMode = isRowRound
+                            ? (isRowDoubleRound
+                                ? ((vm.SelectedArrayModeIndex_RoundDouble == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay)
+                                : ((vm.SelectedArrayModeIndex_RoundSingle == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay))
+                            : ((vm.SelectedArrayModeIndex == 0) ? CulvertArrayMode.CenterOut : CulvertArrayMode.OneWay);
+                        double curLStd = isRowRound
+                            ? (isRowDoubleRound ? vm.L_Std_RoundDouble : vm.L_Std_RoundSingle)
+                            : (isRowCastInPlace ? vm.L_Std_CastInPlace : vm.L_Std);
+                        double curKheHo = isRowRound
+                            ? (isRowDoubleRound ? vm.Khe_Ho_RoundDouble : vm.Khe_Ho_RoundSingle)
+                            : (isRowCastInPlace ? vm.Khe_Ho_CastInPlace : vm.Khe_Ho);
 
                         CulvertCoreEngine.BuildSingleCulvertV2(
                             doc,
@@ -188,16 +213,23 @@ namespace InfraBIM.CulvertTool.Services
                             outDownstreamOutlets: rowDnOutlets,
                             outCipDetails: rowCipDetails);
 
-                        CulvertCoreEngine.ExecuteAllCulvertCuts(
-                            doc,
-                            isRowCastInPlace,
-                            rowUpOutlets,
-                            rowDnOutlets,
-                            outCreatedBarrels,
-                            outCreatedBeddings,
-                            outCreatedManholes,
-                            rowCipDetails,
-                            outCreatedAprons);
+                        if (isRowRound)
+                        {
+                            RoundCulvertService.ExecuteRoundCulvertCuts(doc, outCreatedOutlets, outCreatedBarrels, outCreatedBeddings);
+                        }
+                        else
+                        {
+                            CulvertCoreEngine.ExecuteAllCulvertCuts(
+                                doc,
+                                isRowCastInPlace,
+                                rowUpOutlets,
+                                rowDnOutlets,
+                                outCreatedBarrels,
+                                outCreatedBeddings,
+                                outCreatedManholes,
+                                rowCipDetails,
+                                outCreatedAprons);
+                        }
 
                         try { doc.Regenerate(); } catch { }
 
@@ -330,20 +362,68 @@ namespace InfraBIM.CulvertTool.Services
 
                 if (instances.Count == 0) return false;
 
-                // 3. Lọc các FamilyInstance cấu kiện liên quan đến cống
+                // 3. Lọc các FamilyInstance cấu kiện liên quan đến cống (Ưu tiên Mark "CN-{STT}" hoặc Comments)
+                string markPrefix = $"CN-{row.STT}";
+                string markNum = $"{row.STT}";
+                string commentPrefix = $"Cống {row.STT}";
+                string commentPrefixNoAccent = $"Cong {row.STT}";
+
                 var culvertInstances = new List<FamilyInstance>();
                 foreach (var inst in instances)
                 {
                     string fn = inst.Symbol?.FamilyName ?? "";
                     if (!IsCulvertFamily(fn)) continue;
 
+                    string instMark = inst.LookupParameter("Mark")?.AsString() ?? "";
+                    string instComments = inst.LookupParameter("Comments")?.AsString() ?? "";
+
+                    bool matchMeta = (!string.IsNullOrEmpty(instMark) && (instMark.Equals(markPrefix, StringComparison.OrdinalIgnoreCase) || instMark.Equals(markNum, StringComparison.OrdinalIgnoreCase))) ||
+                                     (!string.IsNullOrEmpty(instComments) && (instComments.Contains(commentPrefix, StringComparison.OrdinalIgnoreCase) || instComments.Contains(commentPrefixNoAccent, StringComparison.OrdinalIgnoreCase)));
+
+                    if (matchMeta)
+                    {
+                        culvertInstances.Add(inst);
+                        continue;
+                    }
+
                     // Kiểm tra vị trí nằm gần tim cống P1-P2
                     if (inst.Location is LocationPoint lp)
                     {
                         double distFeet = DistancePointToSegment(lp.Point, p1, p2);
-                        if (distFeet > searchRadiusFeet) continue;
+                        if (distFeet <= searchRadiusFeet)
+                        {
+                            culvertInstances.Add(inst);
+                        }
                     }
-                    culvertInstances.Add(inst);
+                    else
+                    {
+                        culvertInstances.Add(inst);
+                    }
+                }
+
+                // Fallback nếu chưa tìm thấy qua BoundingBox: Quét toàn bộ Document theo Mark / Comments
+                if (culvertInstances.Count == 0)
+                {
+                    var allFamInsts = new FilteredElementCollector(doc)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>();
+
+                    foreach (var inst in allFamInsts)
+                    {
+                        string fn = inst.Symbol?.FamilyName ?? "";
+                        if (!IsCulvertFamily(fn)) continue;
+
+                        string instMark = inst.LookupParameter("Mark")?.AsString() ?? "";
+                        string instComments = inst.LookupParameter("Comments")?.AsString() ?? "";
+
+                        bool matchMeta = (!string.IsNullOrEmpty(instMark) && (instMark.Equals(markPrefix, StringComparison.OrdinalIgnoreCase) || instMark.Equals(markNum, StringComparison.OrdinalIgnoreCase))) ||
+                                         (!string.IsNullOrEmpty(instComments) && (instComments.Contains(commentPrefix, StringComparison.OrdinalIgnoreCase) || instComments.Contains(commentPrefixNoAccent, StringComparison.OrdinalIgnoreCase)));
+
+                        if (matchMeta)
+                        {
+                            culvertInstances.Add(inst);
+                        }
+                    }
                 }
 
                 if (culvertInstances.Count == 0) return false;
@@ -384,6 +464,7 @@ namespace InfraBIM.CulvertTool.Services
             string upper = fn.ToUpperInvariant();
             return upper.Contains("TNN") || upper.Contains("CONG") || upper.Contains("CỐNG") ||
                    upper.Contains("THAN") || upper.Contains("THÂN") || upper.Contains("CUA XA") || upper.Contains("CỬA XẢ") ||
+                   upper.Contains("MOI NOI") || upper.Contains("MỐI NỐI") || upper.Contains("MOI_NOI") ||
                    upper.Contains("HOP NOI") || upper.Contains("HỘP NỐI") || upper.Contains("HO GA") || upper.Contains("HỐ GA") ||
                    upper.Contains("SGC") || upper.Contains("SAN GIA CO") || upper.Contains("SÂN GIA CỐ") ||
                    upper.Contains("BT LOT") || upper.Contains("DA DAM") || upper.Contains("BTL") || upper.Contains("DDD") ||
@@ -416,7 +497,7 @@ namespace InfraBIM.CulvertTool.Services
                      upper.Contains("TAM DAN") || upper.Contains("TẤM ĐAN") || upper.Contains("NAP") || upper.Contains("NẮP") || 
                      upper.Contains("THAN GIENG") || upper.Contains("THÂN GIẾNG") || upper.Contains("CKT"))
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
-            else if (upper.Contains("CUA XA") || upper.Contains("CỬA XẢ") || upper.Contains("CX") || upper.Contains("SAN CONG") || upper.Contains("TUONG DAU") || upper.Contains("TUONG CANH"))
+            else if (upper.Contains("CUA XA") || upper.Contains("CỬA XẢ") || upper.Contains("CX") || upper.Contains("SAN CONG") || upper.Contains("TUONG DAU") || upper.Contains("TUONG CANH") || upper.Contains("MOI NOI") || upper.Contains("MỐI NỐI") || upper.Contains("MOI_NOI"))
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2
             else if (upper.Contains("SAN GIA CO") || upper.Contains("SÂN GIA CỐ") || upper.Contains("SGC"))
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Xanh dương (#0284C7) như Hình 2

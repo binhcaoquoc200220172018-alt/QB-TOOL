@@ -24,3 +24,5 @@ inspect_culvert.txt
 *.00*.rvt
 
 .agents/
+*_wpftmp.csproj
+staging_package/

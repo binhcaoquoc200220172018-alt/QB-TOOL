@@ -80,6 +80,7 @@ namespace InfraBIM.CulvertTool.Views
         private bool _isOrbiting = false;
         private bool _isPanning = false;
         private bool _showBedding = true;
+        private bool _showElevationDims = false;
 
         // UI Overlay Elements
         private readonly TextBlock _hudTitle;
@@ -336,6 +337,12 @@ namespace InfraBIM.CulvertTool.Views
             RebuildModel();
         }
 
+        public void ToggleElevationDims()
+        {
+            _showElevationDims = !_showElevationDims;
+            RebuildModel();
+        }
+
         private void OnMouseDown(object sender, MouseButtonEventArgs e)
         {
             _lastMousePos = e.GetPosition(this);
@@ -437,11 +444,10 @@ namespace InfraBIM.CulvertTool.Views
             _hudInfo.Text = $"STT {geom.STT}: {geom.LyTrinh} [{geom.LoaiCong}] - L={totalL:N2}m";
 
             // 0. NẾU CÓ MÔ HÌNH THỰC TẾ TRÍCH XUẤT TỪ REVIT DOCUMENT (REAL REVIT MESHES - YÊU CẦU 1 & 2)
-            if (geom.RealRevitMeshes != null && geom.RealRevitMeshes.Count > 0)
-            {
-                _hudTitle.Text = "🧊 3D REVIT THỰC TẾ (FAMILY GEOMETRY)";
-                _hudInfo.Text = $"STT {geom.STT}: {geom.LyTrinh} ({geom.RealRevitMeshes.Count} Solid/Mesh)";
+            bool hasRealMeshes = geom.RealRevitMeshes != null && geom.RealRevitMeshes.Count > 0;
 
+            if (hasRealMeshes)
+            {
                 foreach (var (mesh, brush) in geom.RealRevitMeshes)
                 {
                     var matGrp = new MaterialGroup();
@@ -450,6 +456,9 @@ namespace InfraBIM.CulvertTool.Views
                     var model = new GeometryModel3D(mesh, matGrp) { BackMaterial = matGrp };
                     _rootModelGroup.Children.Add(model);
                 }
+
+                _hudTitle.Text = "🧊 3D REVIT THỰC TẾ (FAMILY GEOMETRY)";
+                _hudInfo.Text = $"STT {geom.STT}: {geom.LyTrinh} ({geom.RealRevitMeshes.Count} Solid/Mesh)";
 
                 // Vẽ đường tim cống Magenta xuyên tâm như trong Revit Hình 2
                 BuildCenterline3D(_rootModelGroup, totalL, bH, Drop);
@@ -484,26 +493,48 @@ namespace InfraBIM.CulvertTool.Views
                     ? MatStdSegment
                     : (seg.LengthM < geom.L_Min ? MatWarnSegment : MatCompSegment);
 
-                // Bản đáy cống (Bottom Slab) vuốt dốc
-                AddSlopedBoxMesh(_rootModelGroup, x0, y0 - tSlab, y0, x1, y1 - tSlab, y1, -wOut / 2.0, wOut / 2.0, segMat);
-
-                // Bản nắp cống (Top Slab) vuốt dốc
-                AddSlopedBoxMesh(_rootModelGroup, x0, y0 + bH, y0 + bH + tSlab, x1, y1 + bH, y1 + bH + tSlab, -wOut / 2.0, wOut / 2.0, segMat);
-
-                // Vách bên trái (Left Sidewall)
-                AddSlopedBoxMesh(_rootModelGroup, x0, y0, y0 + bH, x1, y1, y1 + bH, -wOut / 2.0, -wOut / 2.0 + tWall, segMat);
-
-                // Vách bên phải (Right Sidewall)
-                AddSlopedBoxMesh(_rootModelGroup, x0, y0, y0 + bH, x1, y1, y1 + bH, wOut / 2.0 - tWall, wOut / 2.0, segMat);
-
-                // Nếu là cống nhiều cửa (nCua >= 2), thêm các vách ngăn giữa
-                if (nCua >= 2 && !geom.IsRoundCulvert)
+                if (geom.IsRoundCulvert)
                 {
-                    for (int c = 1; c < nCua; c++)
+                    double rIn = bW / 2.0;
+                    if (rIn < 0.1) rIn = 0.75;
+                    double rOut = rIn + (tWall > 0.05 ? tWall : 0.14); // Bề dày thành cống tròn
+                    double yc0 = y0 + rIn;
+                    double yc1 = y1 + rIn;
+
+                    if (geom.IsDoublePipe)
                     {
-                        double zWallStart = -wOut / 2.0 + c * (bW + tWall);
-                        double zWallEnd = zWallStart + tWall;
-                        AddSlopedBoxMesh(_rootModelGroup, x0, y0, y0 + bH, x1, y1, y1 + bH, zWallStart, zWallEnd, segMat);
+                        double halfS = (geom.DoublePipeSpacingM > 0.1 ? geom.DoublePipeSpacingM : 2.12) / 2.0;
+                        AddHollowCylinderMesh(_rootModelGroup, x0, yc0, -halfS, x1, yc1, rIn, rOut, segMat);
+                        AddHollowCylinderMesh(_rootModelGroup, x0, yc0, halfS, x1, yc1, rIn, rOut, segMat);
+                    }
+                    else
+                    {
+                        AddHollowCylinderMesh(_rootModelGroup, x0, yc0, 0.0, x1, yc1, rIn, rOut, segMat);
+                    }
+                }
+                else
+                {
+                    // Bản đáy cống (Bottom Slab) vuốt dốc
+                    AddSlopedBoxMesh(_rootModelGroup, x0, y0 - tSlab, y0, x1, y1 - tSlab, y1, -wOut / 2.0, wOut / 2.0, segMat);
+
+                    // Bản nắp cống (Top Slab) vuốt dốc
+                    AddSlopedBoxMesh(_rootModelGroup, x0, y0 + bH, y0 + bH + tSlab, x1, y1 + bH, y1 + bH + tSlab, -wOut / 2.0, wOut / 2.0, segMat);
+
+                    // Vách bên trái (Left Sidewall)
+                    AddSlopedBoxMesh(_rootModelGroup, x0, y0, y0 + bH, x1, y1, y1 + bH, -wOut / 2.0, -wOut / 2.0 + tWall, segMat);
+
+                    // Vách bên phải (Right Sidewall)
+                    AddSlopedBoxMesh(_rootModelGroup, x0, y0, y0 + bH, x1, y1, y1 + bH, wOut / 2.0 - tWall, wOut / 2.0, segMat);
+
+                    // Nếu là cống nhiều cửa (nCua >= 2), thêm các vách ngăn giữa
+                    if (nCua >= 2)
+                    {
+                        for (int c = 1; c < nCua; c++)
+                        {
+                            double zWallStart = -wOut / 2.0 + c * (bW + tWall);
+                            double zWallEnd = zWallStart + tWall;
+                            AddSlopedBoxMesh(_rootModelGroup, x0, y0, y0 + bH, x1, y1, y1 + bH, zWallStart, zWallEnd, segMat);
+                        }
                     }
                 }
 
@@ -514,7 +545,28 @@ namespace InfraBIM.CulvertTool.Views
                     double jx1 = seg.EndDistanceM + (jointGap / 2.0);
                     double jy0 = -Drop(jx0) - ngamSan;
                     double jy1 = -Drop(jx1) - ngamSan;
-                    AddSlopedBoxMesh(_rootModelGroup, jx0, jy0 - tSlab - 0.02, jy0 + bH + tSlab + 0.02, jx1, jy1 - tSlab - 0.02, jy1 + bH + tSlab + 0.02, -wOut / 2.0 - 0.02, wOut / 2.0 + 0.02, MatJoint);
+                    if (geom.IsRoundCulvert)
+                    {
+                        double rIn = bW / 2.0;
+                        if (rIn < 0.1) rIn = 0.75;
+                        double rOut = rIn + (tWall > 0.05 ? tWall : 0.14) + 0.02;
+                        double jyc0 = jy0 + rIn;
+                        double jyc1 = jy1 + rIn;
+                        if (geom.IsDoublePipe)
+                        {
+                            double halfS = (geom.DoublePipeSpacingM > 0.1 ? geom.DoublePipeSpacingM : 2.12) / 2.0;
+                            AddHollowCylinderMesh(_rootModelGroup, jx0, jyc0, -halfS, jx1, jyc1, rIn, rOut, MatJoint);
+                            AddHollowCylinderMesh(_rootModelGroup, jx0, jyc0, halfS, jx1, jyc1, rIn, rOut, MatJoint);
+                        }
+                        else
+                        {
+                            AddHollowCylinderMesh(_rootModelGroup, jx0, jyc0, 0.0, jx1, jyc1, rIn, rOut, MatJoint);
+                        }
+                    }
+                    else
+                    {
+                        AddSlopedBoxMesh(_rootModelGroup, jx0, jy0 - tSlab - 0.02, jy0 + bH + tSlab + 0.02, jx1, jy1 - tSlab - 0.02, jy1 + bH + tSlab + 0.02, -wOut / 2.0 - 0.02, wOut / 2.0 + 0.02, MatJoint);
+                    }
                 }
             }
 
@@ -556,19 +608,33 @@ namespace InfraBIM.CulvertTool.Views
 
             if (!isTech)
             {
-                // 4. VẼ CỬA XẢ THƯỢNG LƯU & HẠ LƯU (TƯỜNG ĐẦU, CỔNG PORTAL & TƯỜNG CÁNH TAM GIÁC MÀU XANH)
+                double curLHeadwall = geom.CX_L1 > 0.05 ? geom.CX_L1 : 1.30;
+                double curLSanCong = geom.CX_L_SanCong > 0.05 ? geom.CX_L_SanCong : 2.16;
+
+                // 4. VẼ CỬA XẢ HOẶC MỐI NỐI ĐẤU NỐI CỐNG HIỆN TRẠNG (P1 & P2)
                 // A. Thượng lưu (P1, X = 0)
-                BuildInletOutlet3D(_rootModelGroup, 0.0, 0.0, wOut, bH, tSlab, tWall, isUpstream: true, _showBedding);
+                if (geom.IsConnectionJointP1)
+                {
+                    double xJointP1 = geom.OffsetMoiNoi;
+                    BuildConnectionJoint3D(_rootModelGroup, xJointP1, -Drop(xJointP1), wOut, bH, isUpstream: true);
+                }
+                else
+                {
+                    BuildInletOutlet3D(_rootModelGroup, 0.0, 0.0, wOut, bH, tSlab, tWall, isUpstream: true, _showBedding, curLHeadwall, curLSanCong);
+                    BuildApronAssembly3D(_rootModelGroup, 0.0, 0.0, wOut, tSlab, isUpstream: true, _showBedding, geom.L_SGC_TL, curLHeadwall, curLSanCong);
+                }
 
                 // B. Hạ lưu (P2, X = totalL)
-                BuildInletOutlet3D(_rootModelGroup, totalL, -Drop(totalL), wOut, bH, tSlab, tWall, isUpstream: false, _showBedding);
-
-                // 5. VẼ SÂN GIA CỐ & DẦM CHÂN KHAY KÈM LỚP BÊ TÔNG LÓT (KHỚP 100% FAMILY TNN_CX_SAN GIA CO VÀ BẢN VẼ CAD)
-                // A. Thượng lưu (nối liền mạch từ mép sân cống thượng lưu ra L_SGC_TL)
-                BuildApronAssembly3D(_rootModelGroup, 0.0, 0.0, wOut, tSlab, isUpstream: true, _showBedding, geom.L_SGC_TL);
-
-                // B. Hạ lưu (nối liền mạch từ mép sân cống hạ lưu ra L_SGC_HL)
-                BuildApronAssembly3D(_rootModelGroup, totalL, -Drop(totalL), wOut, tSlab, isUpstream: false, _showBedding, geom.L_SGC_HL);
+                if (geom.IsConnectionJointP2)
+                {
+                    double xJointP2 = totalL - geom.OffsetMoiNoi;
+                    BuildConnectionJoint3D(_rootModelGroup, xJointP2, -Drop(xJointP2), wOut, bH, isUpstream: false);
+                }
+                else
+                {
+                    BuildInletOutlet3D(_rootModelGroup, totalL, -Drop(totalL), wOut, bH, tSlab, tWall, isUpstream: false, _showBedding, curLHeadwall, curLSanCong);
+                    BuildApronAssembly3D(_rootModelGroup, totalL, -Drop(totalL), wOut, tSlab, isUpstream: false, _showBedding, geom.L_SGC_HL, curLHeadwall, curLSanCong);
+                }
             }
 
             // 6. VẼ BÊ TÔNG LÓT & ĐÁ DĂM ĐỆM (NGẮT QUÃNG CHUẨN XÁC TẠI HỘP NỐI)
@@ -581,12 +647,23 @@ namespace InfraBIM.CulvertTool.Views
             BuildFlowArrow(_rootModelGroup, totalL, bH, Drop);
         }
 
-        private static void BuildInletOutlet3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double bH, double tSlab, double tWall, bool isUpstream, bool showBedding)
+        private static void BuildConnectionJoint3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double bH, bool isUpstream)
+        {
+            // YÊU CẦU CUỐI CÙNG (Người dùng đã chốt): Điểm 1 cách vô trong 1 đoạn OffsetMoiNoi (0.4m), Điểm 2 tại điểm Excel (0.0)
+            // - Thượng lưu P1: Đai mối nối nằm từ x = 0.0 đến Điểm 1 tại x = xCenter (OffsetMoiNoi)
+            // - Hạ lưu P2: Đai mối nối nằm từ Điểm 1 tại x = xCenter (totalL - OffsetMoiNoi) đến x = totalL
+            double x0 = isUpstream ? 0.0 : xCenter;
+            double x1 = isUpstream ? xCenter : (xCenter + 0.40);
+            double collarOver = 0.15; // Đai bê tông mối nối dày hơn thân cống 15cm
+
+            // Vẽ khối đai mối nối bê tông bao quanh tim cống vươn ra ngoài
+            AddSolidBoxMesh(group, x0, yCenter - 0.20, -wOut / 2.0 - collarOver, x1, yCenter + bH + collarOver, wOut / 2.0 + collarOver, MatHeadwall);
+        }
+
+        private static void BuildInletOutlet3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double bH, double tSlab, double tWall, bool isUpstream, bool showBedding, double lHeadwall = 1.30, double lSanCong = 2.16)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            // Chiều dài bản đáy sân cống khớp chuẩn Revit (CX_L1 + CX_L san cong = 1.30m + 2.16m = 3.46m)
-            double lSanCong = 2.16;
-            double lHeadwall = 1.30;
+            // Chiều dài bản đáy sân cống khớp chuẩn theo thiết lập (CX_L1 + CX_L san cong)
             double totalCX = lHeadwall + lSanCong;
             double xApronEdge = xCenter + (dir * totalCX);
             double postW = 0.35;
@@ -728,10 +805,10 @@ namespace InfraBIM.CulvertTool.Views
             }
         }
 
-        private static void BuildApronAssembly3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double tSlab, bool isUpstream, bool showBedding, double sgcLengthM = 3.0)
+        private static void BuildApronAssembly3D(Model3DGroup group, double xCenter, double yCenter, double wOut, double tSlab, bool isUpstream, bool showBedding, double sgcLengthM = 3.0, double lHeadwall = 1.30, double lSanCong = 2.16)
         {
             double dir = isUpstream ? -1.0 : 1.0;
-            double totalCX = 3.46; // Chiều dài sân cống chính khớp 100% Revit & CAD (CX_L1 + CX_L san cong = 1.30 + 2.16 = 3.46m)
+            double totalCX = lHeadwall + lSanCong; // Chiều dài sân cống chính khớp 100% Revit & CAD (CX_L1 + CX_L san cong)
             double xApronEdge = xCenter + (dir * totalCX); // Điểm tiếp giáp 0 gap giữa Sân cống và Sân gia cố
 
             double postW = 0.35;
@@ -815,8 +892,9 @@ namespace InfraBIM.CulvertTool.Views
         {
             double ngamSan = geom.L_Ngam;
             double cxTdDdW = geom.CX_TD_DD_W > 0.05 ? geom.CX_TD_DD_W : 0.40;
-            double xStartBedding = cxTdDdW;
-            double xEndBedding = totalL - cxTdDdW;
+            // YÊU CẦU CUỐI CÙNG (Người dùng đã chốt): BTL và đá dăm đệm tiếp xúc với mối nối tại Điểm 1 (cách vô geom.OffsetMoiNoi = 0.40m)
+            double xStartBedding = geom.IsConnectionJointP1 ? geom.OffsetMoiNoi : cxTdDdW;
+            double xEndBedding = geom.IsConnectionJointP2 ? (totalL - geom.OffsetMoiNoi) : (totalL - cxTdDdW);
             if (xEndBedding <= xStartBedding) return;
 
             bool isCip = geom.LoaiCong?.IndexOf("do tai cho", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -1011,6 +1089,47 @@ namespace InfraBIM.CulvertTool.Views
 
             var model = new GeometryModel3D(mesh, mat) { BackMaterial = mat };
             group.Children.Add(model);
+        }
+
+        private static void AddHollowCylinderMesh(
+            Model3DGroup group,
+            double x0, double yc0, double zc,
+            double x1, double yc1,
+            double rIn, double rOut,
+            Material mat,
+            int segments = 24)
+        {
+            var mesh = new MeshGeometry3D();
+            double dAngle = 2.0 * Math.PI / segments;
+            for (int i = 0; i < segments; i++)
+            {
+                double a0 = i * dAngle;
+                double a1 = (i + 1) * dAngle;
+                double cos0 = Math.Cos(a0), sin0 = Math.Sin(a0);
+                double cos1 = Math.Cos(a1), sin1 = Math.Sin(a1);
+
+                // Vỏ ngoài (Outer surface)
+                Point3D o0 = new Point3D(x0, yc0 + rOut * sin0, zc + rOut * cos0);
+                Point3D o1 = new Point3D(x0, yc0 + rOut * sin1, zc + rOut * cos1);
+                Point3D o2 = new Point3D(x1, yc1 + rOut * sin1, zc + rOut * cos1);
+                Point3D o3 = new Point3D(x1, yc1 + rOut * sin0, zc + rOut * cos0);
+                AddQuad(mesh, o0, o1, o2, o3);
+
+                // Lòng trong (Inner surface)
+                Point3D in0 = new Point3D(x0, yc0 + rIn * sin0, zc + rIn * cos0);
+                Point3D in1 = new Point3D(x0, yc0 + rIn * sin1, zc + rIn * cos1);
+                Point3D in2 = new Point3D(x1, yc1 + rIn * sin1, zc + rIn * cos1);
+                Point3D in3 = new Point3D(x1, yc1 + rIn * sin0, zc + rIn * cos0);
+                AddQuad(mesh, in0, in3, in2, in1);
+
+                // Mặt đầu x0 (End cap x0)
+                AddQuad(mesh, in0, in1, o1, o0);
+
+                // Mặt đầu x1 (End cap x1)
+                AddQuad(mesh, o3, o2, in2, in3);
+            }
+            if (mesh.CanFreeze) mesh.Freeze();
+            group.Children.Add(new GeometryModel3D(mesh, mat) { BackMaterial = mat });
         }
 
         private static void AddTriangularWingWall(Model3DGroup group, Point3D pBotInner, Point3D pBotOuter, Point3D pTopInner, Vector3D thickOffset, Material mat)

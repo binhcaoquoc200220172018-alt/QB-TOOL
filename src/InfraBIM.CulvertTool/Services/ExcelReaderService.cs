@@ -113,12 +113,24 @@ namespace InfraBIM.CulvertTool.Services
 
                 int FindCol(string[] aliases, int fallbackCol)
                 {
+                    // Pass 1: So khớp tuyệt đối (Exact match) trước
                     foreach (var alias in aliases)
                     {
                         string aUpper = alias.ToUpperInvariant();
                         foreach (var kvp in colMap)
                         {
-                            if (kvp.Key == aUpper || kvp.Key.Contains(aUpper))
+                            if (kvp.Key == aUpper)
+                                return kvp.Value;
+                        }
+                    }
+                    // Pass 2: So khớp chứa (chỉ dành cho alias từ 3 ký tự trở lên để tránh nhầm "S" với "STT", "SOCUA")
+                    foreach (var alias in aliases)
+                    {
+                        if (alias.Length < 3) continue;
+                        string aUpper = alias.ToUpperInvariant();
+                        foreach (var kvp in colMap)
+                        {
+                            if (kvp.Key.Contains(aUpper))
                                 return kvp.Value;
                         }
                     }
@@ -132,6 +144,7 @@ namespace InfraBIM.CulvertTool.Services
                 int offsetCK = (colCauKien > 0) ? 1 : 0;
                 int colSoCua = FindCol(new[] { "SOCUA", "SỐ CỬA", "SO CUA" }, 4 + offsetCK);
                 int colKhauDo = FindCol(new[] { "KHAUDO", "KHẨU ĐỘ", "KHAU DO" }, 5 + offsetCK);
+                int colKC_Tim = FindCol(new[] { "KC_TIM", "KCTIM", "KC TIM", "KHOANGCACHTIM", "KHOẢNG CÁCH TIM", "KHOANG CACH TIM", "KC_TIM_M", "KC TIM M", "S" }, -1);
                 int colX1 = FindCol(new[] { "X1" }, 6 + offsetCK);
                 int colY1 = FindCol(new[] { "Y1" }, 7 + offsetCK);
                 int colZ1 = FindCol(new[] { "Z1" }, 8 + offsetCK);
@@ -150,6 +163,9 @@ namespace InfraBIM.CulvertTool.Services
                 int colKheHo = FindCol(new[] { "KHE_HO_HN", "KHE_HO", "KHEHO" }, 21 + offsetCK);
                 int colL_SGC_TL = FindCol(new[] { "L_SGC_TL", "L SGC TL", "LSGC_TL", "L_SANGIACO_TL", "L SÂN GIA CỐ TL", "L SAN GIA CO TL", "L_SGC_THUONGLUU" }, -1);
                 int colL_SGC_HL = FindCol(new[] { "L_SGC_HL", "L SGC HL", "LSGC_HL", "L_SANGIACO_HL", "L SÂN GIA CỐ HL", "L SAN GIA CO HL", "L_SGC_HALUU" }, -1);
+                int colZ_SGC_TL = FindCol(new[] { "Z_SGC_TL", "Z SGC TL", "ZSGC_TL", "CD_SGC_TL", "CD SGC TL", "CAO DO SGC TL", "CAODO_SGC_TL", "Z2_SGC_TL", "Z_SGC_TL2", "CD_DIEM2_SGC_TL" }, -1);
+                int colZ_SGC_HL = FindCol(new[] { "Z_SGC_HL", "Z SGC HL", "ZSGC_HL", "CD_SGC_HL", "CD SGC HL", "CAO DO SGC HL", "CAODO_SGC_HL", "Z2_SGC_HL", "Z_SGC_HL2", "CD_DIEM2_SGC_HL" }, -1);
+                int colChuoiDot = FindCol(new[] { "CHUOIDOT", "CHUỖI ĐỐT", "CHUOIDOT", "QUYCACHDOT", "QUY CÁCH ĐỐT", "DOT_TUY_CHINH", "DOT_TY_CHINH", "QUY CACH DOT" }, -1);
                 int colGhiChu = FindCol(new[] { "GHICHU", "GHI CHÚ", "GHI CHU", "LOAI RAI", "LOAIRAI", "PHAN LOAI", "CHUNGLOAI" }, 22 + offsetCK);
 
                 for (int r = headerRow + 1; r <= lastRow; r++)
@@ -158,8 +174,8 @@ namespace InfraBIM.CulvertTool.Services
                     if (row.IsEmpty()) continue;
 
                     // Kiểm tra nếu ô STT hoặc Lý trình có giá trị
-                    string sttStr = row.Cell(colSTT).GetString().Trim();
-                    string lyTrinhStr = row.Cell(colLyTrinh).GetString().Trim();
+                    string sttStr = GetCellStringSafe(row.Cell(colSTT));
+                    string lyTrinhStr = GetCellStringSafe(row.Cell(colLyTrinh));
                     if (string.IsNullOrEmpty(sttStr) && string.IsNullOrEmpty(lyTrinhStr))
                         continue;
 
@@ -169,10 +185,10 @@ namespace InfraBIM.CulvertTool.Services
                     item.STT = ParseInt(row.Cell(colSTT), r - headerRow);
 
                     // Cột B: LyTrinh
-                    item.LyTrinh = row.Cell(colLyTrinh).GetString().Trim();
+                    item.LyTrinh = lyTrinhStr;
 
                     // Cột C: LoaiCong (Cống hộp / Cống tròn / Cống kỹ thuật)
-                    string loaiRaw = row.Cell(colLoaiCong).GetString().Trim();
+                    string loaiRaw = GetCellStringSafe(row.Cell(colLoaiCong));
                     bool isSheetCkt = (!string.IsNullOrEmpty(sheetName) && (sheetName.ToUpperInvariant().Contains("KỸ THUẬT") || sheetName.ToUpperInvariant().Contains("KY THUAT") || sheetName.ToUpperInvariant().Contains("CKT")));
                     if (isSheetCkt || loaiRaw.ToUpperInvariant().Contains("KỸ THUẬT") || loaiRaw.ToUpperInvariant().Contains("KY THUAT") || loaiRaw.ToUpperInvariant().Contains("CKT"))
                         item.LoaiCong = "Cống kỹ thuật";
@@ -184,7 +200,7 @@ namespace InfraBIM.CulvertTool.Services
                     // Cột D: CauKien (Đúc sẵn / Đổ tại chỗ)
                     if (colCauKien > 0)
                     {
-                        string ckRaw = row.Cell(colCauKien).GetString().Trim();
+                        string ckRaw = GetCellStringSafe(row.Cell(colCauKien));
                         item.CauKien = (ckRaw.ToUpperInvariant().Contains("ĐỔ") || ckRaw.ToUpperInvariant().Contains("DO")) ? "Đổ tại chỗ" : "Đúc sẵn";
                     }
                     else
@@ -196,7 +212,7 @@ namespace InfraBIM.CulvertTool.Services
                     item.SoCua = ParseInt(row.Cell(colSoCua), 1);
 
                     // Cột KhauDo
-                    item.KhauDo = row.Cell(colKhauDo).GetString().Trim();
+                    item.KhauDo = GetCellStringSafe(row.Cell(colKhauDo));
 
                     // Cột F -> H: X1, Y1, Z1 (Thượng lưu - VN2000)
                     item.X1 = ParseDouble(row.Cell(colX1), 0);
@@ -227,37 +243,54 @@ namespace InfraBIM.CulvertTool.Services
                     item.KC_HN1 = ParseDouble(row.Cell(colKC_HN1), 0);
                     item.KC_HN2 = ParseDouble(row.Cell(colKC_HN2), 0);
 
-                    // Bề rộng hố thu 1 và hố thu 2 (B_HT1, B_HT2)
-                    double b1 = (colB_HT1 > 0) ? ParseDouble(row.Cell(colB_HT1), 1.50) : 1.50;
-                    double b2 = (colB_HT2 > 0) ? ParseDouble(row.Cell(colB_HT2), 1.50) : 1.50;
-                    item.B_HT1 = (b1 > 0.1) ? b1 : 1.50;
-                    item.B_HT2 = (b2 > 0.1) ? b2 : 1.50;
+                    // Bề rộng hố thu 1 và hố thu 2 (B_HT1, B_HT2) - Giữ nguyên 100% giá trị Excel kể cả 0.0
+                    double b1 = (colB_HT1 > 0) ? ParseDouble(row.Cell(colB_HT1), 0.0) : 0.0;
+                    double b2 = (colB_HT2 > 0) ? ParseDouble(row.Cell(colB_HT2), 0.0) : 0.0;
+                    item.B_HT1 = b1;
+                    item.B_HT2 = b2;
 
                     // L_Ngam_San, Khe_Ho_HN
-                    item.L_Ngam_San = ParseDouble(row.Cell(colL_Ngam), 0.30);
-                    item.Khe_Ho_HN = ParseDouble(row.Cell(colKheHo), 0.05);
+                    item.L_Ngam_San = (colL_Ngam > 0) ? ParseDouble(row.Cell(colL_Ngam), 0.0) : 0.0;
+                    item.Khe_Ho_HN = (colKheHo > 0) ? ParseDouble(row.Cell(colKheHo), 0.0) : 0.0;
 
-                    // Chiều dài Sân gia cố Thượng lưu & Hạ lưu (m) - Mặc định 3.0m
+                    // Chiều dài Sân gia cố Thượng lưu & Hạ lưu (m) - Giữ nguyên chính xác từ Excel
                     if (colL_SGC_TL > 0)
                     {
-                        item.L_SGC_TL = ParseDouble(row.Cell(colL_SGC_TL), 3.0);
+                        item.L_SGC_TL = ParseDouble(row.Cell(colL_SGC_TL), 0.0);
                     }
-                    if (item.L_SGC_TL <= 0.01) item.L_SGC_TL = 3.0;
-
                     if (colL_SGC_HL > 0)
                     {
-                        item.L_SGC_HL = ParseDouble(row.Cell(colL_SGC_HL), 3.0);
+                        item.L_SGC_HL = ParseDouble(row.Cell(colL_SGC_HL), 0.0);
                     }
-                    if (item.L_SGC_HL <= 0.01) item.L_SGC_HL = 3.0;
+
+                    // Cao độ Điểm 2 Sân gia cố Thượng lưu & Hạ lưu (m)
+                    if (colZ_SGC_TL > 0)
+                    {
+                        item.Z_SGC_TL = ParseDouble(row.Cell(colZ_SGC_TL), 0.0);
+                    }
+                    if (colZ_SGC_HL > 0)
+                    {
+                        item.Z_SGC_HL = ParseDouble(row.Cell(colZ_SGC_HL), 0.0);
+                    }
 
                     // Cột GhiChu (Quyết định loại rải cống tự động)
                     if (colGhiChu > 0)
                     {
-                        item.GhiChu = row.Cell(colGhiChu).GetString().Trim();
+                        item.GhiChu = GetCellStringSafe(row.Cell(colGhiChu));
                     }
                     if (string.IsNullOrEmpty(item.GhiChu))
                     {
                         item.GhiChu = item.DetermineCulvertType();
+                    }
+
+                    // Cột Chuỗi đốt tùy chỉnh (ví dụ: 6@2.5, 2@3.0)
+                    if (colChuoiDot > 0)
+                    {
+                        item.CustomPattern = GetCellStringSafe(row.Cell(colChuoiDot));
+                    }
+                    if (string.IsNullOrEmpty(item.CustomPattern) && !string.IsNullOrEmpty(item.GhiChu) && item.GhiChu.Contains("@"))
+                    {
+                        item.CustomPattern = item.GhiChu;
                     }
 
                     // Đối với Cống kỹ thuật: Mặc định chỉ có 1 hộp nối (SoHopNoi = 1), và không dùng các thông số cống ngang
@@ -276,8 +309,27 @@ namespace InfraBIM.CulvertTool.Services
                         }
                     }
 
-                    // Mặc định khoảng cách tim cống đôi = 2.0m
-                    item.KhoangCachTim = 2.0;
+                    // Khoảng cách tim cống: Đọc chuẩn từ Excel nếu có cột
+                    if (colKC_Tim > 0)
+                    {
+                        double kc = ParseDouble(row.Cell(colKC_Tim), 0.0);
+                        item.KhoangCachTim = kc;
+                    }
+                    else
+                    {
+                        // Nếu Excel không có cột KC_Tim:
+                        // Cống tròn đôi (SoCua >= 2): mặc định 2.12m theo chuẩn thiết kế CAD
+                        // Cống tròn đơn (SoCua == 1): 0m
+                        // Cống hộp đôi: 2.0m
+                        if (item.LoaiCong == "Cống tròn")
+                        {
+                            item.KhoangCachTim = (item.SoCua >= 2) ? 2.12 : 0.0;
+                        }
+                        else
+                        {
+                            item.KhoangCachTim = (item.SoCua >= 2) ? 2.0 : 0.0;
+                        }
+                    }
 
                     // Kiểm tra sơ bộ tính hợp lệ
                     if (item.X1 == 0 && item.Y1 == 0)
@@ -322,13 +374,13 @@ namespace InfraBIM.CulvertTool.Services
             {
                 var ws = workbook.Worksheets.Add("DuLieuCongNgang");
 
-                // Headers chuẩn hóa (25 cột bao gồm CauKien, L_SGC_TL, L_SGC_HL và GhiChu)
+                // Headers chuẩn hóa (27 cột bao gồm CauKien, L_SGC_TL, L_SGC_HL, Z_SGC_TL, Z_SGC_HL và GhiChu)
                 string[] headers = new[]
                 {
                     "STT", "LyTrinh", "LoaiCong", "CauKien", "SoCua", "KhauDo",
                     "X1", "Y1", "Z1", "X2", "Y2", "Z2",
                     "ChieuDai", "DoDoc", "GocXoay", "SoHopNoi",
-                    "KC_HN1", "KC_HN2", "B_HT1", "B_HT2", "L_Ngam_San", "Khe_Ho_HN", "L_SGC_TL", "L_SGC_HL", "GhiChu"
+                    "KC_HN1", "KC_HN2", "B_HT1", "B_HT2", "L_Ngam_San", "Khe_Ho_HN", "L_SGC_TL", "L_SGC_HL", "Z_SGC_TL", "Z_SGC_HL", "GhiChu"
                 };
 
                 for (int col = 0; col < headers.Length; col++)
@@ -352,7 +404,7 @@ namespace InfraBIM.CulvertTool.Services
                     587234.120, 1194562.890, 265.140,
                     587248.560, 1194558.120, 264.840,
                     15.21, 2.00, 108.30, 2,
-                    5.38, 4.20, 1.50, 1.50, 0.30, 0.05, 3.00, 3.00, "Cống tròn đôi đúc sẵn"
+                    5.38, 4.20, 1.50, 1.50, 0.30, 0.05, 3.00, 3.00, 264.970, 264.670, "Cống tròn đôi đúc sẵn"
                 };
 
                 // Dòng mẫu 2: Cống tròn đơn 1D1000 đúc sẵn (Km1+680.00)
@@ -362,7 +414,7 @@ namespace InfraBIM.CulvertTool.Services
                     587420.350, 1194605.100, 266.500,
                     587432.800, 1194601.200, 266.250,
                     13.05, 1.92, 107.40, 0,
-                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, 3.00, 3.00, "Cống tròn đúc sẵn"
+                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, 3.00, 3.00, 266.330, 266.080, "Cống tròn đúc sẵn"
                 };
 
                 // Dòng mẫu 3: Cống hộp đơn 1.5x1.5 đúc sẵn (Km2+100.20)
@@ -372,7 +424,7 @@ namespace InfraBIM.CulvertTool.Services
                     587750.800, 1194710.450, 268.000,
                     587768.200, 1194704.900, 267.650,
                     18.25, 1.92, 107.70, 0,
-                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, 3.00, 3.00, "Cống hộp đúc sẵn"
+                    0.00, 0.00, 1.50, 1.50, 0.30, 0.05, 3.00, 3.00, 267.830, 267.480, "Cống hộp đúc sẵn"
                 };
 
                 // Dòng mẫu 4: Cống hộp đôi 2.5x2.0 đổ tại chỗ (Km2+550.00)
@@ -382,7 +434,7 @@ namespace InfraBIM.CulvertTool.Services
                     588120.400, 1194830.150, 269.800,
                     588142.100, 1194823.300, 269.360,
                     22.75, 1.93, 107.50, 2,
-                    6.50, 5.80, 1.60, 1.60, 0.35, 0.05, 3.00, 3.00, "Cống hộp đổ tại chỗ"
+                    6.50, 5.80, 1.60, 1.60, 0.35, 0.05, 3.00, 3.00, 269.630, 269.190, "Cống hộp đổ tại chỗ"
                 };
 
                 for (int c = 0; c < row1.Length; c++) ws.Cell(2, c + 1).Value = XLCellValue.FromObject(row1[c]);
@@ -462,6 +514,71 @@ namespace InfraBIM.CulvertTool.Services
                 wsCkt.Range("P2:P100").Style.NumberFormat.Format = "0";
                 wsCkt.SheetView.FreezeRows(1);
                 wsCkt.Columns().AdjustToContents(15.0, 30.0);
+
+                // ========================================================
+                // SHEET 3: CỐNG TRÒN (23 CỘT CHUẨN KÈM CHUỖI ĐỐT VÀ MỐI NỐI)
+                // ========================================================
+                var wsCt = workbook.Worksheets.Add("CongTron");
+                string[] headersCt =
+                {
+                    "STT", "LyTrinh", "LoaiCong", "CauKien", "SoCua", "KhauDo", "KC_Tim",
+                    "X1", "Y1", "Z1",
+                    "X2", "Y2", "Z2",
+                    "ChieuDai", "DoDoc", "GocXoay",
+                    "L_Ngam_San", "L SGC TL", "L SGC HL", "Z SGC TL", "Z SGC HL",
+                    "ChuoiDot", "GhiChu"
+                };
+
+                for (int i = 0; i < headersCt.Length; i++)
+                {
+                    var cell = wsCt.Cell(1, i + 1);
+                    cell.Value = headersCt[i];
+                    cell.Style.Font.Bold = true;
+                    cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#0E7490"); // Teal/Cyan
+                    cell.Style.Font.FontColor = XLColor.White;
+                    cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                }
+
+                object[] ctRow1 =
+                {
+                    1, "Km1+050.00", "Cống tròn", "Đúc sẵn", 1, "D1500", 0.0,
+                    580858.203, 1477280.506, 2.070,
+                    580880.889, 1477323.339, 1.870,
+                    48.47, 0.41, 62.09,
+                    0.18, 3.00, 3.00, 2.07, 1.70,
+                    "6@2.5, 2@3.0", "Cống tròn đúc sẵn đơn"
+                };
+                for (int c = 0; c < ctRow1.Length; c++) wsCt.Cell(2, c + 1).Value = XLCellValue.FromObject(ctRow1[c]);
+
+                object[] ctRow2 =
+                {
+                    2, "Km1+100.00", "Cống tròn", "Đúc sẵn", 2, "2xD1500", 2.12,
+                    580878.203, 1477280.506, 2.070,
+                    580900.889, 1477323.339, 1.870,
+                    48.47, 0.41, 62.09,
+                    0.18, 3.00, 3.00, 2.07, 1.70,
+                    "8@2.5", "Cống tròn đúc sẵn đôi"
+                };
+                for (int c = 0; c < ctRow2.Length; c++) wsCt.Cell(3, c + 1).Value = XLCellValue.FromObject(ctRow2[c]);
+
+                object[] ctRow3 =
+                {
+                    3, "Km1+150.00", "Cống tròn", "Đúc sẵn", 1, "D1500", 0.0,
+                    580898.203, 1477280.506, 2.070,
+                    580920.889, 1477323.339, 1.870,
+                    48.47, 0.41, 62.09,
+                    0.18, 3.00, 3.00, 2.07, 1.70,
+                    "6@2.5, 2@3.0", "Mối nối P2"
+                };
+                for (int c = 0; c < ctRow3.Length; c++) wsCt.Cell(4, c + 1).Value = XLCellValue.FromObject(ctRow3[c]);
+
+                wsCt.Range("H2:M100").Style.NumberFormat.Format = "0.000";
+                wsCt.Range("N2:P100").Style.NumberFormat.Format = "0.00";
+                wsCt.Range("Q2:U100").Style.NumberFormat.Format = "0.00";
+                wsCt.Range("A2:A100").Style.NumberFormat.Format = "0";
+                wsCt.Range("E2:E100").Style.NumberFormat.Format = "0";
+                wsCt.SheetView.FreezeRows(1);
+                wsCt.Columns().AdjustToContents(15.0, 30.0);
 
                 workbook.SaveAs(filePath);
             }
@@ -543,7 +660,10 @@ namespace InfraBIM.CulvertTool.Services
             int colKheHo = FindCol(new[] { "KHE_HO_HN", "KHE_HO", "KHEHO" }, 20 + offsetCK);
             int colL_SGC_TL = FindCol(new[] { "L_SGC_TL", "L SGC TL", "L_SANGIACO_TL", "L SÂN GIA CỐ TL", "L_SGC_UPSTREAM" }, 21 + offsetCK);
             int colL_SGC_HL = FindCol(new[] { "L_SGC_HL", "L SGC HL", "L_SANGIACO_HL", "L SÂN GIA CỐ HL", "L_SGC_DOWNSTREAM" }, 22 + offsetCK);
+            int colZ_SGC_TL = FindCol(new[] { "Z_SGC_TL", "Z SGC TL", "ZSGC_TL", "CD_SGC_TL", "CD SGC TL", "CAO DO SGC TL", "CAODO_SGC_TL", "Z2_SGC_TL", "Z_SGC_TL2" }, -1);
+            int colZ_SGC_HL = FindCol(new[] { "Z_SGC_HL", "Z SGC HL", "ZSGC_HL", "CD_SGC_HL", "CD SGC HL", "CAO DO SGC HL", "CAODO_SGC_HL", "Z2_SGC_HL", "Z_SGC_HL2" }, -1);
             int offsetSGC = (colL_SGC_TL >= 0 || colL_SGC_HL >= 0) ? 2 : 0;
+            if (colZ_SGC_TL >= 0 || colZ_SGC_HL >= 0) offsetSGC += 2;
             int colGhiChu = FindCol(new[] { "GHICHU", "GHI CHÚ", "GHI CHU", "LOAI RAI", "LOAIRAI" }, 21 + offsetCK + offsetSGC);
 
             for (int r = headerLineIdx + 1; r < lines.Count; r++)
@@ -625,6 +745,15 @@ namespace InfraBIM.CulvertTool.Services
                 }
                 if (item.L_SGC_HL <= 0.01) item.L_SGC_HL = 3.0;
 
+                if (colZ_SGC_TL >= 0)
+                {
+                    item.Z_SGC_TL = ParseDoubleString(GetCell(colZ_SGC_TL), 0.0);
+                }
+                if (colZ_SGC_HL >= 0)
+                {
+                    item.Z_SGC_HL = ParseDoubleString(GetCell(colZ_SGC_HL), 0.0);
+                }
+
                 if (colGhiChu >= 0)
                 {
                     item.GhiChu = GetCell(colGhiChu);
@@ -641,18 +770,63 @@ namespace InfraBIM.CulvertTool.Services
             return list;
         }
 
+        private static string GetCellStringSafe(IXLCell cell)
+        {
+            try
+            {
+                return cell.GetString().Trim();
+            }
+            catch
+            {
+                try
+                {
+                    return cell.CachedValue.ToString().Trim();
+                }
+                catch
+                {
+                    return string.Empty;
+                }
+            }
+        }
+
         private static int ParseInt(IXLCell cell, int defaultVal)
         {
-            if (cell.TryGetValue<int>(out int val)) return val;
-            string s = cell.GetString().Trim();
-            if (int.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out int parsed)) return parsed;
+            try
+            {
+                if (cell.TryGetValue<int>(out int val)) return val;
+                string s = GetCellStringSafe(cell);
+                if (int.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out int parsed)) return parsed;
+            }
+            catch
+            {
+                try
+                {
+                    if (cell.CachedValue.IsNumber) return (int)cell.CachedValue.GetNumber();
+                    string s = cell.CachedValue.ToString().Trim();
+                    if (int.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out int parsed)) return parsed;
+                }
+                catch { }
+            }
             return defaultVal;
         }
 
         private static double ParseDouble(IXLCell cell, double defaultVal)
         {
-            if (cell.TryGetValue<double>(out double val)) return val;
-            return ParseDoubleString(cell.GetString(), defaultVal);
+            try
+            {
+                if (cell.TryGetValue<double>(out double val)) return val;
+                return ParseDoubleString(GetCellStringSafe(cell), defaultVal);
+            }
+            catch
+            {
+                try
+                {
+                    if (cell.CachedValue.IsNumber) return cell.CachedValue.GetNumber();
+                    return ParseDoubleString(cell.CachedValue.ToString(), defaultVal);
+                }
+                catch { }
+            }
+            return defaultVal;
         }
 
         public static double ParseDoubleString(string? text, double defaultVal)

@@ -109,6 +109,7 @@
                     <Button Content="📐 BẰNG" Click="SetTop_Click" ToolTip="Mặt bằng nhìn từ trên xuống (Top View)" Style="{StaticResource ModeToggleBtn}"/>
                     <Button Content="⬛ BÊN" Click="SetRight_Click" ToolTip="Mặt cắt bên cống (Right View)" Style="{StaticResource ModeToggleBtn}"/>
                     <Button Content="👁️ BTL/ĐÁ" Click="ToggleBedding_Click" ToolTip="Ẩn / Hiện lớp bê tông lót &amp; đá dăm đệm" Style="{StaticResource ModeToggleBtn}"/>
+                    <Button x:Name="BtnToggleDim" Content="📏 DIM CAO ĐỘ" Click="ToggleDim_Click" ToolTip="Ẩn / Hiện Tag Dim cao độ tại Sân gia cố, Sân cống, Đáy cống" Style="{StaticResource ModeToggleBtn}"/>
 
                     <!-- Điều khiển Zoom / Pan / Fit -->
                     <Border Width="1" Background="{StaticResource NavyBorder}" Margin="6,2,10,2"/>
